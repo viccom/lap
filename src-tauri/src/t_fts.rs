@@ -42,6 +42,17 @@ pub struct FtsHit {
     pub matched_columns: Vec<String>,
 }
 
+/// The row counts of the index and of the library.
+///
+/// The two numbers tell whether the index is in step with the library: a
+/// rebuild is offered when they drift apart.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FtsStatus {
+    pub documents: i64,
+    pub files: i64,
+}
+
 /// Split the text into the tokens the index stores.
 ///
 /// CJK runs become bigrams, latin runs become lowercased words and everything
@@ -604,6 +615,33 @@ pub async fn fts_reindex() -> Result<usize, String> {
         .map_err(|e| format!("FTS reindex task failed: {e}"))?
 }
 
+/// The row counts of the index and the library on an existing connection.
+///
+/// A database without the migration counts as empty rather than an error, so
+/// the status can be shown before the first scan.
+pub fn fts_status_with_conn(conn: &Connection) -> Result<FtsStatus, String> {
+    let documents = if table_exists(conn, "files_fts")? {
+        conn.query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+    } else {
+        0
+    };
+    let files = if table_exists(conn, "afiles")? {
+        conn.query_row("SELECT COUNT(*) FROM afiles", [], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+    } else {
+        0
+    };
+    Ok(FtsStatus { documents, files })
+}
+
+/// The row counts of the index and the library from the command layer.
+#[tauri::command]
+pub fn fts_status() -> Result<FtsStatus, String> {
+    let conn = crate::t_sqlite::open_conn()?;
+    fts_status_with_conn(&conn)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -919,10 +957,38 @@ mod tests {
         assert!(!first.iter().any(|row| row.contains("旧文档")));
     }
 
+    #[test]
+    fn the_status_counts_the_index_and_the_library() {
+        let conn = fixture();
+        seed_file(&conn, 1, "过年回家.jpg");
+        seed_file(&conn, 2, "春节团聚.jpg");
+        upsert_doc(&conn, 1).unwrap();
+        upsert_doc(&conn, 2).unwrap();
+
+        let status = fts_status_with_conn(&conn).unwrap();
+        assert_eq!(status.documents, 2, "two indexed documents");
+        assert_eq!(status.files, 2, "two library files");
+
+        conn.execute("DELETE FROM afiles WHERE id = 1", []).unwrap();
+        remove_doc(&conn, 1).unwrap();
+        let status = fts_status_with_conn(&conn).unwrap();
+        assert_eq!(status.documents, 1);
+        assert_eq!(status.files, 1);
+    }
+
+    #[test]
+    fn the_status_counts_an_empty_library_as_zero() {
+        let conn = Connection::open_in_memory().unwrap();
+        // A database without the migration still answers, with zeros.
+        let status = fts_status_with_conn(&conn).unwrap();
+        assert_eq!(status.documents, 0);
+        assert_eq!(status.files, 0);
+    }
+
     // ----- command registration -----
 
     /// The commands this module contributes to the Tauri handler.
-    const FTS_COMMANDS: [&str; 2] = ["search_fts", "fts_reindex"];
+    const FTS_COMMANDS: [&str; 3] = ["search_fts", "fts_reindex", "fts_status"];
 
     #[test]
     fn every_command_is_registered_in_main() {

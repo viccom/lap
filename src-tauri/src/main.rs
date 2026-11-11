@@ -459,6 +459,7 @@ async fn main() {
             // exact search
             t_fts::search_fts,
             t_fts::fts_reindex,
+            t_fts::fts_status,
             // video
             t_video::prepare_video,
             t_video::get_video_stream_url,
