@@ -2405,13 +2405,27 @@ impl AFile {
 
     /// Follow a rename without reading the file (online-only files).
     pub fn update_path(file_id: i64, file_path: &str, last_scan_time: i64) -> Result<Option<Self>, String> {
+        let conn = open_conn()?;
+        Self::update_path_with_conn(&conn, file_id, file_path, last_scan_time)?;
+        Self::get_file_info(file_id)
+    }
+
+    /// Follow a rename on an existing connection.
+    pub fn update_path_with_conn(
+        conn: &Connection,
+        file_id: i64,
+        file_path: &str,
+        last_scan_time: i64,
+    ) -> Result<(), String> {
         let name = t_utils::get_file_name(file_path);
-        open_conn()?.execute(
+        conn.execute(
             "UPDATE afiles SET name = ?1, name_pinyin = ?2, last_scan_time = ?3, cloud_only = ?4 WHERE id = ?5",
             // A file that vanished since the walk is not online-only.
             params![name, t_utils::natural_sort_key(&name.to_lowercase()), last_scan_time, t_utils::is_cloud_only_path(file_path), file_id],
         ).map_err(|e| e.to_string())?;
-        Self::get_file_info(file_id)
+        // The new name has to be findable right away.
+        let _ = crate::t_fts::upsert_doc(conn, file_id);
+        Ok(())
     }
 
     fn new_with_raw_info(folder_id: i64, file_path: &str, file_type: i64, raw_info: Option<t_libraw::RawInfo>) -> Result<Self, String> {
@@ -3168,6 +3182,11 @@ impl AFile {
     /// insert a file into db
     fn insert(&self) -> Result<usize, String> {
         let conn = open_conn()?;
+        self.insert_with_conn(&conn)
+    }
+
+    /// Insert a file into db on an existing connection.
+    fn insert_with_conn(&self, conn: &Connection) -> Result<usize, String> {
         let result = conn.execute(
             "INSERT INTO afiles (
                 folder_id,
@@ -3249,12 +3268,26 @@ impl AFile {
                 self.metadata_pending,
             ]
         ).map_err(|e| e.to_string())?;
+        if result > 0 {
+            // A new file has to be findable right away.
+            let _ = crate::t_fts::upsert_doc(conn, conn.last_insert_rowid());
+        }
         Ok(result)
     }
 
     /// update a file into db
     fn update(file_id: i64, file: &Self, import_xmp: bool) -> Result<usize, String> {
         let mut conn = open_conn()?;
+        Self::update_with_conn(&mut conn, file_id, file, import_xmp)
+    }
+
+    /// Update a file into db on an existing connection.
+    fn update_with_conn(
+        conn: &mut Connection,
+        file_id: i64,
+        file: &Self,
+        import_xmp: bool,
+    ) -> Result<usize, String> {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let result = tx.execute(
             "UPDATE afiles SET
@@ -3340,18 +3373,28 @@ impl AFile {
                 .map_err(|e| e.to_string())?;
         }
         tx.commit().map_err(|e| e.to_string())?;
+        // The extracted metadata has to be findable right away.
+        let _ = crate::t_fts::upsert_doc(conn, file_id);
         Ok(result)
     }
 
     // delete a file from db
     pub fn delete(id: i64) -> Result<usize, String> {
         let mut conn = open_conn()?;
+        Self::delete_with_conn(&mut conn, id)
+    }
+
+    /// Delete a file from db on an existing connection.
+    pub fn delete_with_conn(conn: &mut Connection, id: i64) -> Result<usize, String> {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM athumbs WHERE file_id = ?1", params![id])
             .map_err(|e| e.to_string())?;
         let result = tx
             .execute("DELETE FROM afiles WHERE id = ?1", params![id])
             .map_err(|e| e.to_string())?;
+        // The index is a virtual table without foreign keys, so the document
+        // has to go by hand.
+        let _ = crate::t_fts::remove_doc(&tx, id);
         tx.commit().map_err(|e| e.to_string())?;
         Ok(result)
     }
@@ -3362,6 +3405,15 @@ impl AFile {
         }
 
         let mut conn = open_conn()?;
+        Self::batch_delete_with_conn(&mut conn, ids)
+    }
+
+    /// Delete files from db on an existing connection.
+    pub fn batch_delete_with_conn(conn: &mut Connection, ids: &[i64]) -> Result<usize, String> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let mut deleted = 0;
         {
@@ -3374,6 +3426,9 @@ impl AFile {
             for id in ids {
                 thumb_stmt.execute(params![id]).map_err(|e| e.to_string())?;
                 deleted += file_stmt.execute(params![id]).map_err(|e| e.to_string())?;
+                // The index is a virtual table without foreign keys, so the
+                // document has to go by hand.
+                let _ = crate::t_fts::remove_doc(&tx, *id);
             }
         }
         tx.commit().map_err(|e| e.to_string())?;
@@ -4265,7 +4320,13 @@ impl AFile {
         if !crate::metadata::xmp::is_xmp_import_enabled() { return Ok(false); }
         let conn = open_conn()?;
         match crate::metadata::xmp::import_with_system(file_id, file_path, &conn, mode, None, extracted_software, None) {
-            Ok(changed) => Ok(changed),
+            Ok(changed) => {
+                if changed {
+                    // The imported description has to be findable right away.
+                    let _ = crate::t_fts::upsert_doc(&conn, file_id);
+                }
+                Ok(changed)
+            }
             Err(error) => {
                 conn.execute("UPDATE afiles SET metadata_pending=1 WHERE id=?1", params![file_id])
                     .map_err(|e| e.to_string())?;
@@ -4354,19 +4415,26 @@ impl AFile {
             });
         }
         let warning = if import_needed {
-            open_conn().and_then(|conn| {
-                crate::metadata::xmp::import_with_system(
-                    file_id,
-                    path,
-                    &conn,
-                    crate::metadata::xmp::XmpImportMode::RefreshNonDestructive,
-                    system_metadata,
-                    None,
-                    None,
-                )
-            })
-            .err()
-            .map(|e| format!("XMP import failed: {e}"))
+            open_conn()
+                .and_then(|conn| {
+                    crate::metadata::xmp::import_with_system(
+                        file_id,
+                        path,
+                        &conn,
+                        crate::metadata::xmp::XmpImportMode::RefreshNonDestructive,
+                        system_metadata,
+                        None,
+                        None,
+                    )
+                    .map(|changed| {
+                        if changed {
+                            // The imported description has to be findable right away.
+                            let _ = crate::t_fts::upsert_doc(&conn, file_id);
+                        }
+                    })
+                })
+                .err()
+                .map(|e| format!("XMP import failed: {e}"))
         } else {
             None
         };
@@ -4539,6 +4607,12 @@ impl AFile {
                     Some(extracted_software.as_deref()),
                     Some(&new_file_info),
                 )
+                .map(|changed| {
+                    if changed {
+                        // The imported description has to be findable right away.
+                        let _ = crate::t_fts::upsert_doc(&conn, file_id);
+                    }
+                })
             }) {
                 // Keep successful metadata, but make the failed import retryable.
                 Self::update_column(file_id, "metadata_pending", &true)?;
@@ -4616,8 +4690,14 @@ impl AFile {
         value: &dyn rusqlite::ToSql,
     ) -> Result<usize, String> {
         let query = format!("UPDATE afiles SET {} = ?1 WHERE id = ?2", column);
-        conn.execute(&query, params![value, file_id])
-            .map_err(|e| e.to_string())
+        let changed = conn
+            .execute(&query, params![value, file_id])
+            .map_err(|e| e.to_string())?;
+        if changed > 0 && crate::t_fts::column_is_indexed(column) {
+            // The written column belongs to the indexed document.
+            let _ = crate::t_fts::upsert_doc(conn, file_id);
+        }
+        Ok(changed)
     }
 
     pub fn batch_rename_names(updates: &[(i64, String, String, String)]) -> Result<(), String> {
@@ -4655,7 +4735,12 @@ impl AFile {
                 return Err("A file changed during batch rename.".into());
             }
         }
-        tx.commit().map_err(|error| error.to_string())
+        tx.commit().map_err(|error| error.to_string())?;
+        // The new names have to be findable right away.
+        for (id, _, _, _) in updates {
+            let _ = crate::t_fts::upsert_doc(conn, *id);
+        }
+        Ok(())
     }
 
     pub fn batch_update_names(updates: &[(i64, String, Option<String>)]) -> Result<usize, String> {
@@ -4664,6 +4749,18 @@ impl AFile {
         }
 
         let mut conn = open_conn()?;
+        Self::batch_update_names_with_conn(&mut conn, updates)
+    }
+
+    /// Rename files on an existing connection.
+    pub fn batch_update_names_with_conn(
+        conn: &mut Connection,
+        updates: &[(i64, String, Option<String>)],
+    ) -> Result<usize, String> {
+        if updates.is_empty() {
+            return Ok(0);
+        }
+
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let mut changed = 0usize;
         for (file_id, name, name_pinyin) in updates {
@@ -4673,6 +4770,8 @@ impl AFile {
                     params![name, name_pinyin, file_id],
                 )
                 .map_err(|e| e.to_string())?;
+            // The new name has to be findable right away.
+            let _ = crate::t_fts::upsert_doc(&tx, *file_id);
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(changed)
@@ -4691,6 +4790,31 @@ impl AFile {
         }
 
         let mut conn = open_conn()?;
+        Self::batch_update_metadata_with_conn(
+            &mut conn,
+            file_ids,
+            is_favorite,
+            rating,
+            culling_flag,
+            rotate_delta,
+            comment,
+        )
+    }
+
+    /// Update file metadata on an existing connection.
+    pub fn batch_update_metadata_with_conn(
+        conn: &mut Connection,
+        file_ids: &[i64],
+        is_favorite: Option<bool>,
+        rating: Option<i32>,
+        culling_flag: Option<i32>,
+        rotate_delta: Option<i32>,
+        comment: Option<&str>,
+    ) -> Result<usize, String> {
+        if file_ids.is_empty() {
+            return Ok(0);
+        }
+
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let mut updated = 0;
 
@@ -4751,6 +4875,10 @@ impl AFile {
             }
         }
 
+        // The new comment has to be findable right away.
+        for file_id in file_ids {
+            let _ = crate::t_fts::upsert_doc(&tx, *file_id);
+        }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(updated)
     }
@@ -8802,6 +8930,15 @@ impl ATag {
     /// Add a tag to a file.
     pub fn add_tag_to_file(file_id: i64, tag_id: i64) -> Result<(), String> {
         let conn = open_conn()?;
+        Self::add_tag_to_file_with_conn(&conn, file_id, tag_id)
+    }
+
+    /// Add a tag to a file on an existing connection.
+    pub fn add_tag_to_file_with_conn(
+        conn: &Connection,
+        file_id: i64,
+        tag_id: i64,
+    ) -> Result<(), String> {
         conn.execute(
             "INSERT OR IGNORE INTO afile_tags (file_id, tag_id) VALUES (?1, ?2)",
             params![file_id, tag_id],
@@ -8814,12 +8951,23 @@ impl ATag {
             params![file_id],
         )
         .map_err(|e| e.to_string())?;
+        // The new tag has to be findable right away.
+        let _ = crate::t_fts::upsert_doc(conn, file_id);
         Ok(())
     }
 
     /// Remove a tag from a file
     pub fn remove_tag_from_file(file_id: i64, tag_id: i64) -> Result<usize, String> {
         let conn = open_conn()?;
+        Self::remove_tag_from_file_with_conn(&conn, file_id, tag_id)
+    }
+
+    /// Remove a tag from a file on an existing connection.
+    pub fn remove_tag_from_file_with_conn(
+        conn: &Connection,
+        file_id: i64,
+        tag_id: i64,
+    ) -> Result<usize, String> {
         let result = conn
             .execute(
                 "DELETE FROM afile_tags WHERE file_id = ?1 AND tag_id = ?2",
@@ -8844,6 +8992,8 @@ impl ATag {
             )
             .map_err(|e| e.to_string())?;
         }
+        // The remaining tags have to be findable right away.
+        let _ = crate::t_fts::upsert_doc(conn, file_id);
         Ok(result)
     }
 
@@ -8900,6 +9050,20 @@ impl ATag {
         }
 
         let mut conn = open_conn()?;
+        Self::apply_to_files_with_conn(&mut conn, file_ids, add_tag_ids, remove_tag_ids)
+    }
+
+    /// Apply tags to files on an existing connection.
+    pub fn apply_to_files_with_conn(
+        conn: &mut Connection,
+        file_ids: &[i64],
+        add_tag_ids: &[i64],
+        remove_tag_ids: &[i64],
+    ) -> Result<Vec<ATagFileState>, String> {
+        if file_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         {
             let mut add_stmt = tx
@@ -8952,6 +9116,10 @@ impl ATag {
             }
         }
 
+        // The new tags have to be findable right away.
+        for file_id in file_ids {
+            let _ = crate::t_fts::upsert_doc(&tx, *file_id);
+        }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(states)
     }
@@ -8959,6 +9127,11 @@ impl ATag {
     /// Delete a tag from the database. This will also remove all its associations with files.
     pub fn delete(tag_id: i64) -> Result<usize, String> {
         let mut conn = open_conn()?;
+        Self::delete_with_conn(&mut conn, tag_id)
+    }
+
+    /// Delete a tag on an existing connection.
+    pub fn delete_with_conn(conn: &mut Connection, tag_id: i64) -> Result<usize, String> {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let file_ids = {
             let mut stmt = tx
@@ -8983,8 +9156,12 @@ impl ATag {
                      WHERE id = ?1",
                 )
                 .map_err(|e| e.to_string())?;
-            for file_id in file_ids {
+            for file_id in &file_ids {
                 stmt.execute(params![file_id]).map_err(|e| e.to_string())?;
+            }
+            // The remaining tags have to be findable right away.
+            for file_id in &file_ids {
+                let _ = crate::t_fts::upsert_doc(&tx, *file_id);
             }
         }
         tx.commit().map_err(|e| e.to_string())?;
@@ -8993,8 +9170,17 @@ impl ATag {
 
     /// Rename the node and protect all descendant paths from automatic import.
     pub fn rename(tag_id: i64, new_name: &str) -> Result<usize, String> {
-        let name = crate::t_tags::validate_name(new_name)?;
         let mut conn = open_conn()?;
+        Self::rename_with_conn(&mut conn, tag_id, new_name)
+    }
+
+    /// Rename a tag on an existing connection.
+    pub fn rename_with_conn(
+        conn: &mut Connection,
+        tag_id: i64,
+        new_name: &str,
+    ) -> Result<usize, String> {
+        let name = crate::t_tags::validate_name(new_name)?;
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let parent: Option<i64> = tx
             .query_row("SELECT parent_id FROM atags WHERE id=?1", [tag_id], |r| {
@@ -9011,9 +9197,27 @@ impl ATag {
                 params![name, tag_id],
             )
             .map_err(|e| e.to_string())?;
+        // The renamed tag and the tags below it have to be findable right away.
+        for file_id in files_of_tag_tree(&tx, tag_id)? {
+            let _ = crate::t_fts::upsert_doc(&tx, file_id);
+        }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(result)
     }
+}
+
+/// The files that carry a tag or one of the tags below it.
+fn files_of_tag_tree(conn: &Connection, tag_id: i64) -> Result<Vec<i64>, String> {
+    let sql = format!(
+        "{} SELECT DISTINCT ft.file_id FROM afile_tags ft JOIN descendants d ON d.id=ft.tag_id",
+        crate::t_tags::DESCENDANTS
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![tag_id], |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 /// Person struct for face recognition
@@ -9512,18 +9716,38 @@ impl Person {
     /// Rename a person
     pub fn rename(person_id: i64, new_name: &str) -> Result<usize, String> {
         let conn = open_conn()?;
+        Self::rename_with_conn(&conn, person_id, new_name)
+    }
+
+    /// Rename a person on an existing connection.
+    pub fn rename_with_conn(
+        conn: &Connection,
+        person_id: i64,
+        new_name: &str,
+    ) -> Result<usize, String> {
         let result = conn
             .execute(
                 "UPDATE persons SET name = ?1 WHERE id = ?2",
                 params![new_name, person_id],
             )
             .map_err(|e| e.to_string())?;
+        // Every file of this person has to be findable again.
+        for file_id in files_of_person(conn, person_id)? {
+            let _ = crate::t_fts::upsert_doc(conn, file_id);
+        }
         Ok(result)
     }
 
     /// Delete a person (faces will have person_id set to NULL)
     pub fn delete(person_id: i64) -> Result<usize, String> {
         let conn = open_conn()?;
+        Self::delete_with_conn(&conn, person_id)
+    }
+
+    /// Delete a person on an existing connection.
+    pub fn delete_with_conn(conn: &Connection, person_id: i64) -> Result<usize, String> {
+        // The files that show this person lose the name from their document.
+        let file_ids = files_of_person(conn, person_id)?;
 
         // First, unlink all faces from this person
         conn.execute(
@@ -9536,6 +9760,10 @@ impl Person {
         let result = conn
             .execute("DELETE FROM persons WHERE id = ?1", params![person_id])
             .map_err(|e| e.to_string())?;
+        // The files lose the name of the person from their document.
+        for file_id in file_ids {
+            let _ = crate::t_fts::upsert_doc(conn, file_id);
+        }
         Ok(result)
     }
 
@@ -9555,6 +9783,18 @@ impl Person {
 
         Ok(conn.last_insert_rowid())
     }
+}
+
+/// The files that show a person.
+fn files_of_person(conn: &Connection, person_id: i64) -> Result<Vec<i64>, String> {
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT file_id FROM faces WHERE person_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![person_id], |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 /// Face struct for storing detected faces
@@ -10315,6 +10555,71 @@ pub fn create_db() -> Result<(), String> {
     }
 }
 
+/// The schema of the file table.
+///
+/// The tests build the same table, so the file writes and the full text
+/// index can be exercised without the library database.
+const AFILES_SCHEMA_SQL: &str = "CREATE TABLE IF NOT EXISTS afiles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            folder_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            name_pinyin TEXT,
+            size INTEGER NOT NULL,
+            file_type INTEGER,
+            format_label TEXT,
+            created_at INTEGER,
+            modified_at INTEGER,
+            inode INTEGER,
+            taken_date INTEGER,
+            width INTEGER,
+            height INTEGER,
+            duration INTEGER,
+            icc_profile TEXT,
+            color_space TEXT,
+            bit_depth INTEGER,
+            is_favorite INTEGER,
+            rating INTEGER NOT NULL DEFAULT 0,
+            culling_flag INTEGER NOT NULL DEFAULT 0,
+            rotate INTEGER,
+            comments TEXT,
+            has_tags INTEGER,
+            has_faces INTEGER DEFAULT 0,
+            e_make TEXT,
+            e_model TEXT,
+            e_lens_make TEXT,
+            e_lens_model TEXT,
+            e_date_time TEXT,
+            e_exposure_bias TEXT,
+            e_exposure_time TEXT,
+            e_f_number TEXT,
+            e_focal_length TEXT,
+            e_iso_speed TEXT,
+            e_flash TEXT,
+            e_orientation INTEGER,
+            e_title TEXT,
+            e_headline TEXT,
+            e_description TEXT,
+            e_artist TEXT,
+            e_copyright TEXT,
+            e_software TEXT,
+            gps_latitude REAL,
+            gps_longitude REAL,
+            gps_altitude REAL,
+            geo_name TEXT,
+            geo_admin1 TEXT,
+            geo_admin2 TEXT,
+            geo_cc TEXT,
+            embeds BLOB,
+            last_scan_time INTEGER DEFAULT 0,
+            content_identifier TEXT,
+            media_subtype TEXT,
+            live_photo_video_id INTEGER,
+            motion_photo_offset INTEGER,
+            cloud_only INTEGER NOT NULL DEFAULT 0,
+            metadata_pending INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (folder_id) REFERENCES afolders(id) ON DELETE CASCADE
+        )";
+
 fn create_db_internal() -> Result<(), String> {
     let conn = open_conn()?;
 
@@ -10393,70 +10698,8 @@ fn create_db_internal() -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     // files table
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS afiles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            folder_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            name_pinyin TEXT,
-            size INTEGER NOT NULL,
-            file_type INTEGER,
-            format_label TEXT,
-            created_at INTEGER,
-            modified_at INTEGER,
-            inode INTEGER,
-            taken_date INTEGER,
-            width INTEGER,
-            height INTEGER,
-            duration INTEGER,
-            icc_profile TEXT,
-            color_space TEXT,
-            bit_depth INTEGER,
-            is_favorite INTEGER,
-            rating INTEGER NOT NULL DEFAULT 0,
-            culling_flag INTEGER NOT NULL DEFAULT 0,
-            rotate INTEGER,
-            comments TEXT,
-            has_tags INTEGER,
-            has_faces INTEGER DEFAULT 0,
-            e_make TEXT,
-            e_model TEXT,
-            e_lens_make TEXT,
-            e_lens_model TEXT,
-            e_date_time TEXT,
-            e_exposure_bias TEXT,
-            e_exposure_time TEXT,
-            e_f_number TEXT,
-            e_focal_length TEXT,
-            e_iso_speed TEXT,
-            e_flash TEXT,
-            e_orientation INTEGER,
-            e_title TEXT,
-            e_headline TEXT,
-            e_description TEXT,
-            e_artist TEXT,
-            e_copyright TEXT,
-            e_software TEXT,
-            gps_latitude REAL,
-            gps_longitude REAL,
-            gps_altitude REAL,
-            geo_name TEXT,
-            geo_admin1 TEXT,
-            geo_admin2 TEXT,
-            geo_cc TEXT,
-            embeds BLOB,
-            last_scan_time INTEGER DEFAULT 0,
-            content_identifier TEXT,
-            media_subtype TEXT,
-            live_photo_video_id INTEGER,
-            motion_photo_offset INTEGER,
-            cloud_only INTEGER NOT NULL DEFAULT 0,
-            metadata_pending INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (folder_id) REFERENCES afolders(id) ON DELETE CASCADE
-        )",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
+    conn.execute(AFILES_SCHEMA_SQL, [])
+        .map_err(|e| e.to_string())?;
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_afiles_folder_id ON afiles(folder_id)",
         [],
@@ -11722,5 +11965,281 @@ mod file_refresh_policy_tests {
             .unwrap()
             .at = std::time::Instant::now() - Duration::from_secs(31);
         assert_eq!(recent_refresh_failure(&key, "v2"), None);
+    }
+}
+
+#[cfg(test)]
+mod fts_hook_tests {
+    use super::*;
+
+    /// A library with the tables the file writes and the index need.
+    fn fixture() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
+             CREATE TABLE afolders(id INTEGER PRIMARY KEY);
+             INSERT INTO afolders(id) VALUES (1);
+             CREATE TABLE athumbs(file_id INTEGER);
+             CREATE TABLE atags(
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL,
+                 parent_id INTEGER REFERENCES atags(id) ON DELETE CASCADE
+             );
+             CREATE TABLE afile_tags(
+                 file_id INTEGER NOT NULL,
+                 tag_id INTEGER NOT NULL,
+                 PRIMARY KEY(file_id, tag_id)
+             );
+             CREATE TABLE axmp_imports(
+                 file_id INTEGER PRIMARY KEY,
+                 dirty INTEGER,
+                 fingerprint TEXT
+             );
+             CREATE TABLE persons(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT);
+             CREATE TABLE faces(
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 file_id INTEGER,
+                 person_id INTEGER
+             );
+             CREATE TABLE vl_annotations(
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 file_id INTEGER,
+                 template_id INTEGER,
+                 template_version INTEGER,
+                 model TEXT,
+                 result_json TEXT,
+                 raw_text TEXT,
+                 call_id INTEGER,
+                 created_at INTEGER
+             );",
+        )
+        .unwrap();
+        conn.execute_batch(AFILES_SCHEMA_SQL).unwrap();
+        conn.execute_batch(
+            "CREATE UNIQUE INDEX uidx_afiles_folder_id_name ON afiles(folder_id, name);",
+        )
+        .unwrap();
+        conn.execute_batch(crate::t_fts::FTS_SCHEMA_SQL).unwrap();
+        conn
+    }
+
+    /// Store a file and return its id.
+    fn insert_file(conn: &Connection, name: &str) -> i64 {
+        let file = AFile {
+            folder_id: 1,
+            name: name.to_string(),
+            size: 1,
+            rating: Some(0),
+            culling_flag: Some(0),
+            ..Default::default()
+        };
+        file.insert_with_conn(conn).unwrap();
+        conn.last_insert_rowid()
+    }
+
+    /// The file ids a search finds.
+    fn found(conn: &Connection, query: &str) -> Vec<i64> {
+        crate::t_fts::search(conn, query, 100)
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.file_id)
+            .collect()
+    }
+
+    #[test]
+    fn a_new_file_is_findable_right_away() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "过年回家.jpg");
+        assert_eq!(found(&conn, "过年"), vec![file_id]);
+    }
+
+    #[test]
+    fn a_renamed_file_is_findable_under_its_new_name() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "old.jpg");
+        AFile::batch_update_names_with_conn(&mut conn, &[(file_id, "过年回家.jpg".into(), None)])
+            .unwrap();
+        assert_eq!(found(&conn, "过年"), vec![file_id]);
+        assert!(found(&conn, "old").is_empty());
+    }
+
+    #[test]
+    fn a_batch_renamed_file_is_findable_under_its_new_name() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "old.jpg");
+        AFile::batch_rename_names_with_conn(
+            &mut conn,
+            &[(file_id, "old.jpg".into(), "过年回家.jpg".into(), "sort".into())],
+        )
+        .unwrap();
+        assert_eq!(found(&conn, "过年"), vec![file_id]);
+        assert!(found(&conn, "old").is_empty());
+    }
+
+    #[test]
+    fn a_new_comment_is_findable() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        AFile::batch_update_metadata_with_conn(
+            &mut conn,
+            &[file_id],
+            None,
+            None,
+            None,
+            None,
+            Some("春节团聚"),
+        )
+        .unwrap();
+        assert_eq!(found(&conn, "团聚"), vec![file_id]);
+    }
+
+    #[test]
+    fn a_new_tag_is_findable() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO atags(id, name) VALUES (1, '春节')", [])
+            .unwrap();
+        ATag::add_tag_to_file_with_conn(&conn, file_id, 1).unwrap();
+        assert_eq!(found(&conn, "春节"), vec![file_id]);
+    }
+
+    #[test]
+    fn a_removed_tag_is_not_findable_any_more() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO atags(id, name) VALUES (1, '春节')", [])
+            .unwrap();
+        ATag::add_tag_to_file_with_conn(&conn, file_id, 1).unwrap();
+        assert_eq!(found(&conn, "春节"), vec![file_id]);
+        ATag::remove_tag_from_file_with_conn(&conn, file_id, 1).unwrap();
+        assert!(found(&conn, "春节").is_empty());
+    }
+
+    #[test]
+    fn applied_tags_are_findable() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO atags(id, name) VALUES (1, '春节')", [])
+            .unwrap();
+        ATag::apply_to_files_with_conn(&mut conn, &[file_id], &[1], &[]).unwrap();
+        assert_eq!(found(&conn, "春节"), vec![file_id]);
+    }
+
+    #[test]
+    fn a_renamed_tag_is_findable_under_its_new_name() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO atags(id, name) VALUES (1, '春节')", [])
+            .unwrap();
+        ATag::add_tag_to_file_with_conn(&conn, file_id, 1).unwrap();
+        ATag::rename_with_conn(&mut conn, 1, "团聚").unwrap();
+        assert_eq!(found(&conn, "团聚"), vec![file_id]);
+        assert!(found(&conn, "春节").is_empty());
+    }
+
+    #[test]
+    fn a_deleted_tag_is_not_findable_any_more() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO atags(id, name) VALUES (1, '春节')", [])
+            .unwrap();
+        ATag::add_tag_to_file_with_conn(&conn, file_id, 1).unwrap();
+        assert_eq!(found(&conn, "春节"), vec![file_id]);
+        ATag::delete_with_conn(&mut conn, 1).unwrap();
+        assert!(found(&conn, "春节").is_empty());
+    }
+
+    #[test]
+    fn a_renamed_person_is_findable_under_the_new_name() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO persons(id, name) VALUES (1, '小明')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO faces(id, file_id, person_id) VALUES (1, ?1, 1)",
+            params![file_id],
+        )
+        .unwrap();
+        Person::rename_with_conn(&conn, 1, "小红").unwrap();
+        assert_eq!(found(&conn, "小红"), vec![file_id]);
+        assert!(found(&conn, "小明").is_empty());
+    }
+
+    #[test]
+    fn a_refreshed_metadata_row_is_findable_again() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        let file = AFile {
+            folder_id: 1,
+            name: "photo.jpg".to_string(),
+            size: 1,
+            rating: Some(0),
+            culling_flag: Some(0),
+            e_make: Some("Canon".to_string()),
+            e_title: Some("家庭聚会".to_string()),
+            geo_name: Some("杭州西湖".to_string()),
+            ..Default::default()
+        };
+        AFile::update_with_conn(&mut conn, file_id, &file, false).unwrap();
+        assert_eq!(found(&conn, "Canon"), vec![file_id]);
+        assert_eq!(found(&conn, "聚会"), vec![file_id]);
+        assert_eq!(found(&conn, "西湖"), vec![file_id]);
+    }
+
+    #[test]
+    fn an_edited_comment_is_findable() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        AFile::update_column_with_conn(&conn, file_id, "comments", &"春节团聚").unwrap();
+        assert_eq!(found(&conn, "团聚"), vec![file_id]);
+    }
+
+    #[test]
+    fn an_online_rename_is_findable_under_the_new_name() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "old.jpg");
+        AFile::update_path_with_conn(&conn, file_id, "过年回家.jpg", 0).unwrap();
+        assert_eq!(found(&conn, "过年"), vec![file_id]);
+        assert!(found(&conn, "old").is_empty());
+    }
+
+    #[test]
+    fn a_deleted_person_is_not_findable_any_more() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO persons(id, name) VALUES (1, '小明')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO faces(id, file_id, person_id) VALUES (1, ?1, 1)",
+            params![file_id],
+        )
+        .unwrap();
+        // The face was added after the file was indexed.
+        crate::t_fts::upsert_doc(&conn, file_id).unwrap();
+        assert_eq!(found(&conn, "小明"), vec![file_id]);
+
+        Person::delete_with_conn(&conn, 1).unwrap();
+
+        assert!(found(&conn, "小明").is_empty());
+    }
+
+    #[test]
+    fn a_deleted_file_is_not_findable_any_more() {
+        let mut conn = fixture();
+        let file_id = insert_file(&conn, "过年回家.jpg");
+        assert_eq!(found(&conn, "过年"), vec![file_id]);
+        AFile::delete_with_conn(&mut conn, file_id).unwrap();
+        assert!(found(&conn, "过年").is_empty());
+    }
+
+    #[test]
+    fn batch_deleted_files_are_not_findable_any_more() {
+        let mut conn = fixture();
+        let first = insert_file(&conn, "过年回家.jpg");
+        let second = insert_file(&conn, "春节团聚.jpg");
+        assert_eq!(found(&conn, "过年"), vec![first]);
+        AFile::batch_delete_with_conn(&mut conn, &[first, second]).unwrap();
+        assert!(found(&conn, "过年").is_empty());
+        assert!(found(&conn, "团聚").is_empty());
     }
 }

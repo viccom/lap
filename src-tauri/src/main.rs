@@ -25,6 +25,7 @@ mod t_dedup;
 mod t_drag;
 mod t_embedded_jpeg;
 mod t_face;
+mod t_fts;
 mod t_heif;
 mod t_http;
 mod t_image;
@@ -455,6 +456,9 @@ async fn main() {
             t_vl::get_vl_annotations,
             t_vl::get_vl_calls,
             t_vl::cancel_vl_run,
+            // exact search
+            t_fts::search_fts,
+            t_fts::fts_reindex,
             // video
             t_video::prepare_video,
             t_video::get_video_stream_url,

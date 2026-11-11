@@ -327,6 +327,9 @@ fn delete_template_row(conn: &Connection, id: i64) -> Result<bool, String> {
     if template.is_builtin {
         return Err("内置模板不可删除".to_string());
     }
+    // The annotations of the template go with it. The files have to be
+    // indexed again, so the caption leaves the search with the annotation.
+    let file_ids = files_with_template(conn, id)?;
     conn.execute(
         "DELETE FROM vl_annotations WHERE template_id = ?1",
         params![id],
@@ -335,7 +338,22 @@ fn delete_template_row(conn: &Connection, id: i64) -> Result<bool, String> {
     let deleted = conn
         .execute("DELETE FROM vl_templates WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
+    for file_id in file_ids {
+        let _ = crate::t_fts::upsert_doc(conn, file_id);
+    }
     Ok(deleted > 0)
+}
+
+/// The files that carry an annotation of a template.
+fn files_with_template(conn: &Connection, template_id: i64) -> Result<Vec<i64>, String> {
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT file_id FROM vl_annotations WHERE template_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![template_id], |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 const ANNOTATION_COLUMNS: &str =
@@ -405,16 +423,20 @@ fn upsert_annotation_row(conn: &Connection, annotation: &VlAnnotation) -> Result
         ],
     )
     .map_err(|e| e.to_string())?;
-    conn.query_row(
-        "SELECT id FROM vl_annotations WHERE file_id = ?1 AND template_id = ?2 AND template_version = ?3",
-        params![
-            annotation.file_id,
-            annotation.template_id,
-            annotation.template_version
-        ],
-        |row| row.get(0),
-    )
-    .map_err(|e| e.to_string())
+    let id = conn
+        .query_row(
+            "SELECT id FROM vl_annotations WHERE file_id = ?1 AND template_id = ?2 AND template_version = ?3",
+            params![
+                annotation.file_id,
+                annotation.template_id,
+                annotation.template_version
+            ],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    // The annotation text has to be findable right away.
+    let _ = crate::t_fts::upsert_doc(conn, annotation.file_id);
+    Ok(id)
 }
 
 fn delete_annotation_row(
@@ -428,6 +450,8 @@ fn delete_annotation_row(
         params![file_id, template_id, template_version],
     )
     .map_err(|e| e.to_string())?;
+    // The annotation text has to leave the search with the annotation.
+    let _ = crate::t_fts::upsert_doc(conn, file_id);
     Ok(())
 }
 
@@ -3091,5 +3115,121 @@ mod tests {
         assert_eq!(call.status, "ok");
         assert!(call.model.is_some(), "the served model must be recorded");
         assert!(call.request_id.is_some(), "the gateway request id must be recorded");
+    }
+
+    /// A library with the tables the annotation writes and the index need.
+    fn annotation_fixture() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+             INSERT INTO afiles VALUES(1,'a.jpg');",
+        )
+        .unwrap();
+        conn.execute_batch(VL_SCHEMA_SQL).unwrap();
+        conn.execute_batch(crate::t_fts::FTS_SCHEMA_SQL).unwrap();
+        conn
+    }
+
+    /// A template with the call that an annotation points at.
+    fn seed_template(conn: &Connection, id: i64, name: &str) {
+        conn.execute(
+            "INSERT INTO vl_templates(id,name,version,prompt_template,response_spec,created_at)
+             VALUES(?1,?2,1,'p','{}',1)",
+            params![id, name],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vl_calls(id,file_id,template_id,template_version,prompt_actual,status,created_at)
+             VALUES(?1,1,?1,1,'p','ok',1)",
+            params![id],
+        )
+        .unwrap();
+    }
+
+    /// An annotation with the given caption for a template.
+    fn seed_caption(conn: &Connection, template_id: i64, caption: &str) {
+        let text = format!("{{\"caption\":\"{}\"}}", caption);
+        upsert_annotation_row(
+            conn,
+            &VlAnnotation {
+                id: 0,
+                file_id: 1,
+                template_id,
+                template_version: 1,
+                model: "m".to_string(),
+                result_json: text.clone(),
+                raw_text: text,
+                call_id: template_id,
+                created_at: 1,
+            },
+        )
+        .unwrap();
+    }
+
+    /// The indexed caption of the one file of the fixture.
+    fn indexed_caption(conn: &Connection) -> String {
+        conn.query_row("SELECT caption FROM files_fts WHERE rowid = 1", [], |row| {
+            row.get(0)
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn an_annotation_is_findable_right_away() {
+        let conn = annotation_fixture();
+        seed_template(&conn, 1, "first");
+        seed_caption(&conn, 1, "a cat");
+
+        let hits = crate::t_fts::search(&conn, "cat", 10).unwrap();
+        assert_eq!(hits.len(), 1, "the annotation has to be findable");
+        assert_eq!(hits[0].file_id, 1);
+        assert_eq!(hits[0].matched_columns, vec!["caption".to_string()]);
+    }
+
+    #[test]
+    fn a_deleted_annotation_is_not_findable_any_more() {
+        let conn = annotation_fixture();
+        seed_template(&conn, 1, "first");
+        seed_caption(&conn, 1, "a cat");
+        assert_eq!(crate::t_fts::search(&conn, "cat", 10).unwrap().len(), 1);
+
+        delete_annotation_row(&conn, 1, 1, 1).unwrap();
+
+        assert!(
+            crate::t_fts::search(&conn, "cat", 10).unwrap().is_empty(),
+            "the deleted annotation must not be findable any more"
+        );
+        assert!(indexed_caption(&conn).is_empty());
+    }
+
+    #[test]
+    fn the_caption_column_holds_the_annotations_of_every_template() {
+        let conn = annotation_fixture();
+        seed_template(&conn, 1, "first");
+        seed_template(&conn, 2, "second");
+        seed_caption(&conn, 1, "a cat");
+        seed_caption(&conn, 2, "a dog");
+
+        let caption = indexed_caption(&conn);
+        assert!(caption.contains("cat"), "caption = {caption}");
+        assert!(caption.contains("dog"), "caption = {caption}");
+    }
+
+    #[test]
+    fn a_deleted_template_drops_its_annotations_from_the_index() {
+        let conn = annotation_fixture();
+        seed_template(&conn, 1, "first");
+        seed_template(&conn, 2, "second");
+        seed_caption(&conn, 1, "a cat");
+        seed_caption(&conn, 2, "a dog");
+
+        delete_template_row(&conn, 1).unwrap();
+
+        let caption = indexed_caption(&conn);
+        assert!(!caption.contains("cat"), "caption = {caption}");
+        assert!(caption.contains("dog"), "caption = {caption}");
+        assert!(crate::t_fts::search(&conn, "cat", 10).unwrap().is_empty());
+        assert_eq!(crate::t_fts::search(&conn, "dog", 10).unwrap().len(), 1);
     }
 }

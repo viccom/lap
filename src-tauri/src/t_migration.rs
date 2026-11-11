@@ -235,6 +235,11 @@ fn get_migrations() -> Vec<Migration> {
             description: "Image understanding templates, annotations and call evidence",
             sql: VL_SCHEMA_SQL,
         },
+        Migration {
+            version: 24,
+            description: "Full text search index over the library",
+            sql: crate::t_fts::FTS_SCHEMA_SQL,
+        },
     ]
 }
 
@@ -643,6 +648,17 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
                 seed_vl_builtin_template(conn)?;
+            } else if migration.version == 24 {
+                conn.execute_batch(migration.sql)
+                    .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
+                // The index starts empty; the files already in the library are
+                // indexed right away so a search works without a manual reindex.
+                crate::t_fts::reindex_all_with_conn(conn).map_err(|e| {
+                    format!(
+                        "Migration {} failed to index the existing files: {}",
+                        migration.version, e
+                    )
+                })?;
             } else if !migration.sql.trim().is_empty() {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
@@ -733,7 +749,7 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            23
+            24
         );
     }
 
@@ -886,7 +902,69 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            23
+            24
+        );
+    }
+}
+
+#[cfg(test)]
+mod fts_migration_tests {
+    use super::*;
+
+    fn migrated() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+             INSERT INTO afiles VALUES(1,'a.jpg'),(2,'b.jpg');
+             PRAGMA user_version=23;",
+        )
+        .unwrap();
+        check_and_migrate(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn migration_24_creates_the_full_text_index() {
+        let conn = migrated();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='files_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "the full text index must exist");
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
+                .unwrap(),
+            24
+        );
+    }
+
+    #[test]
+    fn migration_24_backfills_the_existing_files() {
+        let conn = migrated();
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 2, "the existing files must be indexed");
+    }
+
+    #[test]
+    fn migration_24_is_restartable_without_duplicating_documents() {
+        let conn = migrated();
+        // Simulate the migration completing before the version was persisted.
+        conn.execute_batch("PRAGMA user_version=23;").unwrap();
+        check_and_migrate(&conn).unwrap();
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 2);
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
+                .unwrap(),
+            24
         );
     }
 }
@@ -924,7 +1002,7 @@ mod album_filter_migration_tests {
         // Simulate migration completing before the version was persisted.
         conn.execute_batch("PRAGMA user_version=17;").unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),23);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),24);
     }
 
     #[test]
@@ -939,7 +1017,7 @@ mod album_filter_migration_tests {
         // Simulate migration completing before the version was persisted.
         conn.execute_batch("PRAGMA user_version=18;").unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(), 23);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(), 24);
     }
 
     #[test]
@@ -954,7 +1032,7 @@ mod album_filter_migration_tests {
         conn.execute_batch("UPDATE afiles SET e_title='Existing'; PRAGMA user_version=21;").unwrap();
         check_and_migrate(&conn).unwrap();
         assert_eq!(conn.query_row("SELECT e_title FROM afiles", [], |r| r.get::<_,String>(0)).unwrap(), "Existing");
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 23);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 24);
     }
 }
 
