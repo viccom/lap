@@ -472,6 +472,74 @@
           </div>
         </div>
 
+        <!-- Image Understanding Tab -->
+        <div v-else-if="config.settings.tabIndex === VL_SETTINGS_TAB" class="flex flex-col space-y-2">
+
+          <!-- gateway -->
+          <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+            <div class="flex items-center gap-2 text-base-content/30">
+              <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.vl.gateway_title') }}</span>
+              <span
+                class="ml-auto px-1.5 h-5 inline-flex items-center rounded-box text-[10px] font-semibold tracking-[0.08em] border border-base-content/10 bg-base-content/5 text-base-content/60"
+              >{{ vlConfigured ? $t('settings.vl.api_key_configured') : $t('settings.vl.api_key_not_configured') }}</span>
+            </div>
+            <div class="flex items-start justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
+                <div>{{ $t('settings.vl.gateway_url') }}</div>
+                <div class="text-xs text-base-content/30">{{ $t('settings.vl.gateway_url_hint') }}</div>
+              </div>
+              <input
+                v-model="vlGatewayUrl"
+                type="text"
+                class="input input-sm w-64 shrink-0"
+                :placeholder="vlConfig?.gatewayUrl || 'https://'"
+                spellcheck="false"
+              />
+            </div>
+            <div class="flex items-start justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
+                <div>{{ $t('settings.vl.api_key') }}</div>
+                <div class="text-xs text-base-content/30">{{ $t('settings.vl.api_key_hint') }}</div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <input
+                  v-model="vlApiKey"
+                  type="password"
+                  class="input input-sm w-56"
+                  autocomplete="off"
+                  :placeholder="$t('settings.vl.api_key_write_only')"
+                />
+                <button
+                  class="t-button-default btn-outline"
+                  :disabled="!vlConfigured"
+                  :title="$t('settings.vl.api_key_clear')"
+                  @click="clearVlApiKey"
+                >{{ $t('settings.vl.api_key_clear') }}</button>
+              </div>
+            </div>
+            <div class="flex items-start justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
+                <div>{{ $t('settings.vl.model') }}</div>
+                <div class="text-xs text-base-content/30">{{ $t('settings.vl.model_hint') }}</div>
+              </div>
+              <input
+                v-model="vlModel"
+                type="text"
+                class="input input-sm w-64 shrink-0"
+                spellcheck="false"
+              />
+            </div>
+            <div class="flex justify-end">
+              <button class="t-button-primary" :disabled="savingVlConfig" @click="saveVlConfig">
+                {{ savingVlConfig ? $t('settings.vl.saving') : $t('settings.vl.save') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- templates -->
+          <VlTemplateManager />
+        </div>
+
         <!-- Advanced Tab -->
         <div v-else-if="config.settings.tabIndex === SETTINGS_TAB.ADVANCED" class="flex flex-col space-y-2">
 
@@ -769,6 +837,8 @@ import {
   listenImageSearchModelDownloadProgress,
 } from '@/common/api';
 import { formatFileSize, isLinux, isMac, SCALE_VALUES } from '@/common/utils';
+import { VL_SETTINGS_TAB } from '@/common/vlLogic';
+import { getVlConfig, setVlConfig } from '@/common/vlApi';
 import { useAppearance } from '@/composables/useAppearance';
 import { getShortcutLabels, ShortcutActionId, ShortcutPlatform } from '@/common/shortcuts';
 import { useToast } from '@/common/toast';
@@ -782,6 +852,7 @@ import ModalDialog from '@/components/ModalDialog.vue';
 import BackupDialog from '@/components/BackupDialog.vue';
 import RestoreDialog from '@/components/RestoreDialog.vue';
 import TButton from '@/components/TButton.vue';
+import VlTemplateManager from '@/components/VlTemplateManager.vue';
 
 /// i18n
 const { locale, messages, t } = useI18n();
@@ -795,10 +866,62 @@ const settingsTabs = [
   { id: SETTINGS_TAB.RAW, label: 'settings.raw.title' },
   { id: SETTINGS_TAB.METADATA, label: 'settings.metadata.title' },
   { id: SETTINGS_TAB.IMAGE_SEARCH, label: 'settings.image_search.title' },
+  { id: VL_SETTINGS_TAB, label: 'settings.vl.title' },
   { id: SETTINGS_TAB.ADVANCED, label: 'settings.advanced.title' },
   { id: SETTINGS_TAB.SHORTCUTS, label: 'settings.shortcuts.title' },
   { id: SETTINGS_TAB.ABOUT, label: 'settings.about.title' },
 ];
+
+// image understanding (vision-language) gateway
+const vlConfig = ref<any>(null);
+const vlConfigured = ref(false);
+const vlGatewayUrl = ref('');
+const vlModel = ref('');
+/// Write only: the key is never read back and never kept in the app config.
+const vlApiKey = ref('');
+const vlApiKeyClearPending = ref(false);
+const savingVlConfig = ref(false);
+
+async function loadVlConfig() {
+  try {
+    const view = await getVlConfig();
+    vlConfig.value = view;
+    vlConfigured.value = Boolean(view?.configured);
+    vlGatewayUrl.value = String(view?.gatewayUrl ?? '');
+    vlModel.value = String(view?.model ?? '');
+  } catch (error) {
+    console.error('Failed to read the image understanding configuration:', error);
+  }
+}
+
+function clearVlApiKey() {
+  vlApiKeyClearPending.value = true;
+  vlApiKey.value = '';
+  void saveVlConfig();
+}
+
+async function saveVlConfig() {
+  if (savingVlConfig.value) return;
+  savingVlConfig.value = true;
+  try {
+    // null keeps the stored key, an empty string removes it.
+    const apiKey = vlApiKeyClearPending.value ? '' : (vlApiKey.value.trim() ? vlApiKey.value.trim() : null);
+    const view = await setVlConfig({ gatewayUrl: vlGatewayUrl.value, apiKey, model: vlModel.value });
+    vlConfig.value = view;
+    vlConfigured.value = Boolean(view?.configured);
+    vlApiKey.value = '';
+    vlApiKeyClearPending.value = false;
+    toast.success(t('settings.vl.saved'));
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    savingVlConfig.value = false;
+  }
+}
+
+watch(() => config.settings.tabIndex, (tabIndex) => {
+  if (tabIndex === VL_SETTINGS_TAB) void loadVlConfig();
+});
 const rawPreviewFields = [
   { key: 'rawPreviewSource', hint: 'preview_source_hint', options: ['embedded', 'rendered'] },
   { key: 'rawRenderBrightness', hint: 'brightness_hint', options: ['original', 'brightened'] },
@@ -1477,6 +1600,7 @@ onMounted(async () => {
     multilingualModelTotalBytes.value = Math.max(0, Number(event?.payload?.totalBytes ?? 0));
   });
   await syncImageSearchModelStatus();
+  await loadVlConfig();
   applyWindowScale(Number(config.settings.scale || 1));
   dbStorageDir.value = (await getDbStorageDir()) || '';
   hasCustomDbStorage.value = await isUsingCustomDbStorage();
