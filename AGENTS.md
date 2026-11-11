@@ -83,6 +83,11 @@ v0.3.3 的 37 个测试文件中 **29 通过、8 失败**，全部是**上游既
 
 ## 自有功能规划（详见 docs/dev/F1-图片理解技术方案.md 等）
 
-- **F1 图片理解**：云端 VL（走局域网 vl-gateway）+ 不可变提示词模板 + 带溯源标注存储。
-- **F2 搜索扩展**：FTS5 精确档（中文双字切分）+ 语义档强化，与现有搜索并行。
-- **F3 多图叙事**：多图 + 模板 → 云端讲故事，依赖 F1 基建。
+- **F1 图片理解**（✅ 已实现并通过真实网关验收）：云端 VL（走局域网 magpie 网关，**Anthropic Messages 协议**）+ 不可变提示词模板（prompt 与 system 分离）+ 带溯源标注存储。
+  - 后端：`src-tauri/src/t_vl.rs`（模型/客户端/编排/10 个 command）+ 迁移 **v23**（`vl_templates`/`vl_annotations`/`vl_calls`）+ `t_config.rs` 的 `VlConfig`。
+  - 前端：`src-vite/src/common/vlApi.js`（薄封装）+ `vlLogic.js`（纯逻辑，可测）+ `components/VlPanel.vue`（FileInfo 面板内的理解区块）+ `components/VlTemplateManager.vue`（设置页模板管理）+ Settings 新标签页。
+  - 密钥：`api_key` 存 **sidecar 文件** `<appdata>/vl-api-key`，`#[serde(skip_serializing)]` 保证 **webview 永远拿不到**；错误信息经 `redact()` 脱敏。
+  - 手动验收工具（`#[ignore]`，需真实网关）：`cargo test -- --ignored real_gateway_probe --nocapture`（直连一张本地图）、`real_library_e2e`（走真实库 → 缩略图 → 网关 → 标注入库）。
+  - 实测：**缩略图路径 5.3 秒，原图路径 95 秒**（vision token 差一个量级）——多图场景必须走缩略图。
+- **F2 搜索扩展**（未开始）：FTS5 精确档（中文双字切分）+ 语义档强化，与现有搜索并行。
+- **F3 多图叙事**（未开始）：多图 + 模板 → 云端讲故事，依赖 F1 基建；协议上 Anthropic 单请求已支持多图，**不需要新端点**。
