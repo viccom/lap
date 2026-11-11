@@ -89,5 +89,9 @@ v0.3.3 的 37 个测试文件中 **29 通过、8 失败**，全部是**上游既
   - 密钥：`api_key` 存 **sidecar 文件** `<appdata>/vl-api-key`，`#[serde(skip_serializing)]` 保证 **webview 永远拿不到**；错误信息经 `redact()` 脱敏。
   - 手动验收工具（`#[ignore]`，需真实网关）：`cargo test -- --ignored real_gateway_probe --nocapture`（直连一张本地图）、`real_library_e2e`（走真实库 → 缩略图 → 网关 → 标注入库）。
   - 实测：**缩略图路径 5.3 秒，原图路径 95 秒**（vision token 差一个量级）——多图场景必须走缩略图。
-- **F2 搜索扩展**（未开始）：FTS5 精确档（中文双字切分）+ 语义档强化，与现有搜索并行。
+- **F2 搜索扩展**（✅ 已实现并验收）：FTS5 精确档（**中文双字切分**，自研 `tokenize`，无新依赖）+ 三档搜索（全部/精确/语义，默认 all=现状）。
+  - 后端：`src-tauri/src/t_fts.rs` + 迁移 **v24**（`files_fts`，rowid=file_id，自动回填）+ **20 处写入钩子**（「写入即检索」；完整核对表在 `docs/dev/F2-搜索扩展技术方案.md` §7.2——**rebase 上游时按它逐一复核**）。
+  - 前端：`common/searchMode.js`（三档纯逻辑）+ `common/queryDispatch.js`（**导航→查询决策从 Content.vue 抽出**，Content.vue 只剩执行/展示）+ ImageSearch 档位 UI + `configStore.settings.searchMode`。
+  - 实测：真实库 404 文档全回填，搜「葡萄」命中 F1 标注的照片（F1×F2 闭环）。
+  - 已知边界：CJK 扩展 B 生僻字不覆盖；单字 CJK 查询走 LIKE 兜底（慢）；FTS5 列一次定死，加列只能 DROP+RENAME。
 - **F3 多图叙事**（未开始）：多图 + 模板 → 云端讲故事，依赖 F1 基建；协议上 Anthropic 单请求已支持多图，**不需要新端点**。
