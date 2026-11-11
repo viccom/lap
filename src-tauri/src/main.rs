@@ -48,6 +48,7 @@ mod t_cache_storage;
 mod t_startup;
 mod t_utils;
 mod t_video;
+mod t_vl;
 
 /// The main function is the entry point for the Tauri application.
 #[tokio::main]
@@ -113,6 +114,7 @@ async fn main() {
         )))
         .manage(t_dedup::DedupState::default())
         .manage(t_similar::SimilarState::default())
+        .manage(t_vl::VlState::default())
         .setup(|_app| {
             t_startup::mark(&_app.handle(), "setup-started");
             t_video::init_ffmpeg_path(&_app.handle());
@@ -442,6 +444,17 @@ async fn main() {
             t_cmds::similar_get_group,
             t_cmds::similar_set_keep,
             t_cmds::similar_has_scan,
+            // image understanding (vision language)
+            t_vl::get_vl_config,
+            t_vl::set_vl_config,
+            t_vl::list_vl_templates,
+            t_vl::create_vl_template,
+            t_vl::update_vl_template,
+            t_vl::delete_vl_template,
+            t_vl::run_vl_analysis,
+            t_vl::get_vl_annotations,
+            t_vl::get_vl_calls,
+            t_vl::cancel_vl_run,
             // video
             t_video::prepare_video,
             t_video::get_video_stream_url,

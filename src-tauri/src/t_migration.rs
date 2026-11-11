@@ -1,5 +1,57 @@
 use rusqlite::Connection;
 
+/// Schema of the image-understanding tables (migration 23).
+/// Shared with the storage layer so tests build the same tables.
+pub(crate) const VL_SCHEMA_SQL: &str = "
+    CREATE TABLE IF NOT EXISTS vl_templates (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        prompt_template TEXT NOT NULL,
+        system_template TEXT NOT NULL DEFAULT '',
+        response_spec TEXT NOT NULL,
+        is_builtin INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        UNIQUE(name, version)
+    );
+    CREATE TABLE IF NOT EXISTS vl_calls (
+        id INTEGER PRIMARY KEY,
+        file_id INTEGER NOT NULL,
+        template_id INTEGER NOT NULL,
+        template_version INTEGER NOT NULL,
+        prompt_actual TEXT NOT NULL,
+        system_actual TEXT,
+        raw_response TEXT,
+        thinking_text TEXT,
+        model TEXT,
+        request_id TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        cache_read_tokens INTEGER,
+        thinking_tokens INTEGER,
+        stop_reason TEXT,
+        status TEXT NOT NULL,
+        error TEXT,
+        duration_ms INTEGER,
+        created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS vl_annotations (
+        id INTEGER PRIMARY KEY,
+        file_id INTEGER NOT NULL REFERENCES afiles(id) ON DELETE CASCADE,
+        template_id INTEGER NOT NULL,
+        template_version INTEGER NOT NULL,
+        model TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        raw_text TEXT NOT NULL,
+        call_id INTEGER NOT NULL REFERENCES vl_calls(id),
+        created_at INTEGER NOT NULL,
+        UNIQUE(file_id, template_id, template_version)
+    );
+    CREATE INDEX IF NOT EXISTS idx_vl_ann_file ON vl_annotations(file_id);
+    CREATE INDEX IF NOT EXISTS idx_vl_calls_file ON vl_calls(file_id);
+";
+
 struct Migration {
     version: i32,
     description: &'static str,
@@ -178,7 +230,52 @@ fn get_migrations() -> Vec<Migration> {
             description: "Stored metadata title and headline",
             sql: "",
         },
+        Migration {
+            version: 23,
+            description: "Image understanding templates, annotations and call evidence",
+            sql: VL_SCHEMA_SQL,
+        },
     ]
+}
+
+/// The built-in template every fresh install starts with. It is read-only.
+pub(crate) const VL_BUILTIN_TEMPLATE: &str = "内置描述";
+pub(crate) const VL_BUILTIN_PROMPT: &str = "请描述这张照片。\\n\
+     文件名：{file_name}\\n\
+     拍摄信息：{exif_summary}\\n\
+     拍摄时间：{taken_at}\\n\
+     相机：{camera}";
+/// The output format constraint belongs in the system message; the gateway
+/// keeps the format stable there.
+pub(crate) const VL_BUILTIN_SYSTEM: &str = "只输出 JSON，字段形如 {caption, tags}。\\n\
+     caption 是中文描述，tags 是中文标签数组。";
+pub(crate) const VL_BUILTIN_SPEC: &str = r#"{"caption":"中文描述","tags":"中文标签数组"}"#;
+
+/// Seed the built-in template. Existing rows are never touched.
+fn seed_vl_builtin_template(conn: &Connection) -> Result<(), String> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM vl_templates WHERE name = ?1 AND version = 1)",
+            [VL_BUILTIN_TEMPLATE],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if exists {
+        return Ok(());
+    }
+    conn.execute(
+        "INSERT INTO vl_templates(name, version, prompt_template, system_template, response_spec, is_builtin, enabled, created_at)
+         VALUES(?1, 1, ?2, ?3, ?4, 1, 1, ?5)",
+        rusqlite::params![
+            VL_BUILTIN_TEMPLATE,
+            VL_BUILTIN_PROMPT,
+            VL_BUILTIN_SYSTEM,
+            VL_BUILTIN_SPEC,
+            chrono::Utc::now().timestamp()
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn migrate_unique_album_files(conn: &Connection) -> Result<(), String> {
@@ -542,6 +639,10 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                 tx.commit().map_err(|e| e.to_string())?;
             } else if migration.version == 21 {
                 migrate_tag_tree(conn)?;
+            } else if migration.version == 23 {
+                conn.execute_batch(migration.sql)
+                    .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
+                seed_vl_builtin_template(conn)?;
             } else if !migration.sql.trim().is_empty() {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
@@ -600,6 +701,197 @@ pub(crate) fn migrate_tag_groups(conn: &Connection) -> Result<(), String> {
 }
 
 #[cfg(test)]
+mod vl_migration_tests {
+    use super::*;
+
+    fn migrated() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+             INSERT INTO afiles VALUES(1,'a.jpg'),(2,'b.jpg');
+             PRAGMA user_version=22;",
+        )
+        .unwrap();
+        check_and_migrate(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn vision_language_tables_are_created_by_migration_23() {
+        let conn = migrated();
+        for table in ["vl_templates", "vl_annotations", "vl_calls"] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "missing table {table}");
+        }
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
+                .unwrap(),
+            23
+        );
+    }
+
+    #[test]
+    fn annotation_is_unique_per_file_template_and_version() {
+        let conn = migrated();
+        conn.execute(
+            "INSERT INTO vl_templates(id,name,version,prompt_template,response_spec,created_at)
+             VALUES(101,'default',1,'p','{}',1),(102,'default',2,'p','{}',1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vl_calls(id,file_id,template_id,template_version,prompt_actual,status,created_at)
+             VALUES(1,1,1,1,'p','ok',1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vl_annotations(file_id,template_id,template_version,model,result_json,raw_text,call_id,created_at)
+             VALUES(1,101,1,'m','{}','raw',1,1)",
+            [],
+        )
+        .unwrap();
+        assert!(
+            conn.execute(
+                "INSERT INTO vl_annotations(file_id,template_id,template_version,model,result_json,raw_text,call_id,created_at)
+                 VALUES(1,101,1,'m','{}','raw',1,1)",
+                [],
+            )
+            .is_err(),
+            "duplicate (file_id, template_id, template_version) must be rejected"
+        );
+        // A different template version is a different annotation.
+        conn.execute(
+            "INSERT INTO vl_annotations(file_id,template_id,template_version,model,result_json,raw_text,call_id,created_at)
+             VALUES(1,102,2,'m','{}','raw',1,1)",
+            [],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn annotation_requires_an_existing_call_evidence_row() {
+        let conn = migrated();
+        let err = conn.execute(
+            "INSERT INTO vl_annotations(file_id,template_id,template_version,model,result_json,raw_text,call_id,created_at)
+             VALUES(1,1,1,'m','{}','raw',999,1)",
+            [],
+        );
+        assert!(err.is_err(), "annotation must reference a real call row");
+    }
+
+    #[test]
+    fn migration_23_seeds_the_builtin_template_once() {
+        let conn = migrated();
+        let builtin: (String, i64, i64) = conn
+            .query_row(
+                "SELECT name, version, is_builtin FROM vl_templates WHERE name = ?1",
+                [super::VL_BUILTIN_TEMPLATE],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(builtin, (super::VL_BUILTIN_TEMPLATE.to_string(), 1, 1));
+        assert!(super::VL_BUILTIN_PROMPT.contains("{file_name}"));
+        assert!(super::VL_BUILTIN_PROMPT.contains("{exif_summary}"));
+        assert!(super::VL_BUILTIN_PROMPT.contains("{taken_at}"));
+        assert!(super::VL_BUILTIN_PROMPT.contains("{camera}"));
+
+        // Re-running the migration does not duplicate the template.
+        conn.execute_batch("PRAGMA user_version=22;").unwrap();
+        check_and_migrate(&conn).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM vl_templates WHERE name = ?1",
+                [super::VL_BUILTIN_TEMPLATE],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn vl_templates_have_a_system_template_column() {
+        let conn = migrated();
+        // The column exists and defaults to an empty string.
+        let default: String = conn
+            .query_row(
+                "SELECT system_template FROM vl_templates WHERE name = ?1",
+                [super::VL_BUILTIN_TEMPLATE],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(default, super::VL_BUILTIN_SYSTEM);
+
+        // A row without the column still gets an empty one.
+        conn.execute(
+            "INSERT INTO vl_templates(name, version, prompt_template, response_spec, created_at)
+             VALUES('no system', 1, 'p', '{}', 1)",
+            [],
+        )
+        .unwrap();
+        let empty: String = conn
+            .query_row(
+                "SELECT system_template FROM vl_templates WHERE name = 'no system'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(empty, "");
+    }
+
+    #[test]
+    fn the_builtin_template_keeps_the_format_constraint_in_the_system_column() {
+        let conn = migrated();
+        let (prompt, system): (String, String) = conn
+            .query_row(
+                "SELECT prompt_template, system_template FROM vl_templates WHERE name = ?1",
+                [super::VL_BUILTIN_TEMPLATE],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        // The system column carries the output format constraint.
+        assert!(system.contains("JSON"));
+        assert!(system.contains("caption"));
+        assert!(system.contains("tags"));
+        // The prompt column only asks for the description.
+        assert!(prompt.contains("描述"));
+        assert!(!prompt.contains("只输出 JSON"));
+    }
+
+    #[test]
+    fn migration_23_is_restartable_without_touching_existing_rows() {
+        let conn = migrated();
+        conn.execute(
+            "INSERT INTO vl_templates(id,name,version,prompt_template,response_spec,created_at)
+             VALUES(7,'keep',1,'p','{}',1)",
+            [],
+        )
+        .unwrap();
+        // Simulate the migration completing before the version was persisted.
+        conn.execute_batch("PRAGMA user_version=22;").unwrap();
+        check_and_migrate(&conn).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM vl_templates WHERE id=7", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
+                .unwrap(),
+            23
+        );
+    }
+}
+
+#[cfg(test)]
 mod album_filter_migration_tests {
     use super::*;
 
@@ -632,7 +924,7 @@ mod album_filter_migration_tests {
         // Simulate migration completing before the version was persisted.
         conn.execute_batch("PRAGMA user_version=17;").unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),22);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),23);
     }
 
     #[test]
@@ -647,7 +939,7 @@ mod album_filter_migration_tests {
         // Simulate migration completing before the version was persisted.
         conn.execute_batch("PRAGMA user_version=18;").unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(), 22);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(), 23);
     }
 
     #[test]
@@ -662,7 +954,7 @@ mod album_filter_migration_tests {
         conn.execute_batch("UPDATE afiles SET e_title='Existing'; PRAGMA user_version=21;").unwrap();
         check_and_migrate(&conn).unwrap();
         assert_eq!(conn.query_row("SELECT e_title FROM afiles", [], |r| r.get::<_,String>(0)).unwrap(), "Existing");
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 22);
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 23);
     }
 }
 

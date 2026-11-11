@@ -148,3 +148,14 @@ pub const MIN_BLUR_SCORE: f32 = 200.0; // Standard Laplacian variance threshold.
 // Clustering Constants
 pub const K_NEIGHBORS: usize = 80; // Prune edges to Top-K (K-NN)
 pub const MIN_SAMPLES: usize = 1; // Minimum samples per cluster
+
+// Image understanding (vision-language) gateway
+pub const VL_GATEWAY_URL_ENV: &str = "LAP_VL_GATEWAY_URL";
+pub const VL_API_KEY_ENV: &str = "LAP_VL_API_KEY";
+pub const VL_DEFAULT_MODEL: &str = "auto/deepseek-v4.1-flash";
+/// The gateway is Anthropic Messages compatible.
+pub const VL_ANTHROPIC_VERSION: &str = "2023-06-01";
+/// Reasoning models spend part of this budget on thinking.
+pub const VL_MAX_TOKENS: usize = 1500;
+/// The gateway may take a long time before the first byte.
+pub const VL_REQUEST_TIMEOUT_SECS: u64 = 180;

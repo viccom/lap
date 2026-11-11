@@ -399,6 +399,20 @@ pub struct Library {
     pub hidden: bool,
 }
 
+/// Vision-language gateway settings.
+/// The API key is stored locally and never returned to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VlConfig {
+    #[serde(default)]
+    pub gateway_url: String,
+    /// Never serialized: the key is written to the local config file by hand
+    /// and is never part of a response to the webview.
+    #[serde(default, skip_serializing)]
+    pub api_key: String,
+    #[serde(default)]
+    pub model: String,
+}
+
 /// App configuration stored in app-config.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
@@ -412,6 +426,8 @@ pub struct AppConfig {
     pub thumbnail_cache_dir: Option<String>,
     pub current_library_id: String,
     pub libraries: Vec<Library>,
+    #[serde(default)]
+    pub vl: VlConfig,
 }
 
 fn default_last_selected_item_index() -> i64 {
@@ -434,6 +450,7 @@ impl Default for AppConfig {
                 state: LibraryState::default(),
                 hidden: false,
             }],
+            vl: VlConfig::default(),
         }
     }
 }
@@ -508,10 +525,15 @@ fn load_app_config_locked() -> Result<AppConfig, String> {
                 .map_err(|e| format!("Failed to read config file: {}", e))?;
 
             match serde_json::from_str::<AppConfig>(&content) {
-                Ok(config) => return Ok(config),
+                Ok(mut config) => {
+                    // The API key is kept in its own file, never in app-config.json.
+                    config.vl.api_key = load_vl_api_key();
+                    return Ok(config);
+                }
                 Err(parse_err) => {
                     // Handle rare corruption patterns (e.g. concatenated JSON objects)
-                    if let Some(config) = parse_first_json_object::<AppConfig>(&content) {
+                    if let Some(mut config) = parse_first_json_object::<AppConfig>(&content) {
+                        config.vl.api_key = load_vl_api_key();
                         let _ = save_app_config_locked(&config);
                         return Ok(config);
                     }
@@ -549,7 +571,8 @@ fn load_app_config_locked() -> Result<AppConfig, String> {
         }
     } else {
         // Create default config
-        let config = AppConfig::default();
+        let mut config = AppConfig::default();
+        config.vl.api_key = load_vl_api_key();
         save_app_config_locked(&config)?;
         Ok(config)
     }
@@ -595,8 +618,35 @@ fn save_app_config_locked(config: &AppConfig) -> Result<(), String> {
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
     write_atomic(&config_path, &content)
         .map_err(|e| format!("Failed to write config file: {}", e))?;
+    save_vl_api_key(&config.vl.api_key)?;
     *CURRENT_LIBRARY_ID.write().map_err(|e| e.to_string())? = Some(config.current_library_id.clone());
     Ok(())
+}
+
+/// The gateway API key lives in its own local file. It is never part of
+/// app-config.json, so it can never reach the webview through a command.
+fn vl_api_key_path() -> Result<PathBuf, String> {
+    let app_dir = get_app_data_dir()?;
+    Ok(app_dir.join("vl-api-key"))
+}
+
+fn save_vl_api_key(key: &str) -> Result<(), String> {
+    let path = vl_api_key_path()?;
+    if key.is_empty() {
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    write_atomic(&path, key).map_err(|e| format!("Failed to write the VL API key: {}", e))
+}
+
+fn load_vl_api_key() -> String {
+    vl_api_key_path()
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .map(|key| key.trim().to_string())
+        .unwrap_or_default()
 }
 
 fn parse_first_json_object<T: for<'de> Deserialize<'de>>(content: &str) -> Option<T> {
@@ -751,6 +801,7 @@ fn recover_app_config_from_library_dbs() -> Result<AppConfig, String> {
         thumbnail_cache_dir: None,
         current_library_id,
         libraries,
+        vl: VlConfig::default(),
     })
 }
 
@@ -1022,6 +1073,37 @@ pub fn reorder_libraries(ids: Vec<String>) -> Result<(), String> {
 #[cfg(test)]
 mod config_update_tests {
     use super::*;
+
+    #[test]
+    fn the_vl_api_key_never_reaches_a_serialized_config() {
+        let mut config = AppConfig::default();
+        config.vl.api_key = "test-key-not-a-real-secret".to_string();
+        config.vl.gateway_url = "http://127.0.0.1:1".to_string();
+        config.vl.model = "auto/test".to_string();
+
+        let serialized = serde_json::to_string(&config).unwrap();
+        assert!(
+            !serialized.contains("test-key-not-a-real-secret"),
+            "the API key must not be serialized into a response"
+        );
+        let value = serde_json::to_value(&config).unwrap();
+        assert!(value["vl"].get("api_key").is_none());
+        // The other settings are still visible.
+        assert_eq!(value["vl"]["gateway_url"], "http://127.0.0.1:1");
+        assert_eq!(value["vl"]["model"], "auto/test");
+    }
+
+    #[test]
+    fn a_config_without_a_vl_section_still_loads() {
+        let legacy = serde_json::json!({
+            "current_library_id": "default",
+            "libraries": []
+        });
+        let config: AppConfig = serde_json::from_value(legacy).unwrap();
+        assert_eq!(config.vl.gateway_url, "");
+        assert_eq!(config.vl.api_key, "");
+        assert_eq!(config.vl.model, "");
+    }
 
     #[test]
     fn tag_state_preserves_tree_folding_and_accepts_legacy_groups() {
