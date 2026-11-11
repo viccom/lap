@@ -58,6 +58,20 @@ export function buildVlConfigArgs({ gatewayUrl = '', apiKey = null, model = '' }
   };
 }
 
+/**
+ * The `apiKey` argument of `set_vl_config` from the settings form state.
+ *
+ * A pending clear always sends '' (remove the stored key); otherwise a typed
+ * key is sent and an empty field sends null (keep the stored key). The flag is
+ * consumed by one save attempt, success or failure, so a failed save never
+ * silently clears the key on the next one.
+ */
+export function resolveApiKeyInput(clearPending, typedKey) {
+  if (clearPending) return '';
+  const trimmed = String(typedKey ?? '').trim();
+  return trimmed ? trimmed : null;
+}
+
 /// The arguments of `run_vl_analysis`.
 export function buildRunArgs(fileIds, templateId, force = false) {
   const ids = (Array.isArray(fileIds) ? fileIds : [fileIds])
@@ -71,23 +85,14 @@ export function buildRunArgs(fileIds, templateId, force = false) {
 }
 
 /// The arguments of `create_vl_template` / `update_vl_template`.
-export function buildTemplateArgs({ name = '', promptTemplate = '', responseSpec = '', systemTemplate = '', supportsSystemTemplate = false } = {}) {
-  const args = {
+/// The backend requires `systemTemplate`; an empty string means no system message.
+export function buildTemplateArgs({ name = '', promptTemplate = '', responseSpec = '', systemTemplate = '' } = {}) {
+  return {
     name: String(name ?? '').trim(),
     promptTemplate: String(promptTemplate ?? ''),
+    systemTemplate: String(systemTemplate ?? ''),
     responseSpec: String(responseSpec ?? ''),
   };
-  // The system template is only sent when the backend actually stores one.
-  if (supportsSystemTemplate) args.systemTemplate = String(systemTemplate ?? '');
-  return args;
-}
-
-/**
- * Whether the backend knows about a system template.
- * The current backend does not, so the field stays hidden until it does.
- */
-export function detectSystemTemplateSupport(templates) {
-  return Array.isArray(templates) && templates.some(template => template && Object.prototype.hasOwnProperty.call(template, 'systemTemplate'));
 }
 
 /// The label of a template in a dropdown: `name (v2)`.

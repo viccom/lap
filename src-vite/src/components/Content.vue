@@ -809,7 +809,7 @@ import {
 } from '@/common/thumbnailProfiles';
 import { getShortcutLabel, matchesShortcut, ShortcutActionId, ShortcutPlatform, VIEW_BACKGROUND_SHORTCUTS } from '@/common/shortcuts';
 import { getSmartTagById } from '@/common/smartTags';
-import { SEARCH_RESULT_LIMIT, normalizeSearchMode, planSearch } from '@/common/searchMode';
+import { SEARCH_RESULT_LIMIT, describeMatches, normalizeSearchMode, planSearch } from '@/common/searchMode';
 import { QUERY_KIND, TITLE_KIND, planNavigationQuery } from '@/common/queryDispatch';
 import { handleVideoPlaybackShortcut, handleVideoEscapeShortcut } from '@/common/video';
 import { clearFolderFileCounts, setFolderFileCount, getCountedFolderPaths } from '@/composables/useAlbumSelection';

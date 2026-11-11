@@ -86,7 +86,7 @@
         <span class="block text-[10px] text-base-content/40">{{ $t('vl.placeholders_hint') }}</span>
       </label>
 
-      <label v-if="supportsSystemTemplate" class="block space-y-1">
+      <label class="block space-y-1">
         <span class="text-xs text-base-content/70">{{ $t('vl.system_template') }}</span>
         <textarea
           v-model="form.systemTemplate"
@@ -95,7 +95,6 @@
           :placeholder="$t('vl.system_template')"
         ></textarea>
       </label>
-      <div v-else class="text-[10px] text-base-content/40">{{ $t('vl.system_template_unsupported') }}</div>
 
       <label class="block space-y-1">
         <span class="text-xs text-base-content/70">{{ $t('vl.response_spec') }}</span>
@@ -142,7 +141,6 @@ import TButton from '@/components/TButton.vue';
 import MessageBox from '@/components/MessageBox.vue';
 import { createVlTemplate, deleteVlTemplate, listVlTemplates, updateVlTemplate } from '@/common/vlApi';
 import {
-  detectSystemTemplateSupport,
   groupTemplatesByName,
   parseResponseSpec,
   templateEditKeys,
@@ -166,7 +164,6 @@ const saving = ref(false);
 const deleteTarget = ref<any | null>(null);
 
 const groups = computed(() => groupTemplatesByName(templates.value));
-const supportsSystemTemplate = computed(() => detectSystemTemplateSupport(templates.value));
 const specError = computed(() => {
   if (!form.value) return false;
   return !parseResponseSpec(form.value.responseSpec).ok;
@@ -236,7 +233,6 @@ async function save() {
       promptTemplate: current.promptTemplate,
       responseSpec: current.responseSpec,
       systemTemplate: current.systemTemplate,
-      supportsSystemTemplate: supportsSystemTemplate.value,
     };
     if (current.id === null) {
       await createVlTemplate(payload);

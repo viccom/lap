@@ -70,6 +70,10 @@
         </button>
       </div>
 
+      <div v-if="stillRunningHint" class="rounded-box px-2 py-2 text-xs bg-base-100/20 border border-base-content/5">
+        {{ $t('vl.still_running_hint') }}
+      </div>
+
       <div v-if="errorMessage" class="rounded-box px-2 py-2 text-xs text-error bg-error/10 border border-error/20 whitespace-pre-wrap break-words">
         {{ errorMessage }}
       </div>
@@ -206,6 +210,8 @@ const running = ref(false);
 const runId = ref<number | null>(null);
 const errorMessage = ref('');
 const showRaw = ref(false);
+/// Shown when polling gave up but the backend run may still be going.
+const stillRunningHint = ref(false);
 
 /// The id of the newest call before the current run started.
 let baselineCallId = 0;
@@ -213,6 +219,10 @@ let baselineCallId = 0;
 let lastFinishedRunId: number | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let stopProgressListener: (() => void) | null = null;
+/// Polling stops after this long: the backend gives up on a gateway call
+/// after ~180 s (VL_REQUEST_TIMEOUT_SECS), the rest is margin.
+const POLL_LIMIT_MS = 200_000;
+let pollStartedAt = 0;
 
 const hasAnnotation = computed(() => annotations.value.some(annotation => (
   annotation.templateId === selectedTemplateId.value
@@ -272,6 +282,7 @@ async function loadResults() {
 
 async function reloadAll() {
   errorMessage.value = '';
+  stillRunningHint.value = false;
   await loadConfig();
   await loadTemplates();
   await loadResults();
@@ -282,6 +293,7 @@ async function startRun(force: boolean) {
   const templateId = Number(selectedTemplateId.value);
   if (!fileId || !templateId || running.value) return;
   errorMessage.value = '';
+  stillRunningHint.value = false;
   try {
     const id = await runVlAnalysis([fileId], templateId, force);
     runId.value = Number(id);
@@ -309,6 +321,7 @@ function startPolling() {
   stopPolling();
   // A single photo often needs a minute or more; the backend also emits a
   // finished event, the poll is the safety net for a missed event.
+  pollStartedAt = Date.now();
   pollTimer = setInterval(() => { void checkRunFinished(); }, 3000);
 }
 
@@ -321,6 +334,13 @@ function stopPolling() {
 
 async function checkRunFinished() {
   if (!running.value) return;
+  if (Date.now() - pollStartedAt >= POLL_LIMIT_MS) {
+    // Give up waiting, not on the run: it may still be going in the backend
+    // and finishes via its event. This is a hint, not an error.
+    resetWaitState();
+    stillRunningHint.value = true;
+    return;
+  }
   const fileId = Number(props.fileId);
   try {
     const callList = await getVlCalls(fileId);
@@ -332,6 +352,14 @@ async function checkRunFinished() {
   } catch {
     // The run keeps going; the next tick tries again.
   }
+}
+
+/// Stop waiting for the current run without cancelling it in the backend.
+function resetWaitState() {
+  running.value = false;
+  runId.value = null;
+  baselineCallId = 0;
+  stopPolling();
 }
 
 function finishRun() {
@@ -383,6 +411,10 @@ onBeforeUnmount(() => {
 watch(() => props.fileId, () => {
   errorMessage.value = '';
   showRaw.value = false;
+  stillRunningHint.value = false;
+  // A run of the previous photo keeps going in the backend and finishes via
+  // its event; only this panel's wait state is reset, the run is not cancelled.
+  if (running.value) resetWaitState();
   void loadResults();
 });
 </script>

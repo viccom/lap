@@ -1897,6 +1897,7 @@
     "running": "Understanding the photo…",
     "running_hint": "A single photo often takes one to two minutes. You can keep using the app while it runs.",
     "cancel_run": "Cancel the run",
+    "still_running_hint": "The run is still going in the background. Refresh later to see the result.",
     "no_annotation": "No understanding result yet.",
     "raw_response": "Raw response",
     "status": "Status",

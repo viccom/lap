@@ -105,6 +105,29 @@ test('isSingleCharQuery detects a single CJK character', () => {
   assert.equal(isSingleCharQuery(undefined), false);
 });
 
+/// --- wiring: Content.vue must import every searchMode export it references ---
+
+test('Content.vue imports every searchMode export it references', async () => {
+  const source = await readFile(path.join(projectRoot, 'src/components/Content.vue'), 'utf8');
+
+  // The names the module actually exports decide the check.
+  const searchModeExports = Object.keys(await import('../src/common/searchMode.js'));
+
+  // The names Content.vue pulls from '@/common/searchMode'.
+  const importMatch = source.match(/import\s*\{([^}]*)\}\s*from\s*['"]@\/common\/searchMode['"]/);
+  assert.ok(importMatch, 'Content.vue does not import from @/common/searchMode');
+  const imported = new Set(importMatch[1].split(',').map((name) => name.trim()).filter(Boolean));
+
+  for (const name of searchModeExports) {
+    const referenced = new RegExp(`\\b${name}\\b`).test(source);
+    if (!referenced) continue;
+    assert.ok(
+      imported.has(name),
+      `${name} is referenced in Content.vue but missing from the @/common/searchMode import`,
+    );
+  }
+});
+
 /// --- navigation dispatch (the behavior of the former switch in Content.vue) ---
 
 /// A state where nothing is selected; the tests override single fields.

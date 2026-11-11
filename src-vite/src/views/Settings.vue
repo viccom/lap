@@ -837,7 +837,7 @@ import {
   listenImageSearchModelDownloadProgress,
 } from '@/common/api';
 import { formatFileSize, isLinux, isMac, SCALE_VALUES } from '@/common/utils';
-import { VL_SETTINGS_TAB } from '@/common/vlLogic';
+import { VL_SETTINGS_TAB, resolveApiKeyInput } from '@/common/vlLogic';
 import { getVlConfig, setVlConfig } from '@/common/vlApi';
 import { useAppearance } from '@/composables/useAppearance';
 import { getShortcutLabels, ShortcutActionId, ShortcutPlatform } from '@/common/shortcuts';
@@ -905,16 +905,18 @@ async function saveVlConfig() {
   savingVlConfig.value = true;
   try {
     // null keeps the stored key, an empty string removes it.
-    const apiKey = vlApiKeyClearPending.value ? '' : (vlApiKey.value.trim() ? vlApiKey.value.trim() : null);
+    const apiKey = resolveApiKeyInput(vlApiKeyClearPending.value, vlApiKey.value);
     const view = await setVlConfig({ gatewayUrl: vlGatewayUrl.value, apiKey, model: vlModel.value });
     vlConfig.value = view;
     vlConfigured.value = Boolean(view?.configured);
     vlApiKey.value = '';
-    vlApiKeyClearPending.value = false;
     toast.success(t('settings.vl.saved'));
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
   } finally {
+    // The clear flag is consumed by one save attempt, success or failure:
+    // a failed save must not silently clear the key on the next save.
+    vlApiKeyClearPending.value = false;
     savingVlConfig.value = false;
   }
 }

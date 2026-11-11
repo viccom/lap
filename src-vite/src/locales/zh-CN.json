@@ -1898,6 +1898,7 @@
     "running": "正在理解…",
     "running_hint": "单张图片通常需要一两分钟，可以继续使用其他功能。",
     "cancel_run": "取消本次运行",
+    "still_running_hint": "任务仍在后台执行，可稍后手动刷新查看结果。",
     "no_annotation": "还没有理解结果。",
     "raw_response": "原始返回",
     "status": "状态",

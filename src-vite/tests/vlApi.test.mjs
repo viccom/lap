@@ -20,7 +20,6 @@ import {
   buildTemplateArgs,
   buildVlConfigArgs,
   describeVlError,
-  detectSystemTemplateSupport,
   formatUsage,
   groupTemplatesByName,
   parseResponseSpec,
@@ -97,6 +96,18 @@ test('the api key argument distinguishes keep, clear and set', () => {
   });
 });
 
+test('the settings form resolves the api key argument from the clear flag and the typed key', async () => {
+  const vlLogic = await import('../src/common/vlLogic.js');
+  assert.equal(typeof vlLogic.resolveApiKeyInput, 'function');
+  // A pending clear always removes the stored key, even when a key is typed again.
+  assert.equal(vlLogic.resolveApiKeyInput(true, 'sk-typed'), '');
+  assert.equal(vlLogic.resolveApiKeyInput(true, ''), '');
+  // Without the clear flag a typed key is sent, an empty field keeps the stored one.
+  assert.equal(vlLogic.resolveApiKeyInput(false, ' sk-1 '), 'sk-1');
+  assert.equal(vlLogic.resolveApiKeyInput(false, ''), null);
+  assert.equal(vlLogic.resolveApiKeyInput(false, '   '), null);
+});
+
 test('the gateway configuration never carries the api key back to the frontend', async () => {
   const { invoker } = recorder({ gatewayUrl: 'https://gw', model: 'auto/x', configured: true });
   const view = await getVlConfig(invoker);
@@ -104,16 +115,15 @@ test('the gateway configuration never carries the api key back to the frontend',
   assert.equal(Object.prototype.hasOwnProperty.call(view, 'apiKey'), false);
 });
 
-test('the template arguments only carry a system template when the backend supports one', async () => {
+test('the template arguments always carry the system template', async () => {
   const plain = buildTemplateArgs({ name: ' caption ', promptTemplate: 'p', responseSpec: '{}' });
-  assert.deepEqual(plain, { name: 'caption', promptTemplate: 'p', responseSpec: '{}' });
+  assert.deepEqual(plain, { name: 'caption', promptTemplate: 'p', systemTemplate: '', responseSpec: '{}' });
 
   const withSystem = buildTemplateArgs({
     name: 'caption',
     promptTemplate: 'p',
     responseSpec: '{}',
     systemTemplate: 'be nice',
-    supportsSystemTemplate: true,
   });
   assert.equal(withSystem.systemTemplate, 'be nice');
 });
@@ -121,21 +131,16 @@ test('the template arguments only carry a system template when the backend suppo
 test('the template commands use the backend argument names', async () => {
   const { calls, invoker } = recorder({ id: 3, name: 'caption', version: 1 });
   await createVlTemplate({ name: 'caption', promptTemplate: 'p', responseSpec: '{}' }, invoker);
-  await updateVlTemplate(3, { name: 'caption', promptTemplate: 'p2', responseSpec: '{}' }, invoker);
+  await updateVlTemplate(3, { name: 'caption', promptTemplate: 'p2', responseSpec: '{}', systemTemplate: 's' }, invoker);
   await deleteVlTemplate(3, invoker);
   assert.equal(calls[0].command, 'create_vl_template');
-  assert.deepEqual(calls[0].args, { name: 'caption', promptTemplate: 'p', responseSpec: '{}' });
+  assert.deepEqual(calls[0].args, { name: 'caption', promptTemplate: 'p', systemTemplate: '', responseSpec: '{}' });
   assert.equal(calls[1].command, 'update_vl_template');
   assert.equal(calls[1].args.id, 3);
   assert.equal(calls[1].args.promptTemplate, 'p2');
+  assert.equal(calls[1].args.systemTemplate, 's');
   assert.equal(calls[2].command, 'delete_vl_template');
   assert.deepEqual(calls[2].args, { id: 3 });
-});
-
-test('the system template is only used when the backend reports it', () => {
-  assert.equal(detectSystemTemplateSupport([{ id: 1, name: 'a' }]), false);
-  assert.equal(detectSystemTemplateSupport([{ id: 1, name: 'a', systemTemplate: '' }]), true);
-  assert.equal(detectSystemTemplateSupport([]), false);
 });
 
 test('the annotation and call commands address one file', async () => {
