@@ -45,6 +45,17 @@ git checkout develop && git rebase main        # 或 merge；冲突只可能出�
 - UI：Tailwind + daisyUI 类名；文案**必须**走 i18n——17 个 locale 文件同步加 key（至少 en + zh-CN，其余可后补但 key 要先占位）；组件放 `components/`，独立全屏功能（如拼贴）用 WebviewWindow 新窗口 + router 新路由。
 - 测试：`tests/*.test.mjs`（node --test）测纯逻辑模块；可测逻辑抽成独立模块再测，不测 .vue 单文件。跑法：`npm run test:<域>`，按 package.json 追加 script。
 
+### 前端测试基线（F0 实测，必须知道）
+
+v0.3.3 的 37 个测试文件中 **29 通过、8 失败**，全部是**上游既有缺陷**（Node 20 与 26 均复现；上游 CI 从不跑这些测试，故长期无人发现）：
+
+| 类型 | 文件 | 根因 |
+|---|---|---|
+| 加载期 SyntaxError | afAreaPersistence / albumRecovery / cloudFileRefresh / offlineCatalog / xmpWriteback | TypeScript 6 的 `ts.transpile` 默认输出 **ESM**（保留 import），而这些测试用 `new Function(code)` 执行 → "Cannot use import statement outside a module"。显式传 `module: ts.ModuleKind.CommonJS` 即可修复 |
+| 断言失败 | fileInfoMetadata / filterSelection / shortcutsLayout | 测试用**字符串锚点**从 Content.vue slice 源码，上游重构后锚点失配（源码里 `:empty="hasConfirmedEmptyContent"` 在，`<div v-else-if="empty"` 已不存在） |
+
+**因此：新测试不要用 `new Function(ts.transpile(...))` 模式**（TS 6 下失效）。正确写法二选一：①把被测逻辑抽成 `.mjs`/`.js` 模块直接 import；②用 `startup.test.mjs` 的 `vm.SourceTextModule` 模式（需 `--experimental-vm-modules`）。新增测试必须在这一模式下跑绿，且**不得依赖那 8 个失败文件的既有写法**。
+
 **i18n / 构建 / 依赖**
 - 支持格式/扩展名常量在 `t_common.rs`；构建脚本 build.rs 负责第三方 C++ 静态编译，不轻易动。
 - 新依赖需说明理由并锁版本（Cargo.toml + package.json 现状即范例）。
@@ -63,7 +74,11 @@ git checkout develop && git rebase main        # 或 merge；冲突只可能出�
 
 - 程序 `D:\Lap`（安装版）；开发库数据 `C:\Users\viccom\AppData\Local\com.julyx10.lap\`（debug 构建带 `.debug` 后缀，与安装版数据隔离）。
 - 构建：Node 20+/pnpm/Rust stable/tauri-cli ^2/cmake/nasm；`git submodule update --init --recursive` → `scripts/download_models.ps1` → `cd src-vite && pnpm install` → `cargo tauri dev`。
-- 测试基线（改动前后都要绿）：`cargo test`（src-tauri 内，334 个）+ `cd src-vite && npm run test:*`（37 个测试文件，按域脚本）。
+- **本机编译环境要点（F0 实测）**：
+  - MSVC BuildTools 2022 + Windows SDK 已装；**cmake 用 VS 自带的那份**（`Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin`，不在全局 PATH）；**nasm 需另装**（scoop `nasm`，libjpeg-turbo 需要）；`rc.exe` 在 Windows Kits `10.0.26100.0/x64`。
+  - **cargo 走 Clash 代理必须关 multiplexing**：`CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1`，否则 sparse index 挂起（进程有连接、CPU≈0、crate 缓存 0 文件）。
+  - 模型可直接从安装版 `D:\Lap\models` 复制到 `src-tauri/resources/models`（脚本会校验 SHA-256，5 个文件全部一致）。
+- 测试基线（改动前后都要对照）：`cargo test`（src-tauri 内，334 个）+ `cd src-vite && npm run test:*`（**注意上游既有 8 个失败文件，见「前端测试基线」**）。
 - 调试手法：Python `sqlite3` 只读查库（`LENGTH(embeds)/4` 看向量维度等）。
 
 ## 自有功能规划（详见 docs/dev/F1-图片理解技术方案.md 等）
