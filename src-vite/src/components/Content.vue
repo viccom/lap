@@ -783,6 +783,7 @@ import { getExternalDropUris, getExternalHttpDropUrls, getExternalFileDropPaths,
 import PrintImage from '@/components/PrintImage.vue';
 import { defineAsyncComponent, ref, watch, computed, createVNode, onMounted, onBeforeUnmount, nextTick, render, markRaw } from 'vue';
 import { emit as tauriEmit, listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { PREVIEW_WINDOW_FOCUS_RESTORED } from '@/common/previewWindow';
@@ -808,6 +809,8 @@ import {
 } from '@/common/thumbnailProfiles';
 import { getShortcutLabel, matchesShortcut, ShortcutActionId, ShortcutPlatform, VIEW_BACKGROUND_SHORTCUTS } from '@/common/shortcuts';
 import { getSmartTagById } from '@/common/smartTags';
+import { SEARCH_RESULT_LIMIT, normalizeSearchMode, planSearch } from '@/common/searchMode';
+import { QUERY_KIND, TITLE_KIND, planNavigationQuery } from '@/common/queryDispatch';
 import { handleVideoPlaybackShortcut, handleVideoEscapeShortcut } from '@/common/video';
 import { clearFolderFileCounts, setFolderFileCount, getCountedFolderPaths } from '@/composables/useAlbumSelection';
 import { createEmptyLibraryCounts } from '@/stores/libraryStore';
@@ -3943,6 +3946,9 @@ const currentImageSearchParams = ref({
   fileId: 0,
   threshold: 0,
 });
+
+// the index columns a precise search matched, by file id
+const searchMatchColumns = ref(new Map<number, string[]>());
 
 function showEmptyContent(requestId: number) {
   if (requestId !== currentContentRequestId) return;
@@ -8048,7 +8054,70 @@ async function getImageSearchFileList(
   }
 }
 
+/// The precise search: the full text index of the backend.
+///
+/// The index returns the file ids and the columns that matched; the files
+/// themselves come from the same query the other search paths use.
+async function searchPreciseMatches(searchText: string, limit: number) {
+  const empty = { files: [] as any[], matchColumns: new Map<number, string[]>() };
+  const hits = await invoke('search_fts', { query: searchText, limit });
+  if (!Array.isArray(hits) || hits.length === 0) return empty;
+
+  const hitId = (hit: any) => Number(hit?.fileId ?? hit?.file_id);
+  const hitColumns = (hit: any) => {
+    const columns = hit?.matchedColumns ?? hit?.matched_columns;
+    if (!Array.isArray(columns)) return [] as string[];
+    return columns.map((column: any) => String(column));
+  };
+
+  const ids = hits
+    .map(hitId)
+    .filter((id: number) => Number.isFinite(id) && id > 0);
+  const files = await getFilesByIds(ids);
+  const byId = new Map<number, any>();
+  for (const file of (Array.isArray(files) ? files : [])) {
+    byId.set(Number(file?.id), file);
+  }
+
+  const matched: any[] = [];
+  const matchColumns = new Map<number, string[]>();
+  const seen = new Set<number>();
+  for (const hit of hits) {
+    const id = hitId(hit);
+    if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+    const file = byId.get(id);
+    if (!file) continue;
+    seen.add(id);
+    matched.push(file);
+    const columns = hitColumns(hit);
+    if (columns.length > 0) matchColumns.set(id, columns);
+  }
+  return { files: matched, matchColumns };
+}
+
+/// The label of the precise results: how many files matched and where.
+function buildPreciseMatchLabel(files: any[]) {
+  const labels = (localeMsg.value.search as any)?.match_column || {};
+  const columns = new Set<string>();
+  let matched = 0;
+  for (const file of files) {
+    const fileColumns = searchMatchColumns.value.get(Number(file?.id)) || [];
+    if (fileColumns.length === 0) continue;
+    matched++;
+    for (const column of fileColumns) columns.add(column);
+  }
+  const sources = describeMatches([...columns], labels);
+  const precise = localeMsg.value.search.precise_matches || '';
+  if (!sources) return precise;
+  const from = localeMsg.value.search.matches_from || '';
+  return `${precise} · ${matched}/${files.length} ${from}: ${sources}`;
+}
+
 async function getUnifiedSearchFileList(searchText: string, requestId: number) {
+  // The search mode decides which query paths run: word based, vector based
+  // and the full text index of the backend.
+  const searchMode = normalizeSearchMode(config.settings.searchMode);
+  const searchPlan = planSearch(searchMode, { text: searchText, limit: SEARCH_RESULT_LIMIT });
   const textParams = {
     searchFileType: config.search.fileType,
     sortType: 3,
@@ -8086,7 +8155,8 @@ async function getUnifiedSearchFileList(searchText: string, requestId: number) {
   };
   imageSearchError.value = false;
   const isDefaultModelUnsupportedLanguage =
-    Number(config.settings.imageSearch.model || 0) === 0
+    searchPlan.vector
+    && Number(config.settings.imageSearch.model || 0) === 0
     && hasNonLatinLetters(searchText);
   imageSearchLanguageUnsupported.value = isDefaultModelUnsupportedLanguage;
   isLoading.value = true;
@@ -8094,22 +8164,33 @@ async function getUnifiedSearchFileList(searchText: string, requestId: number) {
   let visualSearchFailed = false;
 
   try {
-    const [textResult, visualResult] = await Promise.all([
-      getQueryFiles(textParams, 0, 0).catch(error => {
-        console.error('Text search failed:', error);
-        return [];
-      }),
-      (isDefaultModelUnsupportedLanguage
-        ? Promise.resolve([])
-        : searchSimilarImages(currentImageSearchParams.value)
+    const [textResult, visualResult, preciseResult] = await Promise.all([
+      searchPlan.lexical
+        ? getQueryFiles(textParams, 0, 0).catch(error => {
+            console.error('Text search failed:', error);
+            return [];
+          })
+        : Promise.resolve([]),
+      (searchPlan.vector && !isDefaultModelUnsupportedLanguage
+        ? searchSimilarImages(currentImageSearchParams.value)
+        : Promise.resolve([])
       ).catch(error => {
         console.error('Visual search failed:', error);
         visualSearchFailed = true;
         return [];
       }),
+      searchPlan.fts
+        ? searchPreciseMatches(searchText, searchPlan.limit).catch(error => {
+            console.error('Precise search failed:', error);
+            return { files: [], matchColumns: new Map<number, string[]>() };
+          })
+        : Promise.resolve({ files: [], matchColumns: new Map<number, string[]>() }),
     ]);
     if (requestId !== currentContentRequestId) return;
     imageSearchError.value = visualSearchFailed;
+
+    const precise = preciseResult || { files: [], matchColumns: new Map<number, string[]>() };
+    searchMatchColumns.value = precise.matchColumns;
 
     const textMatches = Array.isArray(textResult) ? textResult : [];
     const textIds = new Set(textMatches.map((file: any) => Number(file.id)));
@@ -8117,7 +8198,15 @@ async function getUnifiedSearchFileList(searchText: string, requestId: number) {
       .filter((file: any) => !textIds.has(Number(file.id)))
       .filter(passesAlbumFilters)
       .filter((file: any) => !config.search.favoritesOnly || file.is_favorite);
-    const files = preserveLoadedThumbnails([...textMatches, ...visualMatches]);
+    const knownIds = new Set([
+      ...textIds,
+      ...visualMatches.map((file: any) => Number(file.id)),
+    ]);
+    const preciseMatches = (Array.isArray(precise.files) ? precise.files : [])
+      .filter((file: any) => !knownIds.has(Number(file.id)))
+      .filter(passesAlbumFilters)
+      .filter((file: any) => !config.search.favoritesOnly || file.is_favorite);
+    const files = preserveLoadedThumbnails([...textMatches, ...visualMatches, ...preciseMatches]);
     contentCountIsAuthoritative.value = true;
 
     clearSelectionForFileListUpdate();
@@ -8146,6 +8235,15 @@ async function getUnifiedSearchFileList(searchText: string, requestId: number) {
             icon: IconPhotoSearch,
             files: visualMatches,
             countLabel: String(visualMatches.length),
+          }
+        : null,
+      preciseMatches.length > 0
+        ? {
+            id: 'search-precise',
+            label: buildPreciseMatchLabel(preciseMatches),
+            icon: IconFileSearch,
+            files: preciseMatches,
+            countLabel: String(preciseMatches.length),
           }
         : null,
     ].filter(Boolean) as Array<{ id: string; label: string; icon: any; files: any[]; countLabel: string }>;
@@ -8212,6 +8310,244 @@ async function getUnifiedSearchFileList(searchText: string, requestId: number) {
 }
 
 let contentUpdateSeq = 0;
+
+/// --- navigation dispatch ---
+/// The sidebar selection decides which query runs. The plan itself comes from
+/// src/common/queryDispatch.js, the execution stays here.
+
+function buildNavigationState(albumRecord: any = null, sidebarIndex: number = config.main.sidebarIndex) {
+  const calendar = libConfig.calendar;
+  const hasYear = calendar.year !== null && calendar.year !== undefined;
+  const range = hasYear
+    ? getCalendarDateRange(calendar.year!, calendar.month!, calendar.date!)
+    : { startDate: 0, endDate: 0 };
+  const smartId = libConfig.library.smartId;
+  return {
+    sidebarIndex,
+    library: {
+      item: (libConfig.library as any).item,
+      smartId,
+      smartTag: smartId ? getSmartTagById(smartId) : null,
+    },
+    album: {
+      id: libConfig.album.id,
+      selected: !!libConfig.album.selected,
+      folderPath: libConfig.album.folderPath || '',
+      showSubfolderFiles: !!config.settings.showSubfolderFiles,
+      record: albumRecord,
+    },
+    smartAlbum: {
+      type: libConfig.smartAlbum.type,
+      id: libConfig.smartAlbum.id,
+      items: libConfig.smartAlbums || [],
+    },
+    search: { text: libConfig.search.searchText },
+    calendar: {
+      year: calendar.year,
+      month: calendar.month,
+      date: calendar.date,
+      startDate: range.startDate,
+      endDate: range.endDate,
+    },
+    tag: { id: libConfig.tag.id },
+    person: { id: libConfig.person.id, name: libConfig.person.name || '' },
+    location: { admin1: libConfig.location.admin1, name: libConfig.location.name || '' },
+    camera: {
+      isCamera: !!config.camera.isCamera,
+      make: libConfig.camera.make,
+      model: libConfig.camera.model,
+      lensMake: (libConfig.camera as any).lensMake,
+      lensModel: (libConfig.camera as any).lensModel,
+    },
+    rating: { item: libConfig.rating.item },
+    culling: { item: libConfig.culling.item },
+  };
+}
+
+/// A locale message by its dotted path, e.g. 'rating.rated'.
+function lookupLocaleMessage(key: string) {
+  const value = String(key || '')
+    .split('.')
+    .reduce((acc: any, part) => (acc == null ? acc : acc[part]), localeMsg.value);
+  return typeof value === 'string' ? value : '';
+}
+
+/// The title of the content area for a plan.
+function resolveNavigationTitle(title: any) {
+  if (!title) return '';
+  switch (title.type) {
+    case TITLE_KIND.BLANK:
+      return '';
+    case TITLE_KIND.LOCALE:
+      return lookupLocaleMessage(title.key);
+    case TITLE_KIND.LOCALE_PAIR:
+      return `${lookupLocaleMessage(title.key)} > ${lookupLocaleMessage(title.subKey)}`;
+    case TITLE_KIND.TEXT:
+      return title.text || '';
+    case TITLE_KIND.LOCALE_OR_TEXT:
+      return title.text || lookupLocaleMessage(title.key);
+    case TITLE_KIND.RATING: {
+      const key = ratingLabelKey(title.rating);
+      return `${lookupLocaleMessage('rating.title')} > ${key ? lookupLocaleMessage(`rating.${key}`) : `${title.rating}★`}`;
+    }
+    case TITLE_KIND.SUBJECT: {
+      const label = (localeMsg.value.subject as any)?.items?.[title.smartTagId] || title.smartTagId;
+      return `${lookupLocaleMessage('subject.title')} > ${label}`;
+    }
+    case TITLE_KIND.ALBUM_NAME:
+      return title.name || '';
+    case TITLE_KIND.BREADCRUMB:
+      return formatFolderBreadcrumb(title.folderPath || '', title.albumPath);
+    case TITLE_KIND.CALENDAR: {
+      const month = title.month === -1 ? 1 : title.month;
+      const date = title.date === -1 ? 1 : title.date;
+      return formatDate(title.year, month, date, title.format);
+    }
+    case TITLE_KIND.SMART_ALBUM:
+      return title.name || '';
+    case TITLE_KIND.SEARCH:
+      return `${lookupLocaleMessage('search.title')} - ${title.text}`;
+    default:
+      return '';
+  }
+}
+
+/// Run the query of the plan.
+function executeNavigationPlan(plan: any, requestId: number) {
+  switch (plan.kind) {
+    case QUERY_KIND.FILES:
+      contentTitle.value = resolveNavigationTitle(plan.title);
+      getFileList(plan.params, requestId);
+      break;
+    case QUERY_KIND.IMAGE_SEARCH:
+      contentTitle.value = resolveNavigationTitle(plan.title);
+      getImageSearchFileList(plan.prompt, 0, requestId, plan.threshold ?? config.smartTagSearchThreshold);
+      break;
+    case QUERY_KIND.SMART_ALBUM:
+      contentTitle.value = resolveNavigationTitle(plan.title);
+      getSmartFileList(plan.smartAlbum, requestId);
+      break;
+    case QUERY_KIND.UNIFIED_SEARCH:
+      contentTitle.value = resolveNavigationTitle(plan.title);
+      getUnifiedSearchFileList(plan.text, requestId);
+      break;
+    case QUERY_KIND.EMPTY:
+      contentTitle.value = resolveNavigationTitle(plan.title);
+      showEmptyContent(requestId);
+      break;
+    case QUERY_KIND.BLANK:
+      contentTitle.value = '';
+      break;
+    case QUERY_KIND.ALBUM:
+      void runAlbumNavigation(requestId);
+      break;
+    case QUERY_KIND.TAG:
+      void runTagNavigation(plan, requestId);
+      break;
+    default:
+      break;
+  }
+}
+
+/// The album panel needs the album record before the query can run.
+async function runAlbumNavigation(requestId: number) {
+  const album = await getAlbum(libConfig.album.id);
+  if (requestId !== currentContentRequestId) return;
+  if (!album) {
+    contentTitle.value = "";
+    return;
+  }
+  album.is_accessible = await checkAlbumAccessibility(album.id);
+  if (requestId !== currentContentRequestId) return;
+
+  const albumPlan = () => planNavigationQuery(buildNavigationState(album));
+  if (libConfig.album.selected) {
+    contentTitle.value = resolveNavigationTitle(albumPlan().title);
+    if (album.is_accessible === false) {
+      isCurrentFolderMissing.value = true;
+    }
+    getFileList(albumPlan().params, requestId);
+    return;
+  }
+
+  const folderPath = libConfig.album.folderPath || "";
+  const folderId = Number(libConfig.album.folderId || 0);
+  const folderAccessible = album.is_accessible !== false && !!folderPath && await isDirectoryAccessible(folderPath);
+  if (requestId !== currentContentRequestId) return;
+  setFolderAccessibility(folderPath, folderAccessible);
+  if (!folderAccessible) {
+    isCurrentFolderMissing.value = true;
+    contentTitle.value = resolveNavigationTitle(albumPlan().title);
+    getFileList(albumPlan().params, requestId);
+    return;
+  }
+  getFolderSearchExcluded(folderPath).then(excluded => {
+    if (requestId === currentContentRequestId) isCurrentFolderExcluded.value = !!excluded;
+  });
+  contentTitle.value = resolveNavigationTitle(albumPlan().title);
+  const folderNode = await fetchFolder(folderPath, false, config.settings.folderSort);
+  if (requestId !== currentContentRequestId) return;
+  selectedFolderHasChildren.value = Boolean(folderNode?.children?.length);
+  const syncKey = `${album.id}:${folderId}:${folderPath}`;
+  if (folderId > 0 && folderPath && lastSyncedAlbumFolder !== syncKey) {
+    lastSyncedAlbumFolder = syncKey;
+    // Debounce: if a sync is already in-flight for this folder, reuse it.
+    const existing = pendingFolderSyncs.get(folderId);
+    const syncPromise = existing ?? syncAlbumFolderMtimes(album.id, folderId, folderPath);
+    if (!existing) pendingFolderSyncs.set(folderId, syncPromise);
+    syncPromise.then(syncResult => {
+      if (pendingFolderSyncs.get(folderId) === syncPromise) {
+        pendingFolderSyncs.delete(folderId);
+      }
+      if (
+        requestId !== currentContentRequestId ||
+        config.main.sidebarIndex !== SIDEBAR.ALBUM ||
+        libConfig.album.folderId !== folderId ||
+        libConfig.album.folderPath !== folderPath
+      ) return;
+      if (syncResult?.current_folder_synced) {
+        void refreshFolderSidebarCounts([folderPath]);
+        console.log(
+          `folder sync: ${syncResult.new_file_count} new, ${syncResult.updated_file_count} updated, ${syncResult.deleted_file_count} deleted, ${syncResult.rename_count || 0} renamed`
+        );
+        const visibleRange = { ...lastVisibleRange };
+        const refreshRequestId = ++currentContentRequestId;
+        if (pendingInitialSelectedIndex < 0) {
+          pendingInitialSelectedIndex = selectedItemIndex.value;
+          hasRestoredInitialSelection = false;
+        }
+        getFileList(albumPlan().params, refreshRequestId).then(() => {
+          if (
+            refreshRequestId !== currentContentRequestId ||
+            visibleRange.start < 0 ||
+            visibleRange.end <= visibleRange.start
+          ) return;
+          fetchDataRange(visibleRange.start, visibleRange.end + 1);
+        });
+      }
+    }).catch(error => {
+      if (pendingFolderSyncs.get(folderId) === syncPromise) {
+        pendingFolderSyncs.delete(folderId);
+      }
+      console.error('folder sync failed:', error);
+    });
+  }
+  getFileList(albumPlan().params, requestId);
+}
+
+/// The tag panel needs the name of the tag before the query can run.
+function runTagNavigation(plan: any, requestId: number) {
+  getTagName(plan.tagId).then(tagName => {
+    if (requestId !== currentContentRequestId) return;
+    if (tagName) {
+      contentTitle.value = tagName;
+      getFileList(plan.params, requestId);
+    } else {
+      contentTitle.value = "";
+      showEmptyContent(requestId);
+    }
+  });
+}
 
 async function updateContent(force = false, preserveMultiSelection = selectMode.value) {
   pendingScopeSelectionChange = false;
@@ -8300,285 +8636,10 @@ async function updateContent(force = false, preserveMultiSelection = selectMode.
     return;
   }
 
-  if(newIndex === SIDEBAR.LIBRARY) {
-    switch ((libConfig.library as any).item) {
-      case LIB_ITEM.FAV:
-        contentTitle.value = localeMsg.value.favorite.files;
-        getFileList({ isFavorite: true }, requestId);
-        break;
-      case LIB_ITEM.TODAY:
-        contentTitle.value = localeMsg.value.library.on_this_day;
-        getFileList({ startDate: -1, endDate: -1, calendarSort: DATE_SORT.TAKEN_DESC }, requestId);
-        break;
-      case LIB_ITEM.RATINGS:
-        if (libConfig.rating.item === RATE.ALL) {
-          contentTitle.value = `${localeMsg.value.rating.title} > ${localeMsg.value.rating.rated}`;
-          getFileList({ rating: RATE.ALL }, requestId);
-        } else if (libConfig.rating.item === RATE.UNRATED) {
-          contentTitle.value = `${localeMsg.value.rating.title} > ${localeMsg.value.rating.unrated}`;
-          getFileList({ rating: RATE.UNRATED }, requestId);
-        } else if ((libConfig.rating.item || 0) > 0) {
-          const rating = Number(libConfig.rating.item || 0);
-          const key = ratingLabelKey(rating);
-          contentTitle.value = `${localeMsg.value.rating.title} > ${key ? localeMsg.value.rating[key] : `${rating}★`}`;
-          getFileList({ rating }, requestId);
-        } else {
-          contentTitle.value = localeMsg.value.rating.title;
-          showEmptyContent(requestId);
-        }
-        break;
-      case LIB_ITEM.CULLING: {
-        const cullingItem = libConfig.culling.item;
-        const label = cullingItem === CULLING.PICK
-          ? localeMsg.value.culling.picks
-          : cullingItem === CULLING.REJECT
-            ? localeMsg.value.culling.rejected
-            : localeMsg.value.culling.unreviewed;
-        contentTitle.value = `${localeMsg.value.culling.title} > ${label}`;
-        const cullingFlag = cullingItem === CULLING.PICK
-          ? 1
-          : cullingItem === CULLING.REJECT
-            ? 2
-            : 0;
-        getFileList({ cullingFlag }, requestId);
-        break;
-      }
-      case LIB_ITEM.SUBJECTS: {
-        const smartId = libConfig.library.smartId;
-        if (!smartId) {
-          contentTitle.value = localeMsg.value.subject.title;
-          showEmptyContent(requestId);
-          break;
-        }
-        const smartTag = getSmartTagById(smartId);
-        if (!smartTag) {
-          contentTitle.value = localeMsg.value.subject.title;
-          showEmptyContent(requestId);
-          break;
-        }
-        const smartTagLabel = localeMsg.value.subject.items?.[smartTag.id] || smartTag.id;
-        contentTitle.value = `${localeMsg.value.subject.title} > ${smartTagLabel}`;
-        getImageSearchFileList(
-          smartTag.prompt,
-          0,
-          requestId,
-          smartTag.threshold ?? config.smartTagSearchThreshold,
-        );
-        break;
-      }
-      default:
-        contentTitle.value = localeMsg.value.library.all_files;
-        getFileList({}, requestId);
-        break;
-    }
-  }
-  else if(newIndex === SIDEBAR.ALBUM) {
-    if(libConfig.album.id === null) {
-      contentTitle.value = "";
-    } else if(libConfig.album.id === 0) {   // all files
-      contentTitle.value = localeMsg.value.library.all_files;
-      getFileList({}, requestId);
-    } else {
-      getAlbum(libConfig.album.id).then(async album => {
-        if (requestId !== currentContentRequestId) return;
-        if(album) {
-          album.is_accessible = await checkAlbumAccessibility(album.id);
-          if (requestId !== currentContentRequestId) return;
-          if(libConfig.album.selected) {     
-            // album is selected, show all files including subfolders
-            contentTitle.value = album.name;
-            if (album.is_accessible === false) {
-              if (requestId !== currentContentRequestId) return;
-              isCurrentFolderMissing.value = true;
-            }
-            getFileList({ searchAllSubfolders: album.path }, requestId);
-          } else {                        
-            // folder is selected, show files in the folder
-            const folderPath = libConfig.album.folderPath || "";
-            const folderId = Number(libConfig.album.folderId || 0);
-            const folderAccessible = album.is_accessible !== false && !!folderPath && await isDirectoryAccessible(folderPath);
-            if (requestId !== currentContentRequestId) return;
-            setFolderAccessibility(folderPath, folderAccessible);
-            if (!folderAccessible) {
-              if (requestId !== currentContentRequestId) return;
-              isCurrentFolderMissing.value = true;
-              contentTitle.value = formatFolderBreadcrumb(folderPath, album.path);
-              getFileList(config.settings.showSubfolderFiles
-                ? { searchAllSubfolders: folderPath }
-                : { searchFolder: folderPath }, requestId);
-              return;
-            }
-            getFolderSearchExcluded(folderPath).then(excluded => {
-              if (requestId === currentContentRequestId) isCurrentFolderExcluded.value = !!excluded;
-            });
-            contentTitle.value = formatFolderBreadcrumb(folderPath, album.path);
-            const folderNode = await fetchFolder(folderPath, false, config.settings.folderSort);
-            if (requestId !== currentContentRequestId) return;
-            selectedFolderHasChildren.value = Boolean(folderNode?.children?.length);
-            const folderQueryParams = () => config.settings.showSubfolderFiles
-              ? { searchAllSubfolders: folderPath }
-              : { searchFolder: folderPath };
-            const syncKey = `${album.id}:${folderId}:${folderPath}`;
-            if (folderId > 0 && folderPath && lastSyncedAlbumFolder !== syncKey) {
-              lastSyncedAlbumFolder = syncKey;
-              // Debounce: if a sync is already in-flight for this folder, reuse it.
-              const existing = pendingFolderSyncs.get(folderId);
-              const syncPromise = existing ?? syncAlbumFolderMtimes(album.id, folderId, folderPath);
-              if (!existing) pendingFolderSyncs.set(folderId, syncPromise);
-              syncPromise.then(syncResult => {
-                if (pendingFolderSyncs.get(folderId) === syncPromise) {
-                  pendingFolderSyncs.delete(folderId);
-                }
-                if (
-                  requestId !== currentContentRequestId ||
-                  config.main.sidebarIndex !== SIDEBAR.ALBUM ||
-                  libConfig.album.folderId !== folderId ||
-                  libConfig.album.folderPath !== folderPath
-                ) return;
-                if (syncResult?.current_folder_synced) {
-                  void refreshFolderSidebarCounts([folderPath]);
-                  console.log(
-                    `folder sync: ${syncResult.new_file_count} new, ${syncResult.updated_file_count} updated, ${syncResult.deleted_file_count} deleted, ${syncResult.rename_count || 0} renamed`
-                  );
-                  const visibleRange = { ...lastVisibleRange };
-                  const refreshRequestId = ++currentContentRequestId;
-                  if (pendingInitialSelectedIndex < 0) {
-                    pendingInitialSelectedIndex = selectedItemIndex.value;
-                    hasRestoredInitialSelection = false;
-                  }
-                  getFileList(folderQueryParams(), refreshRequestId).then(() => {
-                    if (
-                      refreshRequestId !== currentContentRequestId ||
-                      visibleRange.start < 0 ||
-                      visibleRange.end <= visibleRange.start
-                    ) return;
-                    fetchDataRange(visibleRange.start, visibleRange.end + 1);
-                  });
-                }
-              }).catch(error => {
-                if (pendingFolderSyncs.get(folderId) === syncPromise) {
-                  pendingFolderSyncs.delete(folderId);
-                }
-                console.error('folder sync failed:', error);
-              });
-            }
-            getFileList(folderQueryParams(), requestId);
-          }
-        } else {
-          contentTitle.value = "";
-        }
-      });
-    }
-  }
-  else if(newIndex === SIDEBAR.SMART_ALBUM) {
-    const smartAlbumType = libConfig.smartAlbum.type;
-    const smartAlbumId = libConfig.smartAlbum.id;
-    if (smartAlbumType === 'custom' && smartAlbumId) {
-      const smartAlbum = (libConfig.smartAlbums || []).find((item: any) => item.id === smartAlbumId);
-      if (smartAlbum) {
-        contentTitle.value = smartAlbum.name || '';
-        getSmartFileList(smartAlbum, requestId);
-      } else {
-        contentTitle.value = "";
-        showEmptyContent(requestId);
-      }
-    } else {
-      contentTitle.value = "";
-      showEmptyContent(requestId);
-    }
-  }
-  else if(newIndex === SIDEBAR.SEARCH) {
-    if (libConfig.search.searchText) {
-      contentTitle.value = localeMsg.value.search.title + ' - ' + libConfig.search.searchText;
-      getUnifiedSearchFileList(libConfig.search.searchText, requestId);
-    } else {
-      contentTitle.value = localeMsg.value.search.title;
-      showEmptyContent(requestId);
-    }
-  }
-  else if(newIndex === SIDEBAR.CALENDAR) {
-    if(libConfig.calendar.year === null) {
-      contentTitle.value = "";
-      showEmptyContent(requestId);
-    } else {
-      if (libConfig.calendar.month === -1) {          // yearly
-        contentTitle.value = formatDate(libConfig.calendar.year!, 1, 1, 'year');
-      } else if (libConfig.calendar.date === -1) {    // monthly
-        contentTitle.value = formatDate(libConfig.calendar.year!, libConfig.calendar.month!, 1, 'month');
-      } else {                                    // daily
-        contentTitle.value = formatDate(libConfig.calendar.year!, libConfig.calendar.month!, libConfig.calendar.date!, 'date_long');
-      }
-      const [startDate, endDate] = getCalendarDateRange(libConfig.calendar.year!, libConfig.calendar.month!, libConfig.calendar.date!);
-      getFileList({ startDate, endDate }, requestId);
-    }
-  } 
-  else if(newIndex === SIDEBAR.TAG) {
-    if (libConfig.tag.id === null) {
-      contentTitle.value = "";
-      showEmptyContent(requestId);
-    } else {
-      getTagName(libConfig.tag.id).then(tagName => {
-        if (requestId !== currentContentRequestId) return;
-        if (tagName) {
-          contentTitle.value = tagName;
-          getFileList({ tagId: libConfig.tag.id || 0 }, requestId);
-        } else {
-          contentTitle.value = "";
-          showEmptyContent(requestId);
-        }
-      });
-    }
-  }
-  else if(newIndex === SIDEBAR.PERSON) {
-    if (libConfig.person.id === null) {
-      contentTitle.value = "";
-      showEmptyContent(requestId);
-    } else {
-      contentTitle.value = libConfig.person.name || `${localeMsg.value.sidebar.people}`;
-      getFileList({ personId: libConfig.person.id }, requestId);
-    }
-  }
-  else if(newIndex === SIDEBAR.LOCATION) {
-    if(libConfig.location.admin1 === null) {
-      contentTitle.value = "";
-      showEmptyContent(requestId);
-    } else {
-      if(libConfig.location.name) {
-        contentTitle.value = `${libConfig.location.admin1} > ${libConfig.location.name}`;
-        getFileList({ locationAdmin1: libConfig.location.admin1, locationName: libConfig.location.name }, requestId);
-      } else {
-        contentTitle.value = `${libConfig.location.admin1}`;
-        getFileList({ locationAdmin1: libConfig.location.admin1 }, requestId);
-      } 
-    }
-  }
-  else if(newIndex === SIDEBAR.CAMERA) {
-    if (!config.camera.isCamera) {
-      const lensMake = (libConfig.camera as any).lensMake;
-      const lensModel = (libConfig.camera as any).lensModel;
-      if (lensMake === null) {
-        contentTitle.value = "";
-        showEmptyContent(requestId);
-      } else if (lensModel) {
-        contentTitle.value = `${lensMake} > ${lensModel}`;
-        getFileList({ lensMake, lensModel }, requestId);
-      } else {
-        contentTitle.value = `${lensMake}`;
-        getFileList({ lensMake }, requestId);
-      }
-    } else if(libConfig.camera.make === null) {
-      contentTitle.value = "";
-      showEmptyContent(requestId);
-    } else {
-      if(libConfig.camera.model) {
-        contentTitle.value = `${libConfig.camera.make} > ${libConfig.camera.model}`;
-        getFileList({ make: libConfig.camera.make, model: libConfig.camera.model }, requestId);
-      } else {
-        contentTitle.value = `${libConfig.camera.make}`;
-        getFileList({ make: libConfig.camera.make }, requestId);
-      } 
-    }
-  } 
+  // The sidebar selection decides which query runs; the plan is pure logic
+  // (src/common/queryDispatch.js), the execution stays in this file.
+  const navigationPlan = planNavigationQuery(buildNavigationState(null, newIndex));
+  executeNavigationPlan(navigationPlan, requestId);
 
   if(fileList.value.length === 0) {
     isLoading.value = false;

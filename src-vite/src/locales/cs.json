@@ -295,6 +295,23 @@
     "unknown_lens": "Neznámý objektiv",
     "semantic_matches": "Vizuální shody",
     "text_matches": "Textové shody",
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
+    },
     "index": {
       "wait_index": "Ve frontě na skenování",
       "indexing": "Probíhá skenování… {count}/{total}",

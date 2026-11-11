@@ -202,6 +202,9 @@ export const useConfigStore = defineStore('configStore', {
         video: { defaultId: null, apps: [] },
       },
 
+      // search settings
+      searchMode: 'all',            // search mode (all: word + vector, precise: full text index, semantic: vector only)
+
       // image search settings
       imageSearch: {
         model: 0,                  // 0: default English-only model, 1: multilingual model

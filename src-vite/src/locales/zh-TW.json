@@ -295,6 +295,23 @@
     "unknown_lens": "未知鏡頭",
     "semantic_matches": "視覺相符",
     "text_matches": "文字相符",
+    "mode": {
+      "label": "搜尋模式",
+      "all": "全部",
+      "precise": "精確",
+      "semantic": "語意",
+      "single_char_hint": "單字精確檢索會退回模糊比對，可能較慢"
+    },
+    "matches_from": "命中來源",
+    "precise_matches": "精確命中",
+    "match_column": {
+      "name": "檔案名稱",
+      "people": "人名",
+      "meta": "中繼資料",
+      "tags": "標籤",
+      "caption": "圖片描述",
+      "like": "模糊比對"
+    },
     "index": {
       "wait_index": "已排隊等待掃描",
       "indexing": "掃描中... {count}/{total}",

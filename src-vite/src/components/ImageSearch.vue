@@ -44,6 +44,26 @@
       </div>
     </div>
 
+    <!-- search mode -->
+    <div class="mx-1 mb-2 px-1 shrink-0">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-base-content/50 shrink-0">{{ $t('search.mode.label') }}</span>
+        <div class="join">
+          <button
+            v-for="option in searchModeOptions"
+            :key="option.value"
+            type="button"
+            class="btn btn-xs join-item"
+            :class="option.value === searchMode ? 'btn-active' : 'btn-ghost'"
+            @click="setSearchMode(option.value)"
+          >{{ option.label }}</button>
+        </div>
+      </div>
+      <div v-if="showSingleCharHint" class="mt-1 text-xs text-warning/80">
+        {{ $t('search.mode.single_char_hint') }}
+      </div>
+    </div>
+
     <!-- search history -->
     <div class="overflow-y-auto flex-1" >
         <div v-for="(item, index) in searchHistoryList" :key="index"
@@ -95,7 +115,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { emit as tauriEmit } from '@tauri-apps/api/event';
 import { config, libConfig } from '@/common/config';
+import { isSingleCharQuery, normalizeSearchMode } from '@/common/searchMode';
 import { useUIStore } from '@/stores/uiStore';
 import MessageBox from '@/components/MessageBox.vue';
 import { IconMore, IconTrash, IconSearch, IconClose } from '@/common/icons';
@@ -163,6 +185,28 @@ watch(
 
 function focusSearchInput() {
   searchInputRef.value?.focus();
+}
+
+// search mode
+const searchMode = computed(() => normalizeSearchMode(config.settings.searchMode));
+const searchModeOptions = computed(() => [
+  { value: 'all', label: localeMsg.value.search.mode.all },
+  { value: 'precise', label: localeMsg.value.search.mode.precise },
+  { value: 'semantic', label: localeMsg.value.search.mode.semantic },
+]);
+const showSingleCharHint = computed(
+  () => searchMode.value === 'precise' && isSingleCharQuery(searchQuery.value),
+);
+
+async function setSearchMode(mode: string) {
+  const next = normalizeSearchMode(mode);
+  if (next === searchMode.value) return;
+  config.settings.searchMode = next;
+  const text = libConfig.search.searchText || '';
+  if (!text) return;
+  // The results and their count follow the mode.
+  uiStore.requestCountUpdate({ source: 'search', text });
+  await tauriEmit('refresh-content');
 }
 
 onMounted(() => {

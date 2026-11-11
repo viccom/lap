@@ -295,6 +295,23 @@
     "unknown_lens": "알 수 없는 렌즈",
     "semantic_matches": "이미지 일치",
     "text_matches": "텍스트 일치",
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
+    },
     "index": {
       "wait_index": "스캔 대기 중",
       "indexing": "스캔 중... {count}/{total}",

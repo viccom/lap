@@ -295,6 +295,23 @@
     "unknown_lens": "未知镜头",
     "semantic_matches": "视觉匹配",
     "text_matches": "文本匹配",
+    "mode": {
+      "label": "搜索模式",
+      "all": "全部",
+      "precise": "精确",
+      "semantic": "语义",
+      "single_char_hint": "单字精确检索会退回模糊匹配，可能较慢"
+    },
+    "matches_from": "命中来源",
+    "precise_matches": "精确命中",
+    "match_column": {
+      "name": "文件名",
+      "people": "人名",
+      "meta": "元数据",
+      "tags": "标签",
+      "caption": "图片描述",
+      "like": "模糊匹配"
+    },
     "index": {
       "wait_index": "排队等待扫描",
       "indexing": "正在扫描... {count}/{total}",
