@@ -85,13 +85,14 @@ v0.3.3 的 37 个测试文件中 **29 通过、8 失败**，全部是**上游既
 
 - **F1 图片理解**（✅ 已实现并通过真实网关验收）：云端 VL（走局域网 magpie 网关，**Anthropic Messages 协议**）+ 不可变提示词模板（prompt 与 system 分离）+ 带溯源标注存储。
   - 后端：`src-tauri/src/t_vl.rs`（模型/客户端/编排/10 个 command）+ 迁移 **v23**（`vl_templates`/`vl_annotations`/`vl_calls`）+ `t_config.rs` 的 `VlConfig`。
-  - 前端：`src-vite/src/common/vlApi.js`（薄封装）+ `vlLogic.js`（纯逻辑，可测）+ `components/VlPanel.vue`（FileInfo 面板内的理解区块）+ `components/VlTemplateManager.vue`（设置页模板管理）+ Settings 新标签页。
+  - 前端：`src-vite/src/common/vlApi.js`（薄封装）+ `vlLogic.js`（纯逻辑，可测）+ `components/VlTemplateManager.vue`（设置页模板管理）+ Settings 新标签页。
+  - **入口模型（2026-11-11 起）**：F1/F2 的功能界面集中在**独立实验台窗口** `views/VlLab.vue`（路由 `/vl-lab`，独立 WebviewWindow，capabilities 已授权该窗口 label）。唯一入口 = 设置 → 图片理解 → 「打开实验台」。FileInfo.vue / ImageSearch.vue 的嵌入挂点已撤（与上游零 diff）；`VlPanel.vue` 暂无挂点（保留作复用素材）；`searchMode` 三档逻辑保留在 Content.vue 但无切换 UI（恒为默认 all，与上游行为一致）。**验证通过后再谈融合回原有页面**。
   - 密钥：`api_key` 存 **sidecar 文件** `<appdata>/vl-api-key`，`#[serde(skip_serializing)]` 保证 **webview 永远拿不到**；错误信息经 `redact()` 脱敏。
   - 手动验收工具（`#[ignore]`，需真实网关）：`cargo test -- --ignored real_gateway_probe --nocapture`（直连一张本地图）、`real_library_e2e`（走真实库 → 缩略图 → 网关 → 标注入库）。
   - 实测：**缩略图路径 5.3 秒，原图路径 95 秒**（vision token 差一个量级）——多图场景必须走缩略图。
 - **F2 搜索扩展**（✅ 已实现并验收）：FTS5 精确档（**中文双字切分**，自研 `tokenize`，无新依赖）+ 三档搜索（全部/精确/语义，默认 all=现状）。
   - 后端：`src-tauri/src/t_fts.rs` + 迁移 **v24**（`files_fts`，rowid=file_id，自动回填）+ **20 处写入钩子**（「写入即检索」；完整核对表在 `docs/dev/F2-搜索扩展技术方案.md` §7.2——**rebase 上游时按它逐一复核**）。
-  - 前端：`common/searchMode.js`（三档纯逻辑）+ `common/queryDispatch.js`（**导航→查询决策从 Content.vue 抽出**，Content.vue 只剩执行/展示）+ ImageSearch 档位 UI + `configStore.settings.searchMode`。
+  - 前端：`common/searchMode.js`（三档纯逻辑）+ `common/queryDispatch.js`（**导航→查询决策从 Content.vue 抽出**，Content.vue 只剩执行/展示）。档位切换 UI 已从 ImageSearch 撤下（回上游零 diff），精确检索的界面出口在实验台 `VlLab.vue` 的 F2 区块（含 `fts_status` 索引一致性显示与「重建索引」按钮——`fts_reindex` 的唯一 UI 出口）。
   - 实测：真实库 404 文档全回填，搜「葡萄」命中 F1 标注的照片（F1×F2 闭环）。
   - 已知边界：CJK 扩展 B 生僻字不覆盖；单字 CJK 查询走 LIKE 兜底（慢）；FTS5 列一次定死，加列只能 DROP+RENAME。
 - **F3 多图叙事**（未开始）：多图 + 模板 → 云端讲故事，依赖 F1 基建；协议上 Anthropic 单请求已支持多图，**不需要新端点**。
