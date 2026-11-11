@@ -455,8 +455,22 @@ impl Default for AppConfig {
     }
 }
 
+/// Scratch directory the config tests run against, so they never touch a live
+/// configuration. Set and cleared by the tests themselves.
+#[cfg(test)]
+static TEST_APP_DATA_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+#[cfg(test)]
+fn set_test_app_data_dir(dir: Option<PathBuf>) {
+    *TEST_APP_DATA_DIR.lock().unwrap() = dir;
+}
+
 /// Get the AppData directory for app
 pub fn get_app_data_dir() -> Result<PathBuf, String> {
+    #[cfg(test)]
+    if let Some(dir) = TEST_APP_DATA_DIR.lock().map_err(|e| e.to_string())?.clone() {
+        return Ok(dir);
+    }
     let app_dir_name = get_app_data_folder_name();
     dirs::data_local_dir()
         .ok_or_else(|| "Failed to get the local AppData directory".to_string())
@@ -551,11 +565,14 @@ fn load_app_config_locked() -> Result<AppConfig, String> {
         let parse_msg = last_err.unwrap_or_else(|| "Failed to parse config file".to_string());
 
         match recover_app_config_from_library_dbs() {
-            Ok(recovered) => {
+            Ok(mut recovered) => {
                 eprintln!(
                     "{}{} Recovered app config from existing library database files.",
                     parse_msg, backup_msg
                 );
+                // Recovery rebuilds the config, not the key file: keep the
+                // stored key so saving cannot delete it.
+                recovered.vl.api_key = load_vl_api_key();
                 save_app_config_locked(&recovered)?;
                 Ok(recovered)
             }
@@ -564,7 +581,10 @@ fn load_app_config_locked() -> Result<AppConfig, String> {
                     "{}{} Failed to recover from library DB files: {}. Falling back to default config.",
                     parse_msg, backup_msg, recover_err
                 );
-                let config = AppConfig::default();
+                let mut config = AppConfig::default();
+                // The default carries no key: keep the stored one so saving
+                // cannot delete the key file.
+                config.vl.api_key = load_vl_api_key();
                 save_app_config_locked(&config)?;
                 Ok(config)
             }
@@ -638,7 +658,8 @@ fn save_vl_api_key(key: &str) -> Result<(), String> {
         }
         return Ok(());
     }
-    write_atomic(&path, key).map_err(|e| format!("Failed to write the VL API key: {}", e))
+    write_atomic_private(&path, key)
+        .map_err(|e| format!("Failed to write the VL API key: {}", e))
 }
 
 fn load_vl_api_key() -> String {
@@ -658,6 +679,17 @@ fn parse_first_json_object<T: for<'de> Deserialize<'de>>(content: &str) -> Optio
 }
 
 fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
+    write_atomic_ex(path, content, false)
+}
+
+/// Atomic write for the API key: the file is created owner-only on unix so
+/// other users of the machine cannot read the key. app-config.json keeps the
+/// default permissions.
+fn write_atomic_private(path: &Path, content: &str) -> Result<(), String> {
+    write_atomic_ex(path, content, true)
+}
+
+fn write_atomic_ex(path: &Path, content: &str, private: bool) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| "Config path has no parent directory".to_string())?;
@@ -676,8 +708,7 @@ fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
         stamp
     ));
 
-    let mut tmp_file =
-        fs::File::create(&tmp_path).map_err(|e| format!("Failed to create temp file: {}", e))?;
+    let mut tmp_file = create_temp_file(&tmp_path, private)?;
     tmp_file
         .write_all(content.as_bytes())
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
@@ -711,6 +742,29 @@ fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
                 rename_err
             ))
         }
+    }
+}
+
+/// Create the temp file of an atomic write. `private` files (the API key) are
+/// created with owner-only permissions on unix; Windows has no such
+/// semantics, so the flag is meaningless there.
+fn create_temp_file(tmp_path: &Path, private: bool) -> Result<fs::File, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        if private {
+            options.mode(0o600);
+        }
+        options
+            .open(tmp_path)
+            .map_err(|e| format!("Failed to create temp file: {}", e))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = private;
+        fs::File::create(tmp_path).map_err(|e| format!("Failed to create temp file: {}", e))
     }
 }
 
@@ -1103,6 +1157,94 @@ mod config_update_tests {
         assert_eq!(config.vl.gateway_url, "");
         assert_eq!(config.vl.api_key, "");
         assert_eq!(config.vl.model, "");
+    }
+
+    /// Point the config at a scratch directory so a test never touches a live
+    /// configuration. The override is cleared when the guard drops.
+    struct ScratchAppDir(PathBuf);
+
+    impl ScratchAppDir {
+        fn new(tag: &str) -> Self {
+            let dir =
+                std::env::temp_dir().join(format!("lap-config-{tag}-{}", Uuid::new_v4()));
+            fs::create_dir_all(&dir).unwrap();
+            set_test_app_data_dir(Some(dir.clone()));
+            Self(dir)
+        }
+    }
+
+    impl Drop for ScratchAppDir {
+        fn drop(&mut self) {
+            set_test_app_data_dir(None);
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn a_recovered_config_keeps_the_stored_api_key() {
+        // The scratch dir override is global: the config IO lock keeps the
+        // recovery tests from interleaving.
+        let _guard = config_io_lock().lock().map_err(|e| e.to_string()).unwrap();
+        let scratch = ScratchAppDir::new("recover");
+        fs::create_dir_all(scratch.0.join("libraries")).unwrap();
+        fs::write(scratch.0.join("libraries").join("default.db"), b"").unwrap();
+        fs::write(scratch.0.join("vl-api-key"), "stored-key").unwrap();
+        // A config that parses as nothing at all.
+        fs::write(scratch.0.join("app-config.json"), "{ not json").unwrap();
+
+        let config = load_app_config_locked().unwrap();
+
+        // The config was rebuilt from the library DB files and the stored key
+        // survived the recovery save.
+        assert_eq!(config.current_library_id, "default");
+        assert_eq!(config.vl.api_key, "stored-key");
+        assert_eq!(
+            fs::read_to_string(scratch.0.join("vl-api-key")).unwrap(),
+            "stored-key"
+        );
+    }
+
+    #[test]
+    fn a_default_fallback_config_keeps_the_stored_api_key() {
+        let _guard = config_io_lock().lock().map_err(|e| e.to_string()).unwrap();
+        let scratch = ScratchAppDir::new("fallback");
+        // No library DB files: recovery fails and the default config is saved.
+        fs::write(scratch.0.join("vl-api-key"), "stored-key").unwrap();
+        fs::write(scratch.0.join("app-config.json"), "{ not json").unwrap();
+
+        let config = load_app_config_locked().unwrap();
+
+        assert_eq!(config.current_library_id, "default");
+        assert_eq!(config.vl.api_key, "stored-key");
+        assert_eq!(
+            fs::read_to_string(scratch.0.join("vl-api-key")).unwrap(),
+            "stored-key"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_vl_api_key_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("lap-key-perm-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("vl-api-key");
+        write_atomic_private(&path, "a-key").unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600, "the key file must be owner-only");
+        // The ordinary config write keeps the default permissions: it matches
+        // a plain file creation under the same umask.
+        let config_path = dir.join("app-config.json");
+        write_atomic(&config_path, "{}").unwrap();
+        let control = dir.join("control");
+        fs::File::create(&control).unwrap();
+        let config_mode = fs::metadata(&config_path).unwrap().permissions().mode() & 0o777;
+        let control_mode = fs::metadata(&control).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            config_mode, control_mode,
+            "app-config.json keeps default permissions"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

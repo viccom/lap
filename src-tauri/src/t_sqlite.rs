@@ -2424,7 +2424,9 @@ impl AFile {
             params![name, t_utils::natural_sort_key(&name.to_lowercase()), last_scan_time, t_utils::is_cloud_only_path(file_path), file_id],
         ).map_err(|e| e.to_string())?;
         // The new name has to be findable right away.
-        let _ = crate::t_fts::upsert_doc(conn, file_id);
+        if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+            eprintln!("fts index update failed for file {file_id}: {e}");
+        }
         Ok(())
     }
 
@@ -3270,7 +3272,10 @@ impl AFile {
         ).map_err(|e| e.to_string())?;
         if result > 0 {
             // A new file has to be findable right away.
-            let _ = crate::t_fts::upsert_doc(conn, conn.last_insert_rowid());
+            let file_id = conn.last_insert_rowid();
+            if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         Ok(result)
     }
@@ -3372,9 +3377,12 @@ impl AFile {
             tx.execute("UPDATE axmp_imports SET fingerprint=NULL WHERE file_id=?1 AND fingerprint IS NOT NULL", [file_id])
                 .map_err(|e| e.to_string())?;
         }
+        // The extracted metadata has to be findable right away, inside the
+        // same transaction as the write it came from.
+        if let Err(e) = crate::t_fts::upsert_doc(&tx, file_id) {
+            eprintln!("fts index update failed for file {file_id}: {e}");
+        }
         tx.commit().map_err(|e| e.to_string())?;
-        // The extracted metadata has to be findable right away.
-        let _ = crate::t_fts::upsert_doc(conn, file_id);
         Ok(result)
     }
 
@@ -3394,7 +3402,9 @@ impl AFile {
             .map_err(|e| e.to_string())?;
         // The index is a virtual table without foreign keys, so the document
         // has to go by hand.
-        let _ = crate::t_fts::remove_doc(&tx, id);
+        if let Err(e) = crate::t_fts::remove_doc(&tx, id) {
+            eprintln!("fts index update failed for file {id}: {e}");
+        }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(result)
     }
@@ -3428,7 +3438,9 @@ impl AFile {
                 deleted += file_stmt.execute(params![id]).map_err(|e| e.to_string())?;
                 // The index is a virtual table without foreign keys, so the
                 // document has to go by hand.
-                let _ = crate::t_fts::remove_doc(&tx, *id);
+                if let Err(e) = crate::t_fts::remove_doc(&tx, *id) {
+                    eprintln!("fts index update failed for file {id}: {e}");
+                }
             }
         }
         tx.commit().map_err(|e| e.to_string())?;
@@ -4323,7 +4335,9 @@ impl AFile {
             Ok(changed) => {
                 if changed {
                     // The imported description has to be findable right away.
-                    let _ = crate::t_fts::upsert_doc(&conn, file_id);
+                    if let Err(e) = crate::t_fts::upsert_doc(&conn, file_id) {
+                        eprintln!("fts index update failed for file {file_id}: {e}");
+                    }
                 }
                 Ok(changed)
             }
@@ -4429,7 +4443,9 @@ impl AFile {
                     .map(|changed| {
                         if changed {
                             // The imported description has to be findable right away.
-                            let _ = crate::t_fts::upsert_doc(&conn, file_id);
+                            if let Err(e) = crate::t_fts::upsert_doc(&conn, file_id) {
+                                eprintln!("fts index update failed for file {file_id}: {e}");
+                            }
                         }
                     })
                 })
@@ -4610,7 +4626,9 @@ impl AFile {
                 .map(|changed| {
                     if changed {
                         // The imported description has to be findable right away.
-                        let _ = crate::t_fts::upsert_doc(&conn, file_id);
+                        if let Err(e) = crate::t_fts::upsert_doc(&conn, file_id) {
+                            eprintln!("fts index update failed for file {file_id}: {e}");
+                        }
                     }
                 })
             }) {
@@ -4695,7 +4713,9 @@ impl AFile {
             .map_err(|e| e.to_string())?;
         if changed > 0 && crate::t_fts::column_is_indexed(column) {
             // The written column belongs to the indexed document.
-            let _ = crate::t_fts::upsert_doc(conn, file_id);
+            if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         Ok(changed)
     }
@@ -4735,11 +4755,14 @@ impl AFile {
                 return Err("A file changed during batch rename.".into());
             }
         }
-        tx.commit().map_err(|error| error.to_string())?;
-        // The new names have to be findable right away.
+        // The new names have to be findable right away, inside the same
+        // transaction as the rename itself.
         for (id, _, _, _) in updates {
-            let _ = crate::t_fts::upsert_doc(conn, *id);
+            if let Err(e) = crate::t_fts::upsert_doc(&tx, *id) {
+                eprintln!("fts index update failed for file {id}: {e}");
+            }
         }
+        tx.commit().map_err(|error| error.to_string())?;
         Ok(())
     }
 
@@ -4771,7 +4794,9 @@ impl AFile {
                 )
                 .map_err(|e| e.to_string())?;
             // The new name has to be findable right away.
-            let _ = crate::t_fts::upsert_doc(&tx, *file_id);
+            if let Err(e) = crate::t_fts::upsert_doc(&tx, *file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(changed)
@@ -4877,7 +4902,9 @@ impl AFile {
 
         // The new comment has to be findable right away.
         for file_id in file_ids {
-            let _ = crate::t_fts::upsert_doc(&tx, *file_id);
+            if let Err(e) = crate::t_fts::upsert_doc(&tx, *file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(updated)
@@ -8952,7 +8979,9 @@ impl ATag {
         )
         .map_err(|e| e.to_string())?;
         // The new tag has to be findable right away.
-        let _ = crate::t_fts::upsert_doc(conn, file_id);
+        if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+            eprintln!("fts index update failed for file {file_id}: {e}");
+        }
         Ok(())
     }
 
@@ -8993,7 +9022,9 @@ impl ATag {
             .map_err(|e| e.to_string())?;
         }
         // The remaining tags have to be findable right away.
-        let _ = crate::t_fts::upsert_doc(conn, file_id);
+        if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+            eprintln!("fts index update failed for file {file_id}: {e}");
+        }
         Ok(result)
     }
 
@@ -9118,7 +9149,9 @@ impl ATag {
 
         // The new tags have to be findable right away.
         for file_id in file_ids {
-            let _ = crate::t_fts::upsert_doc(&tx, *file_id);
+            if let Err(e) = crate::t_fts::upsert_doc(&tx, *file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(states)
@@ -9161,7 +9194,9 @@ impl ATag {
             }
             // The remaining tags have to be findable right away.
             for file_id in &file_ids {
-                let _ = crate::t_fts::upsert_doc(&tx, *file_id);
+                if let Err(e) = crate::t_fts::upsert_doc(&tx, *file_id) {
+                    eprintln!("fts index update failed for file {file_id}: {e}");
+                }
             }
         }
         tx.commit().map_err(|e| e.to_string())?;
@@ -9199,7 +9234,9 @@ impl ATag {
             .map_err(|e| e.to_string())?;
         // The renamed tag and the tags below it have to be findable right away.
         for file_id in files_of_tag_tree(&tx, tag_id)? {
-            let _ = crate::t_fts::upsert_doc(&tx, file_id);
+            if let Err(e) = crate::t_fts::upsert_doc(&tx, file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(result)
@@ -9733,7 +9770,9 @@ impl Person {
             .map_err(|e| e.to_string())?;
         // Every file of this person has to be findable again.
         for file_id in files_of_person(conn, person_id)? {
-            let _ = crate::t_fts::upsert_doc(conn, file_id);
+            if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         Ok(result)
     }
@@ -9762,7 +9801,9 @@ impl Person {
             .map_err(|e| e.to_string())?;
         // The files lose the name of the person from their document.
         for file_id in file_ids {
-            let _ = crate::t_fts::upsert_doc(conn, file_id);
+            if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
         }
         Ok(result)
     }
@@ -9792,6 +9833,18 @@ fn files_of_person(conn: &Connection, person_id: i64) -> Result<Vec<i64>, String
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(params![person_id], |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+/// The files that carry at least one assigned face.
+fn files_with_any_person(conn: &Connection) -> Result<Vec<i64>, String> {
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT file_id FROM faces WHERE person_id IS NOT NULL")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, i64>(0))
         .map_err(|e| e.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())
@@ -9939,6 +9992,14 @@ impl Face {
     /// Reset all face assignments and delete all persons (for re-clustering)
     pub fn reset_all_assignments() -> Result<(), String> {
         let conn = open_conn()?;
+        Self::reset_all_assignments_with_conn(&conn)
+    }
+
+    /// Reset all face assignments and delete all persons on an existing
+    /// connection (for re-clustering).
+    pub fn reset_all_assignments_with_conn(conn: &Connection) -> Result<(), String> {
+        // The files that carry a person lose the name from their document.
+        let file_ids = files_with_any_person(conn)?;
 
         // Clear all person_id from faces
         conn.execute("UPDATE faces SET person_id = NULL", [])
@@ -9948,18 +10009,49 @@ impl Face {
         conn.execute("DELETE FROM persons", [])
             .map_err(|e| e.to_string())?;
 
+        // The person names have to leave the search with the assignments.
+        for file_id in file_ids {
+            if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+                eprintln!("fts index update failed for file {file_id}: {e}");
+            }
+        }
         Ok(())
     }
 
     /// Assign a face to a person
     pub fn assign_to_person(face_id: i64, person_id: i64) -> Result<usize, String> {
         let conn = open_conn()?;
+        Self::assign_to_person_with_conn(&conn, face_id, person_id)
+    }
+
+    /// Assign a face to a person on an existing connection.
+    pub fn assign_to_person_with_conn(
+        conn: &Connection,
+        face_id: i64,
+        person_id: i64,
+    ) -> Result<usize, String> {
+        let file_id: Option<i64> = conn
+            .query_row(
+                "SELECT file_id FROM faces WHERE id = ?1",
+                params![face_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
         let result = conn
             .execute(
                 "UPDATE faces SET person_id = ?1 WHERE id = ?2",
                 params![person_id, face_id],
             )
             .map_err(|e| e.to_string())?;
+        if result > 0 {
+            // The person name has to be findable right away.
+            if let Some(file_id) = file_id {
+                if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+                    eprintln!("fts index update failed for file {file_id}: {e}");
+                }
+            }
+        }
         Ok(result)
     }
 
@@ -12220,6 +12312,57 @@ mod fts_hook_tests {
 
         Person::delete_with_conn(&conn, 1).unwrap();
 
+        assert!(found(&conn, "小明").is_empty());
+    }
+
+    #[test]
+    fn an_assigned_face_is_findable_by_the_person_name() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO persons(id, name) VALUES (1, '小明')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO faces(id, file_id, person_id) VALUES (1, ?1, NULL)",
+            params![file_id],
+        )
+        .unwrap();
+        // The face was indexed before it belonged to anyone.
+        crate::t_fts::upsert_doc(&conn, file_id).unwrap();
+        assert!(found(&conn, "小明").is_empty());
+
+        Face::assign_to_person_with_conn(&conn, 1, 1).unwrap();
+
+        assert_eq!(found(&conn, "小明"), vec![file_id]);
+    }
+
+    #[test]
+    fn reset_assignments_takes_the_person_names_out_of_the_search() {
+        let conn = fixture();
+        let file_id = insert_file(&conn, "photo.jpg");
+        conn.execute("INSERT INTO persons(id, name) VALUES (1, '小明')", [])
+            .unwrap();
+        conn.execute(
+            "INSERT INTO faces(id, file_id, person_id) VALUES (1, ?1, 1)",
+            params![file_id],
+        )
+        .unwrap();
+        crate::t_fts::upsert_doc(&conn, file_id).unwrap();
+        assert_eq!(found(&conn, "小明"), vec![file_id]);
+
+        Face::reset_all_assignments_with_conn(&conn).unwrap();
+
+        let still_assigned: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM faces WHERE person_id IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let persons: i64 = conn
+            .query_row("SELECT COUNT(*) FROM persons", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(still_assigned, 0);
+        assert_eq!(persons, 0);
         assert!(found(&conn, "小明").is_empty());
     }
 

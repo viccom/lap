@@ -147,6 +147,11 @@ pub trait VlStore: Send + Sync {
     /// Replace the annotation of one file for one template version.
     fn upsert_annotation(&self, annotation: &VlAnnotation) -> Result<i64, String>;
     /// Remove the annotation of one file for one template version.
+    ///
+    /// Kept as the store capability: the orchestrator no longer pre-deletes a
+    /// forced run (a failed call must leave the previous annotation in place),
+    /// so nothing calls this at the moment.
+    #[allow(dead_code)]
     fn delete_annotation(
         &self,
         file_id: i64,
@@ -261,8 +266,25 @@ fn insert_template_row(
             now_ts()
         ],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(template_insert_error)?;
     query_template(conn, conn.last_insert_rowid())?.ok_or_else(|| "Template insert failed".into())
+}
+
+/// A (name, version) conflict must not surface as a raw SQLite message.
+fn template_insert_error(error: rusqlite::Error) -> String {
+    let is_unique_conflict = match &error {
+        rusqlite::Error::SqliteFailure(failure, _)
+            if failure.extended_code == rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE =>
+        {
+            true
+        }
+        _ => false,
+    };
+    if is_unique_conflict {
+        "模板名与版本号冲突，请换一个名字后重试".to_string()
+    } else {
+        error.to_string()
+    }
 }
 
 fn next_version(conn: &Connection, name: &str) -> Result<i64, String> {
@@ -274,11 +296,12 @@ fn next_version(conn: &Connection, name: &str) -> Result<i64, String> {
     .map_err(|e| e.to_string())
 }
 
-/// The version of a custom copy of a built-in template.
+/// The version of the next row of a name.
 ///
-/// The copy continues the version chain of the row it was made from. When
-/// that version is already taken by another row of the same name, the next
-/// free version of the name is used instead.
+/// The preferred version continues the chain of the row the edit came from
+/// (a custom copy of a built-in included). When that version is already taken
+/// by another row of the same name, the next free version of the name is used
+/// instead.
 fn copy_version(conn: &Connection, base: &VlTemplate, name: &str) -> Result<i64, String> {
     let preferred = base.version + 1;
     let taken: bool = conn
@@ -306,11 +329,10 @@ fn insert_template_version_row(
     system_template: &str,
     response_spec: &str,
 ) -> Result<VlTemplate, String> {
-    let version = if base.is_builtin {
-        copy_version(conn, base, name)?
-    } else {
-        base.version + 1
-    };
+    // The preferred version of every edit is the one after the row it came
+    // from; when that one is taken (an old row edited again, a rename onto a
+    // name whose versions moved on) the next free version of the name is used.
+    let version = copy_version(conn, base, name)?;
     insert_template_row(
         conn,
         name,
@@ -330,16 +352,21 @@ fn delete_template_row(conn: &Connection, id: i64) -> Result<bool, String> {
     // The annotations of the template go with it. The files have to be
     // indexed again, so the caption leaves the search with the annotation.
     let file_ids = files_with_template(conn, id)?;
-    conn.execute(
-        "DELETE FROM vl_annotations WHERE template_id = ?1",
-        params![id],
-    )
-    .map_err(|e| e.to_string())?;
-    let deleted = conn
+    // The annotation delete and the template delete are one step: a failure
+    // in between must not leave the annotations orphaned.
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM vl_annotations WHERE template_id = ?1", params![id])
+        .map_err(|e| e.to_string())?;
+    let deleted = tx
         .execute("DELETE FROM vl_templates WHERE id = ?1", params![id])
         .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    // The index is derived data: rebuilding it per file after the commit is
+    // enough, but a failure has to be visible instead of swallowed.
     for file_id in file_ids {
-        let _ = crate::t_fts::upsert_doc(conn, file_id);
+        if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+            eprintln!("fts index update failed for file {file_id}: {e}");
+        }
     }
     Ok(deleted > 0)
 }
@@ -435,7 +462,12 @@ fn upsert_annotation_row(conn: &Connection, annotation: &VlAnnotation) -> Result
         )
         .map_err(|e| e.to_string())?;
     // The annotation text has to be findable right away.
-    let _ = crate::t_fts::upsert_doc(conn, annotation.file_id);
+    if let Err(e) = crate::t_fts::upsert_doc(conn, annotation.file_id) {
+        eprintln!(
+            "fts index update failed for file {}: {e}",
+            annotation.file_id
+        );
+    }
     Ok(id)
 }
 
@@ -451,7 +483,9 @@ fn delete_annotation_row(
     )
     .map_err(|e| e.to_string())?;
     // The annotation text has to leave the search with the annotation.
-    let _ = crate::t_fts::upsert_doc(conn, file_id);
+    if let Err(e) = crate::t_fts::upsert_doc(conn, file_id) {
+        eprintln!("fts index update failed for file {file_id}: {e}");
+    }
     Ok(())
 }
 
@@ -1070,15 +1104,17 @@ pub async fn call_gateway(
         });
     }
 
+    // The body reached us over a 2xx, but it still must never echo the key
+    // back into the stored evidence.
     let parsed = parse_response(&raw_body).map_err(|error| VlGatewayError {
         message: error,
-        raw_body: Some(raw_body.clone()),
+        raw_body: Some(redact(&raw_body, &config.api_key)),
     })?;
 
     if let Some(reason) = parsed.missing_body_reason() {
         return Err(VlGatewayError {
             message: reason,
-            raw_body: Some(raw_body.clone()),
+            raw_body: Some(redact(&raw_body, &config.api_key)),
         });
     }
 
@@ -1210,10 +1246,9 @@ pub async fn analyze_file(
     {
         return Ok(VlFileOutcome::Skipped);
     }
-    if force {
-        // A forced run replaces the annotation; the old evidence stays in vl_calls.
-        store.delete_annotation(file_id, template.id, template.version)?;
-    }
+    // A forced run does not drop the old annotation up front: the upsert of a
+    // successful call replaces it atomically, so a failed call leaves the
+    // previous annotation and its search entry intact.
 
     // A failure before the call still leaves evidence behind.
     let prepared = prepare_call(source, file_id, template).await;
@@ -1710,6 +1745,8 @@ mod tests {
             )
             .unwrap();
             conn.execute_batch(VL_SCHEMA_SQL).unwrap();
+            // The annotations reach the search, so the store carries the index.
+            conn.execute_batch(crate::t_fts::FTS_SCHEMA_SQL).unwrap();
             Self {
                 conn: Mutex::new(conn),
             }
@@ -1933,6 +1970,34 @@ mod tests {
         assert!(!second.is_builtin);
         // The built-in row still exists.
         assert!(store.template(builtin.id).unwrap().is_some());
+    }
+
+    #[test]
+    fn editing_an_old_version_row_picks_the_next_free_version() {
+        let store = MemStore::new();
+        let first = create_template(&store, "caption", "v1", "s", "{}").unwrap();
+        let second = update_template(&store, first.id, "caption", "v2", "s", "{}").unwrap();
+        assert_eq!(second.version, 2);
+
+        // Editing the old v1 row must not collide with the v2 row of the name:
+        // the edit lands on the next free version instead.
+        let third = update_template(&store, first.id, "caption", "v1 again", "s", "{}").unwrap();
+        assert_eq!(third.version, 3);
+        assert_eq!(third.prompt_template, "v1 again");
+    }
+
+    #[test]
+    fn a_name_and_version_conflict_reports_a_readable_error() {
+        let store = MemStore::new();
+        create_template(&store, "caption", "p", "s", "{}").unwrap();
+        let conn = store.conn.lock().unwrap();
+        // Inserting a taken (name, version) pair again is a conflict the user
+        // can read, not a raw SQLite message.
+        let error = insert_template_row(&conn, "caption", 1, "p", "s", "{}", false).unwrap_err();
+        assert!(
+            error.contains("模板名与版本号冲突"),
+            "the raw SQLite error must be mapped, got: {error}"
+        );
     }
 
     #[test]
@@ -2487,6 +2552,67 @@ mod tests {
         assert!(!raw.contains("test-key-not-a-real-secret"));
     }
 
+    #[tokio::test]
+    async fn a_failing_2xx_body_is_redacted_in_the_stored_evidence() {
+        let store = MemStore::new();
+        let template = analysis_template(&store);
+        let client = reqwest::Client::new();
+
+        // 200 with a body that is not JSON at all.
+        let gateway = mock::spawn(
+            "200 OK",
+            "<html>bad json echoing test-key-not-a-real-secret</html>",
+        )
+        .await;
+        let outcome = analyze_file(
+            &store,
+            &StubSource,
+            &client,
+            &test_config(&gateway.url),
+            1,
+            &template,
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(outcome, VlFileOutcome::Failed { .. }));
+        let calls = store.calls(1).unwrap();
+        assert_eq!(calls[0].status, "error");
+        let raw = calls[0].raw_response.clone().unwrap();
+        assert!(
+            !raw.contains("test-key-not-a-real-secret"),
+            "the stored evidence must not carry the key, got: {raw}"
+        );
+        assert!(raw.contains("***"));
+
+        // 200 with JSON but no text block: the same rule holds.
+        let gateway = mock::spawn(
+            "200 OK",
+            r#"{"content":[],"note":"key test-key-not-a-real-secret leaked"}"#,
+        )
+        .await;
+        let outcome = analyze_file(
+            &store,
+            &StubSource,
+            &client,
+            &test_config(&gateway.url),
+            2,
+            &template,
+            false,
+        )
+        .await
+        .unwrap();
+        assert!(matches!(outcome, VlFileOutcome::Failed { .. }));
+        let calls = store.calls(2).unwrap();
+        assert_eq!(calls[0].status, "error");
+        let raw = calls[0].raw_response.clone().unwrap();
+        assert!(
+            !raw.contains("test-key-not-a-real-secret"),
+            "the stored evidence must not carry the key, got: {raw}"
+        );
+        assert!(raw.contains("***"));
+    }
+
     #[test]
     fn the_config_view_never_carries_the_api_key() {
         let config = VlGatewayConfig {
@@ -2639,6 +2765,54 @@ mod tests {
         assert_eq!(annotation.model, "group/auto-deepseek-v4-1-flash");
         assert_eq!(annotation.result_json, "{\"caption\":\"new\"}");
         assert_eq!(annotation.raw_text, "{\"caption\":\"new\"}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_force_rerun_keeps_the_previous_annotation() {
+        let store = MemStore::new();
+        let template = analysis_template(&store);
+        seed_annotation(&store, &template, 1);
+
+        let gateway = mock::spawn(
+            "500 Internal Server Error",
+            r#"{"error":{"message":"gateway is down"}}"#,
+        )
+        .await;
+        let client = reqwest::Client::new();
+        let outcome = analyze_file(
+            &store,
+            &StubSource,
+            &client,
+            &test_config(&gateway.url),
+            1,
+            &template,
+            true,
+        )
+        .await
+        .unwrap();
+
+        assert!(matches!(outcome, VlFileOutcome::Failed { .. }));
+        assert_eq!(gateway.requests.load(Ordering::SeqCst), 1);
+
+        // The previous annotation survives the failed forced run.
+        let annotation = store
+            .annotation(1, template.id, template.version)
+            .unwrap()
+            .unwrap();
+        assert_eq!(annotation.result_json, "{\"caption\":\"old\"}");
+        assert_eq!(annotation.raw_text, "old");
+
+        // The failure leaves evidence behind, on top of the seeded call.
+        let calls = store.calls(1).unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].status, "error");
+
+        // The old caption is still the one the search finds.
+        {
+            let conn = store.conn.lock().unwrap();
+            let hits = crate::t_fts::search(&conn, "old", 100).unwrap();
+            assert_eq!(hits.len(), 1, "the old caption must stay searchable");
+        }
     }
 
     #[tokio::test]

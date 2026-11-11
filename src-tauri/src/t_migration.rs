@@ -245,14 +245,14 @@ fn get_migrations() -> Vec<Migration> {
 
 /// The built-in template every fresh install starts with. It is read-only.
 pub(crate) const VL_BUILTIN_TEMPLATE: &str = "内置描述";
-pub(crate) const VL_BUILTIN_PROMPT: &str = "请描述这张照片。\\n\
-     文件名：{file_name}\\n\
-     拍摄信息：{exif_summary}\\n\
-     拍摄时间：{taken_at}\\n\
+pub(crate) const VL_BUILTIN_PROMPT: &str = "请描述这张照片。\n\
+     文件名：{file_name}\n\
+     拍摄信息：{exif_summary}\n\
+     拍摄时间：{taken_at}\n\
      相机：{camera}";
 /// The output format constraint belongs in the system message; the gateway
 /// keeps the format stable there.
-pub(crate) const VL_BUILTIN_SYSTEM: &str = "只输出 JSON，字段形如 {caption, tags}。\\n\
+pub(crate) const VL_BUILTIN_SYSTEM: &str = "只输出 JSON，字段形如 {caption, tags}。\n\
      caption 是中文描述，tags 是中文标签数组。";
 pub(crate) const VL_BUILTIN_SPEC: &str = r#"{"caption":"中文描述","tags":"中文标签数组"}"#;
 
@@ -830,6 +830,22 @@ mod vl_migration_tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn the_builtin_templates_carry_real_newlines() {
+        // The prompt reaches the gateway as multiple lines, not as a literal
+        // backslash-n the model would echo back.
+        assert!(
+            super::VL_BUILTIN_PROMPT.contains('\n'),
+            "the prompt must contain real newlines"
+        );
+        assert!(!super::VL_BUILTIN_PROMPT.contains("\\n"));
+        assert!(
+            super::VL_BUILTIN_SYSTEM.contains('\n'),
+            "the system message must contain real newlines"
+        );
+        assert!(!super::VL_BUILTIN_SYSTEM.contains("\\n"));
     }
 
     #[test]

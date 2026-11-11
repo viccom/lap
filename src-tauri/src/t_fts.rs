@@ -82,9 +82,12 @@ pub fn index_text(text: &str) -> String {
 fn is_cjk(ch: char) -> bool {
     matches!(ch as u32,
         0x1100..=0x11FF    // Hangul jamo
+        | 0x3005           // CJK iteration mark (々)
         | 0x3040..=0x309F  // Hiragana
         | 0x30A0..=0x30FF  // Katakana
+        | 0x3105..=0x312F  // Bopomofo
         | 0x3130..=0x318F  // Hangul compatibility jamo
+        | 0x31C0..=0x31EF  // CJK strokes
         | 0x31F0..=0x31FF  // Katakana phonetic extensions
         | 0x3400..=0x4DBF  // CJK unified ideographs extension A
         | 0x4E00..=0x9FFF  // CJK unified ideographs
@@ -194,11 +197,17 @@ pub fn search(conn: &Connection, query: &str, limit: i64) -> Result<Vec<FtsHit>,
         let Some(expression) = column_expression(column, &tokens) else {
             continue;
         };
+        // The per-column LIMIT bounds the rows one column can contribute: a
+        // library where one column matches thousands of files is scanned up
+        // to the limit per column, not in full. The final ranking below still
+        // orders by matched-column count and then file id; a file cut off by
+        // a column's LIMIT cannot gain that column's count any more, which
+        // only matters for files beyond the requested limit anyway.
         let mut stmt = conn
-            .prepare("SELECT rowid FROM files_fts WHERE files_fts MATCH ?1")
+            .prepare("SELECT rowid FROM files_fts WHERE files_fts MATCH ?1 LIMIT ?2")
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(params![expression], |row| row.get::<_, i64>(0))
+            .query_map(params![expression, limit], |row| row.get::<_, i64>(0))
             .map_err(|e| e.to_string())?;
         for row in rows {
             let file_id = row.map_err(|e| e.to_string())?;
@@ -585,10 +594,14 @@ pub fn search_fts(query: String, limit: Option<i64>) -> Result<Vec<FtsHit>, Stri
     search(&conn, &query, limit.unwrap_or(FTS_DEFAULT_LIMIT))
 }
 
-/// Rebuild the whole index from the command layer.
+/// Rebuild the whole index from the command layer. The rebuild walks every
+/// file of the library, so it runs on the blocking thread pool instead of the
+/// UI thread.
 #[tauri::command]
-pub fn fts_reindex() -> Result<usize, String> {
-    reindex_all()
+pub async fn fts_reindex() -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(reindex_all)
+        .await
+        .map_err(|e| format!("FTS reindex task failed: {e}"))?
 }
 
 #[cfg(test)]
@@ -714,6 +727,14 @@ mod tests {
     #[test]
     fn punctuation_and_emoji_separate_tokens() {
         assert_eq!(tokenize("你好，世界！🎉"), vec!["你好", "世界"]);
+    }
+
+    #[test]
+    fn iteration_marks_bopomofo_and_strokes_are_cjk() {
+        // 々 (U+3005), ㄅ (U+3105) and ㇀ (U+31C0) belong to the CJK runs.
+        assert_eq!(tokenize("人々"), vec!["人々"]);
+        assert_eq!(tokenize("ㄅㄆ"), vec!["ㄅㄆ"]);
+        assert_eq!(tokenize("㇀㇁"), vec!["㇀㇁"]);
     }
 
     #[test]
