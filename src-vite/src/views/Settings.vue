@@ -475,6 +475,17 @@
         <!-- Image Understanding Tab -->
         <div v-else-if="config.settings.tabIndex === VL_SETTINGS_TAB" class="flex flex-col space-y-2">
 
+          <!-- the isolated playground for image understanding and exact search -->
+          <div class="flex items-center gap-2 rounded-box p-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+            <div class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
+              <div>{{ $t('vl.lab.title') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.open_lab_hint') }}</div>
+            </div>
+            <button class="t-button-default btn-outline ml-auto shrink-0" :disabled="openingLab" @click="openVlLab">
+              {{ $t('settings.vl.open_lab') }}
+            </button>
+          </div>
+
           <!-- gateway -->
           <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
             <div class="flex items-center gap-2 text-base-content/30">
@@ -813,7 +824,7 @@
 
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import { LogicalSize } from '@tauri-apps/api/dpi';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emit } from '@tauri-apps/api/event';
 import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useI18n } from 'vue-i18n';
@@ -881,6 +892,53 @@ const vlModel = ref('');
 const vlApiKey = ref('');
 const vlApiKeyClearPending = ref(false);
 const savingVlConfig = ref(false);
+
+// the lab playground window (image understanding + exact search)
+const openingLab = ref(false);
+
+/// Open the lab window, or focus the open one; the lab is the only place
+/// where the new features are wired into a page until they are validated.
+async function openVlLab() {
+  if (openingLab.value) return;
+  openingLab.value = true;
+  try {
+    const existing = await WebviewWindow.getByLabel('vl-lab');
+    if (existing) {
+      await existing.unminimize();
+      await existing.setFocus();
+      return;
+    }
+    const labWindow = new WebviewWindow('vl-lab', {
+      url: '/vl-lab',
+      title: 'Image understanding lab',
+      width: 1100,
+      height: 780,
+      minWidth: 720,
+      minHeight: 520,
+      resizable: true,
+      maximizable: false,
+      visible: false, // shown after creation, avoids the white flash on Windows
+      transparent: true,
+      decorations: isMac,
+      ...(isMac && {
+        titleBarStyle: 'overlay',
+        hiddenTitle: true,
+        minimizable: false,
+      }),
+    });
+    await new Promise<void>(resolve => {
+      labWindow.once('tauri://created', () => {
+        labWindow.show();
+        resolve();
+      });
+      labWindow.once('tauri://error', () => resolve());
+    });
+  } catch (error) {
+    console.error('Failed to open the lab window:', error);
+  } finally {
+    openingLab.value = false;
+  }
+}
 
 async function loadVlConfig() {
   try {

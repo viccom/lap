@@ -7,7 +7,8 @@
     "imageviewer",
     "imageeditor",
     "montage",
-    "settings"
+    "settings",
+    "vl-lab"
   ],
   "permissions": [
     "core:default",

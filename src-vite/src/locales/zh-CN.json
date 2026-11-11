@@ -1880,7 +1880,9 @@
       "model_hint": "发送给网关的模型名称。",
       "save": "保存网关配置",
       "saving": "保存中…",
-      "saved": "网关配置已保存"
+      "saved": "网关配置已保存",
+      "open_lab": "打开实验台",
+      "open_lab_hint": "在隔离页面中试用图片理解与精确检索。"
     }
   },
   "vl": {
@@ -1947,6 +1949,46 @@
       "scene": "场景",
       "title": "标题"
     },
-    "result_unreadable": "无法解析理解结果"
+    "result_unreadable": "无法解析理解结果",
+    "lab": {
+      "title": "图片理解实验台",
+      "gateway_ok": "网关已配置",
+      "gateway_missing": "网关未配置",
+      "gateway_missing_hint": "请先在 设置 → 图片理解 中填写网关地址与 API Key。",
+      "open_settings": "打开设置",
+      "index_status": "索引 {documents} / 文件 {files}",
+      "index_mismatch": "索引与库不一致（已索引 {documents}，文件 {files}）。",
+      "rebuild_index": "重建索引",
+      "rebuilding": "正在重建索引…",
+      "f1_title": "图片理解",
+      "load_files": "加载文件",
+      "loading_files": "加载中…",
+      "files_loaded_hint": "仅加载库中前 {count} 个文件。",
+      "no_files": "库中没有文件。",
+      "template": "模板",
+      "no_template": "没有可用模板",
+      "understand": "理解选中照片",
+      "force_rerun": "强制重跑（覆盖已有标注）",
+      "existing_annotation": "已有标注（将跳过）",
+      "batch_confirm_title": "发起 {count} 次云端调用？",
+      "batch_confirm_text": "每张选中的照片都会向网关发送一次请求，耗时较长且会消耗额度。",
+      "batch_confirm_ok": "仍然运行",
+      "cancel": "取消",
+      "running": "正在理解 {processed}/{total}…",
+      "cancel_run": "取消运行",
+      "still_running": "运行仍在后台执行，稍后可重新加载结果。",
+      "results_title": "结果",
+      "run_summary": "成功 {succeeded} · 失败 {failed} · 跳过 {skipped}",
+      "outcome_success": "已标注",
+      "outcome_skipped": "已跳过",
+      "outcome_failed": "失败",
+      "outcome_not_run": "未执行到",
+      "f2_title": "精确检索",
+      "search_placeholder": "输入检索词…",
+      "search_button": "精确搜索",
+      "searching": "搜索中…",
+      "hits_summary": "命中 {count} 个",
+      "no_hits": "没有命中。"
+    }
   }
 }

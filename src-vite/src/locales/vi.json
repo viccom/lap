@@ -1879,7 +1879,9 @@
       "model_hint": "The model name that is sent to the gateway.",
       "save": "Save gateway settings",
       "saving": "Saving…",
-      "saved": "Gateway settings saved"
+      "saved": "Gateway settings saved",
+      "open_lab": "Open the lab",
+      "open_lab_hint": "Try image understanding and exact search on an isolated page."
     }
   },
   "vl": {
@@ -1946,6 +1948,46 @@
       "scene": "Scene",
       "title": "Title"
     },
-    "result_unreadable": "The result could not be read"
+    "result_unreadable": "The result could not be read",
+    "lab": {
+      "title": "Image understanding lab",
+      "gateway_ok": "Gateway configured",
+      "gateway_missing": "Gateway not configured",
+      "gateway_missing_hint": "Set the gateway address and the API key under Settings → Image Understanding first.",
+      "open_settings": "Open settings",
+      "index_status": "Index {documents} / files {files}",
+      "index_mismatch": "The index is out of step with the library ({documents} indexed, {files} files).",
+      "rebuild_index": "Rebuild index",
+      "rebuilding": "Rebuilding the index…",
+      "f1_title": "Image understanding",
+      "load_files": "Load files",
+      "loading_files": "Loading…",
+      "files_loaded_hint": "Only the first {count} files of the library are loaded.",
+      "no_files": "The library is empty.",
+      "template": "Template",
+      "no_template": "No template available",
+      "understand": "Understand selection",
+      "force_rerun": "Force re-run (replaces existing annotations)",
+      "existing_annotation": "Annotated — will be skipped",
+      "batch_confirm_title": "Start {count} cloud calls?",
+      "batch_confirm_text": "Every selected photo sends one request to the gateway. This can take a while and may use quota.",
+      "batch_confirm_ok": "Run anyway",
+      "cancel": "Cancel",
+      "running": "Understanding {processed}/{total}…",
+      "cancel_run": "Cancel the run",
+      "still_running": "The run is still going in the background. Load the results later.",
+      "results_title": "Results",
+      "run_summary": "{succeeded} annotated · {failed} failed · {skipped} skipped",
+      "outcome_success": "Annotated",
+      "outcome_skipped": "Skipped",
+      "outcome_failed": "Failed",
+      "outcome_not_run": "Not reached",
+      "f2_title": "Exact search",
+      "search_placeholder": "Search the index…",
+      "search_button": "Search",
+      "searching": "Searching…",
+      "hits_summary": "{count} hits",
+      "no_hits": "No hits."
+    }
   }
 }

@@ -146,8 +146,6 @@
         </div>
       </div>
 
-      <VlPanel v-if="fileInfo?.id" :file-id="fileInfo.id" />
-
       <div class="shrink-0 border-t border-base-content/5 px-1 py-3">
         <button type="button" class="flex w-full items-center gap-1 cursor-pointer text-base-content/70 hover:text-base-content" :aria-expanded="showOrganizationPanel" @click="toggleOrganization">
           <IconRight class="w-3 h-3 transition-transform duration-200" :class="{ 'rotate-90': showOrganizationPanel }" />
@@ -589,7 +587,6 @@ import TButton from '@/components/TButton.vue';
 import FavoriteRatingControl from '@/components/FavoriteRatingControl.vue';
 import ImageHistogram from '@/components/ImageHistogram.vue';
 import MapView from '@/components/MapView.vue';
-import VlPanel from '@/components/VlPanel.vue';
 
 const props = defineProps({
   empty: { type: Boolean, default: false },

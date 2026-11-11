@@ -283,7 +283,9 @@ test('every locale carries the image understanding keys', async () => {
     assert.deepEqual(Object.keys(messages.vl ?? {}).sort(), expectedVl, `${file} misses vl keys`);
     assert.deepEqual(Object.keys(messages.settings?.vl ?? {}).sort(), expectedSettings, `${file} misses settings.vl keys`);
     for (const key of expectedVl) {
-      if (key === 'field') continue;
+      // `field` and `lab` are nested objects, covered by their own tests
+      // (vlLab.test.mjs checks the lab key set of every locale).
+      if (key === 'field' || key === 'lab') continue;
       assert.equal(typeof messages.vl[key], 'string', `${file} misses vl.${key}`);
     }
     for (const key of expectedSettings) {

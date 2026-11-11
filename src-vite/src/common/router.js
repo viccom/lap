@@ -26,6 +26,11 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/Settings.vue'),
+  },
+  {
+    path: '/vl-lab',
+    name: 'VlLab',
+    component: () => import('@/views/VlLab.vue'),
   }
 ];
 

@@ -1,0 +1,238 @@
+import assert from 'node:assert/strict';
+import { readFile, readdir } from 'node:fs/promises';
+import test from 'node:test';
+
+import {
+  LAB_MAX_FILES,
+  LAB_POLL_INTERVAL_MS,
+  LAB_POLL_LIMIT_MS,
+  OUTCOME_LABEL_KEYS,
+  annotatedIdSet,
+  buildLabQueryParams,
+  buildLabRunArgs,
+  collectMatchedColumns,
+  deriveFileOutcome,
+  ftsReindex,
+  getFtsStatus,
+  hitBadges,
+  indexIsConsistent,
+  needsBatchConfirm,
+  pickerRows,
+  searchFts,
+} from '../src/common/vlLabLogic.js';
+
+/// An invoker that records the calls and answers with the given result.
+function recorder(result = null) {
+  const calls = [];
+  const invoker = async (command, args) => {
+    calls.push({ command, args });
+    return typeof result === 'function' ? result(command, args) : result;
+  };
+  return { calls, invoker };
+}
+
+test('the picker caps the file list and polls with the panel margins', () => {
+  assert.equal(LAB_MAX_FILES, 200, 'at most 200 files are loaded');
+  assert.equal(LAB_POLL_LIMIT_MS, 200_000, 'polling gives up after 200 s');
+  assert.equal(LAB_POLL_INTERVAL_MS, 3000, 'the poll runs every 3 s');
+});
+
+test('the lab query asks for the whole library with the default filters', () => {
+  assert.deepEqual(buildLabQueryParams(), {
+    searchFileType: 0,
+    sortType: 0,
+    sortOrder: 0,
+    randomSeed: 0,
+    searchFileName: '',
+    searchAllSubfolders: '',
+    searchFolder: '',
+    startDate: 0,
+    endDate: 0,
+    calendarSort: 0,
+    folderSort: 0,
+    categorySort: 0,
+    make: '',
+    model: '',
+    lensMake: '',
+    lensModel: '',
+    locationAdmin1: '',
+    locationName: '',
+    isFavorite: false,
+    rating: -1,
+    cullingFlag: -1,
+    tagId: 0,
+    personId: 0,
+  });
+});
+
+test('annotatedIdSet marks only the files with an annotation for the template', () => {
+  const annotationsByFileId = {
+    1: [{ id: 10, templateId: 4 }],
+    2: [{ id: 11, templateId: 5 }],
+    3: [],
+  };
+  const ids = annotatedIdSet(annotationsByFileId, 4);
+  assert.equal(ids.has(1), true);
+  assert.equal(ids.has(2), false, 'a different template is not an idempotence hit');
+  assert.equal(ids.has(3), false);
+  assert.deepEqual(annotatedIdSet(null, 4).size, 0);
+});
+
+test('picker rows carry the selection and the idempotence mark', () => {
+  const files = [{ id: 1, name: 'a.jpg' }, { id: 2, name: 'b.jpg' }, { id: 3, name: 'c.jpg' }];
+  const annotated = new Set([2]);
+  const rows = pickerRows(files, [2, '3'], annotated);
+  assert.deepEqual(rows.map(row => [row.id, row.selected, row.hasExisting]), [
+    [1, false, false],
+    [2, true, true],
+    [3, true, false],
+  ]);
+  assert.equal(rows[0].file.name, 'a.jpg', 'the row keeps the file');
+});
+
+test('a batch over more than one file asks for a confirmation', () => {
+  assert.equal(needsBatchConfirm(0), false);
+  assert.equal(needsBatchConfirm(1), false, 'a single photo runs directly');
+  assert.equal(needsBatchConfirm(2), true);
+  assert.equal(needsBatchConfirm(40), true);
+});
+
+test('the run arguments stay numeric and carry the force flag', () => {
+  assert.deepEqual(buildLabRunArgs(['8', 9], '5', 1), { fileIds: [8, 9], templateId: 5, force: true });
+  assert.deepEqual(buildLabRunArgs([], 5, false), { fileIds: [], templateId: 5, force: false });
+});
+
+test('a new annotation means success', () => {
+  const outcome = deriveFileOutcome({
+    force: false,
+    baselineAnnotationId: 10,
+    baselineCallId: 20,
+    annotations: [{ id: 11, templateId: 4 }],
+    calls: [{ id: 21 }],
+  });
+  assert.equal(outcome.status, 'success');
+  assert.equal(outcome.annotation.id, 11);
+});
+
+test('an existing annotation without force means skipped', () => {
+  const outcome = deriveFileOutcome({
+    force: false,
+    baselineAnnotationId: 10,
+    baselineCallId: 20,
+    annotations: [{ id: 10, templateId: 4 }],
+    calls: [{ id: 20 }],
+  });
+  assert.equal(outcome.status, 'skipped');
+  assert.equal(outcome.annotation.id, 10, 'the kept annotation is shown');
+});
+
+test('a new call without an annotation means failed', () => {
+  const outcome = deriveFileOutcome({
+    force: true,
+    baselineAnnotationId: 10,
+    baselineCallId: 20,
+    annotations: [{ id: 10, templateId: 4 }],
+    calls: [{ id: 21, error: 'gateway down' }],
+  });
+  assert.equal(outcome.status, 'failed');
+  assert.equal(outcome.call.error, 'gateway down', 'the failed call carries the reason');
+});
+
+test('no new evidence means the file was not reached', () => {
+  const cancelled = deriveFileOutcome({
+    force: false,
+    baselineAnnotationId: 0,
+    baselineCallId: 0,
+    annotations: [],
+    calls: [],
+  });
+  assert.equal(cancelled.status, 'notRun');
+
+  // force without any new evidence is also "not reached", never "skipped".
+  const forced = deriveFileOutcome({
+    force: true,
+    baselineAnnotationId: 10,
+    baselineCallId: 20,
+    annotations: [{ id: 10 }],
+    calls: [{ id: 20 }],
+  });
+  assert.equal(forced.status, 'notRun');
+});
+
+test('every outcome has a label key', () => {
+  assert.deepEqual(Object.keys(OUTCOME_LABEL_KEYS).sort(), ['failed', 'notRun', 'skipped', 'success']);
+  for (const key of Object.values(OUTCOME_LABEL_KEYS)) {
+    assert.equal(key.startsWith('vl.lab.outcome_'), true, key);
+  }
+});
+
+test('the index is consistent when both counts match', () => {
+  assert.equal(indexIsConsistent({ documents: 404, files: 404 }), true);
+  assert.equal(indexIsConsistent({ documents: 3, files: 4 }), false);
+  assert.equal(indexIsConsistent(null), true, 'a missing status shows no warning');
+});
+
+test('hit badges map the matched columns to their i18n keys', () => {
+  const badges = hitBadges({ fileId: 7, matchedColumns: ['name', 'like', 'bogus'] });
+  assert.deepEqual(badges, [
+    { column: 'name', labelKey: 'search.match_column.name' },
+    { column: 'like', labelKey: 'search.match_column.like' },
+    { column: 'bogus', labelKey: null },
+  ]);
+});
+
+test('the matched columns of all hits are collected without duplicates', () => {
+  const columns = collectMatchedColumns([
+    { fileId: 1, matchedColumns: ['name', 'tags'] },
+    { fileId: 2, matchedColumns: ['tags', 'caption'] },
+  ]);
+  assert.deepEqual(columns, ['name', 'tags', 'caption']);
+});
+
+test('the fts invoke wrappers send the documented commands', async () => {
+  const status = recorder({ documents: 4, files: 4 });
+  assert.deepEqual(await getFtsStatus(status.invoker), { documents: 4, files: 4 });
+  assert.deepEqual(status.calls, [{ command: 'fts_status', args: undefined }]);
+
+  const reindex = recorder(4);
+  assert.equal(await ftsReindex(reindex.invoker), 4);
+  assert.deepEqual(reindex.calls, [{ command: 'fts_reindex', args: undefined }]);
+
+  const search = recorder([{ fileId: 1, matchedColumns: ['name'] }]);
+  const hits = await searchFts('cat', 200, search.invoker);
+  assert.equal(hits.length, 1);
+  assert.deepEqual(search.calls, [{ command: 'search_fts', args: { query: 'cat', limit: 200 } }]);
+  // the default limit matches the search result limit of the app
+  const plain = recorder([]);
+  await searchFts('cat', undefined, plain.invoker);
+  assert.equal(plain.calls[0].args.limit, 200);
+});
+
+test('every locale carries the lab keys', async () => {
+  const directory = new URL('../src/locales/', import.meta.url);
+  const files = (await readdir(directory)).filter(name => name.endsWith('.json'));
+  assert.equal(files.length, 17);
+  const english = JSON.parse(await readFile(new URL('en.json', directory), 'utf8'));
+  const expectedKeys = Object.keys(english.vl.lab).sort();
+  assert.ok(expectedKeys.includes('title'));
+  assert.ok(expectedKeys.includes('outcome_not_run'));
+  assert.ok(expectedKeys.length >= 30, 'the lab page has a substantial key set');
+
+  for (const file of files) {
+    const messages = JSON.parse(await readFile(new URL(file, directory), 'utf8'));
+    const lab = messages.vl?.lab ?? {};
+    assert.deepEqual(Object.keys(lab).sort(), expectedKeys, `${file} misses vl.lab keys`);
+    for (const key of expectedKeys) {
+      assert.equal(typeof lab[key], 'string', `${file} misses vl.lab.${key}`);
+      assert.ok(lab[key].trim().length > 0, `${file} has an empty vl.lab.${key}`);
+    }
+    assert.equal(typeof messages.settings?.vl?.open_lab, 'string', `${file} misses settings.vl.open_lab`);
+  }
+
+  // The Chinese locales carry a real translation, not the English placeholder.
+  for (const file of ['zh-CN.json', 'zh-TW.json']) {
+    const messages = JSON.parse(await readFile(new URL(file, directory), 'utf8'));
+    assert.notEqual(messages.vl.lab.title, english.vl.lab.title, file);
+    assert.notEqual(messages.settings.vl.open_lab, english.settings.vl.open_lab, file);
+  }
+});

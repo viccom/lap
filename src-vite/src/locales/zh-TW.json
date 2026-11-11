@@ -1880,7 +1880,9 @@
       "model_hint": "傳送給閘道的模型名稱。",
       "save": "儲存閘道設定",
       "saving": "儲存中…",
-      "saved": "閘道設定已儲存"
+      "saved": "閘道設定已儲存",
+      "open_lab": "開啟實驗台",
+      "open_lab_hint": "在隔離頁面中試用圖片理解與精確檢索。"
     }
   },
   "vl": {
@@ -1947,6 +1949,46 @@
       "scene": "場景",
       "title": "標題"
     },
-    "result_unreadable": "無法解析理解結果"
+    "result_unreadable": "無法解析理解結果",
+    "lab": {
+      "title": "圖片理解實驗台",
+      "gateway_ok": "閘道已設定",
+      "gateway_missing": "閘道未設定",
+      "gateway_missing_hint": "請先在 設定 → 圖片理解 中填寫閘道位址與 API Key。",
+      "open_settings": "開啟設定",
+      "index_status": "索引 {documents} / 檔案 {files}",
+      "index_mismatch": "索引與庫不一致（已索引 {documents}，檔案 {files}）。",
+      "rebuild_index": "重建索引",
+      "rebuilding": "正在重建索引…",
+      "f1_title": "圖片理解",
+      "load_files": "載入檔案",
+      "loading_files": "載入中…",
+      "files_loaded_hint": "僅載入庫中前 {count} 個檔案。",
+      "no_files": "庫中沒有檔案。",
+      "template": "範本",
+      "no_template": "沒有可用範本",
+      "understand": "理解選取照片",
+      "force_rerun": "強制重跑（覆蓋既有標註）",
+      "existing_annotation": "已有標註（將跳過）",
+      "batch_confirm_title": "發起 {count} 次雲端呼叫？",
+      "batch_confirm_text": "每張選取的照片都會向閘道傳送一次請求，耗時較長且會消耗額度。",
+      "batch_confirm_ok": "仍然執行",
+      "cancel": "取消",
+      "running": "正在理解 {processed}/{total}…",
+      "cancel_run": "取消執行",
+      "still_running": "執行仍在背景進行，稍後可重新載入結果。",
+      "results_title": "結果",
+      "run_summary": "成功 {succeeded} · 失敗 {failed} · 跳過 {skipped}",
+      "outcome_success": "已標註",
+      "outcome_skipped": "已跳過",
+      "outcome_failed": "失敗",
+      "outcome_not_run": "未執行到",
+      "f2_title": "精確檢索",
+      "search_placeholder": "輸入檢索詞…",
+      "search_button": "精確搜尋",
+      "searching": "搜尋中…",
+      "hits_summary": "命中 {count} 個",
+      "no_hits": "沒有命中。"
+    }
   }
 }
