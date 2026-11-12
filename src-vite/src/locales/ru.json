@@ -1206,7 +1206,6 @@
     "fields_default": "По умолчанию",
     "fields_all": "Показать все",
     "fields_custom": "Настроить",
-
     "hide_empty_fields": "Автоматически скрывать пустые поля",
     "customize_fields": "Настроить поля",
     "title": "Информация",
@@ -1924,7 +1923,7 @@
     "system_template_unsupported": "The current backend does not store a system template.",
     "response_spec": "Response spec (JSON)",
     "response_spec_hint": "A JSON object: the keys are the fields the model should return, the values describe them.",
-    "placeholders_hint": "Placeholders: {file_name} {exif_summary} {taken_at} {camera}",
+    "placeholders_hint": "Placeholders: {file_name} {exif_summary} {taken_at} {camera} {tags} {people} {location} {gps} {comments} {title} {headline} {description} {artist} {copyright} {software} {camera_make} {camera_model} {lens} {exposure} {f_number} {focal_length} {iso} {flash} {dimensions} {duration} {rating} {favorite} {format} {file_size} {created_at} {modified_at}",
     "builtin": "Built-in",
     "builtin_readonly": "Built-in templates cannot be edited or deleted.",
     "builtin_edit_copy": "Saving creates a copy of this built-in template. The built-in template itself stays unchanged.",
@@ -1988,7 +1987,16 @@
       "search_button": "Search",
       "searching": "Searching…",
       "hits_summary": "{count} hits",
-      "no_hits": "No hits."
+      "no_hits": "No hits.",
+      "semantic_button": "Semantic search",
+      "semantic_hint": "Ranks by image embedding similarity, not by the annotation text. Chinese queries use the multilingual model automatically when it is installed.",
+      "semantic_needs_multilingual": "Chinese semantic search needs the multilingual model. Download it in Settings → Search.",
+      "precise_hint": "Precise search is full-text search: results are ranked by relevance and partial keyword matches are allowed (no longer all-words-required).",
+      "llm_rerank": "Cloud LLM rerank",
+      "llm_rerank_hint": "Send the query and candidate thumbnails to the model, which keeps only photos that actually match the described scene (thinking disabled, about 3–6 s); the gateway must be configured.",
+      "llm_rerank_model": "Model: {model}",
+      "llm_rerank_no_match": "No photos match this description",
+      "llm_rerank_failed": "LLM rerank failed, keeping the original ranking"
     }
   }
 }

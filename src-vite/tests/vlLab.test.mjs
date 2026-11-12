@@ -8,6 +8,7 @@ import {
   LAB_POLL_LIMIT_MS,
   OUTCOME_LABEL_KEYS,
   annotatedIdSet,
+  applyRerankSelection,
   buildLabQueryParams,
   buildLabRunArgs,
   collectMatchedColumns,
@@ -18,6 +19,8 @@ import {
   indexIsConsistent,
   needsBatchConfirm,
   pickerRows,
+  rerankHitList,
+  rerankSearchWithLlm,
   searchFts,
 } from '../src/common/vlLabLogic.js';
 
@@ -138,6 +141,20 @@ test('a new call without an annotation means failed', () => {
   assert.equal(outcome.call.error, 'gateway down', 'the failed call carries the reason');
 });
 
+test('a forced rerun that refreshes the existing annotation in place means success', () => {
+  // The backend upserts on a forced rerun: the annotation row keeps its id
+  // but its callId moves to the new successful call.
+  const outcome = deriveFileOutcome({
+    force: true,
+    baselineAnnotationId: 10,
+    baselineCallId: 20,
+    annotations: [{ id: 10, templateId: 4, callId: 21 }],
+    calls: [{ id: 20 }, { id: 21, status: 'ok' }],
+  });
+  assert.equal(outcome.status, 'success');
+  assert.equal(outcome.annotation.id, 10, 'the refreshed annotation is shown');
+});
+
 test('no new evidence means the file was not reached', () => {
   const cancelled = deriveFileOutcome({
     force: false,
@@ -235,4 +252,76 @@ test('every locale carries the lab keys', async () => {
     assert.notEqual(messages.vl.lab.title, english.vl.lab.title, file);
     assert.notEqual(messages.settings.vl.open_lab, english.settings.vl.open_lab, file);
   }
+});
+
+test('toggleSelect writes the selection before awaiting (rapid clicks cannot lose each other)', async () => {
+  const source = await readFile(new URL('../src/views/VlLab.vue', import.meta.url), 'utf8');
+  const start = source.indexOf('async function toggleSelect');
+  assert.ok(start >= 0, 'VlLab.vue must define toggleSelect');
+  const body = source.slice(start, source.indexOf('\n}', start));
+  // The read-modify-write of selectedIds must not straddle an await: two
+  // clicks inside the annotation-fetch round-trip each start from the same
+  // stale set, and the later write silently drops the earlier selection.
+  const writeAt = body.indexOf('selectedIds.value = next');
+  const firstAwait = body.indexOf('await ');
+  assert.ok(writeAt >= 0, 'toggleSelect must write selectedIds.value = next');
+  assert.ok(firstAwait < 0 || writeAt < firstAwait,
+    'selectedIds.value = next must run before the first await in toggleSelect');
+  // The annotation cache write must not await inside the assigned object
+  // literal: the spread would snapshot the cache before the await, and a
+  // sibling toggle resolving in between would be dropped by the stale snapshot.
+  assert.ok(
+    !/annotationsByFileId\.value\s*=\s*\{[^}]*await/.test(body),
+    'annotationsByFileId.value must be assigned from a spread taken after the await, not inside an object literal containing await',
+  );
+});
+
+test('a rerank selection keeps only the hits the model judged relevant', () => {
+  const hits = [
+    { fileId: 7, matchedColumns: ['caption'] },
+    { fileId: 9, matchedColumns: ['name'] },
+    { fileId: 11, matchedColumns: ['tags'] },
+  ];
+  assert.deepEqual(applyRerankSelection(hits, [11, 7]).map(hit => hit.fileId), [11, 7]);
+  // An invented id and a duplicate are ignored; omitted hits are dropped.
+  assert.deepEqual(applyRerankSelection(hits, [99, 11, 11]).map(hit => hit.fileId), [11]);
+  assert.equal(applyRerankSelection(hits, [11])[0].matchedColumns[0], 'tags');
+  // An empty selection means nothing matched.
+  assert.deepEqual(applyRerankSelection(hits, []), []);
+});
+
+test('rerankHitList sends every candidate and applies the model selection', async () => {
+  const calls = [];
+  const invoker = async (command, args) => {
+    calls.push({ command, args });
+    return [9];
+  };
+  const hits = [
+    { fileId: 7, matchedColumns: ['caption'] },
+    { fileId: 9, matchedColumns: ['name'] },
+  ];
+  const result = await rerankHitList('摘葡萄', hits, invoker);
+  assert.deepEqual(calls, [
+    { command: 'rerank_search_with_llm', args: { query: '摘葡萄', fileIds: [7, 9] } },
+  ]);
+  assert.equal(result.reranked, true);
+  assert.deepEqual(result.hits.map(hit => hit.fileId), [9]);
+  // A single candidate is still verified; an empty list is not sent.
+  await rerankHitList('摘葡萄', [hits[0]], invoker);
+  assert.deepEqual(calls.at(-1).args.fileIds, [7]);
+  await rerankHitList('摘葡萄', [], invoker);
+  assert.equal(calls.length, 2);
+});
+
+test('the rerank invoke sends the command and numeric ids', async () => {
+  const calls = [];
+  const invoker = async (command, args) => {
+    calls.push({ command, args });
+    return [9, 7];
+  };
+  const order = await rerankSearchWithLlm('摘葡萄', [7, '9'], invoker);
+  assert.deepEqual(order, [9, 7]);
+  assert.deepEqual(calls, [
+    { command: 'rerank_search_with_llm', args: { query: '摘葡萄', fileIds: [7, 9] } },
+  ]);
 });

@@ -456,6 +456,7 @@ async fn main() {
             t_vl::get_vl_annotations,
             t_vl::get_vl_calls,
             t_vl::cancel_vl_run,
+            t_vl::rerank_search_with_llm,
             // exact search
             t_fts::search_fts,
             t_fts::fts_reindex,

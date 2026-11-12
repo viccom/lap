@@ -1206,7 +1206,6 @@
     "fields_default": "預設",
     "fields_all": "全部顯示",
     "fields_custom": "自訂",
-
     "hide_empty_fields": "自動隱藏空白欄位",
     "customize_fields": "自訂欄位",
     "title": "資訊",
@@ -1924,7 +1923,7 @@
     "system_template_unsupported": "目前的後端不會儲存系統提示詞。",
     "response_spec": "回傳欄位約定（JSON）",
     "response_spec_hint": "一個 JSON 物件：鍵是模型需要回傳的欄位，值是對該欄位的說明。",
-    "placeholders_hint": "預留位置：{file_name} {exif_summary} {taken_at} {camera}",
+    "placeholders_hint": "預留位置：{file_name} {exif_summary} {taken_at} {camera} {tags} {people} {location} {gps} {comments} {title} {headline} {description} {artist} {copyright} {software} {camera_make} {camera_model} {lens} {exposure} {f_number} {focal_length} {iso} {flash} {dimensions} {duration} {rating} {favorite} {format} {file_size} {created_at} {modified_at}",
     "builtin": "內建",
     "builtin_readonly": "內建範本不可編輯或刪除。",
     "builtin_edit_copy": "儲存後會建立一份內建範本的副本，內建範本本身保持不變。",
@@ -1988,7 +1987,16 @@
       "search_button": "精確搜尋",
       "searching": "搜尋中…",
       "hits_summary": "命中 {count} 個",
-      "no_hits": "沒有命中。"
+      "no_hits": "沒有命中。",
+      "semantic_button": "語意搜尋",
+      "semantic_hint": "依影像內容相似度排序（不是標註文字）；已安裝多語言模型時，中文查詢會自動使用它。",
+      "semantic_needs_multilingual": "中文語意檢索需要「多語言」模型，請先在 設定→搜尋 中下載。",
+      "precise_hint": "精確搜尋 = 全文檢索：依相關度排序，允許部分關鍵詞命中（不再是「必須全部命中」）。",
+      "llm_rerank": "雲端 LLM 重排",
+      "llm_rerank_hint": "勾選後將查詢與候選縮圖送給模型，按畫面判斷並只保留真正符合描述的照片（關閉深度思考，約 3–6 秒）；縮圖會傳送到已設定的閘道。",
+      "llm_rerank_model": "模型：{model}（在 設定→圖片理解 中修改）",
+      "llm_rerank_no_match": "沒有與描述相符的照片",
+      "llm_rerank_failed": "雲端重排失敗，已保留原始排序"
     }
   }
 }

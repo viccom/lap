@@ -741,12 +741,48 @@ pub fn delete_template(store: &dyn VlStore, id: i64) -> Result<bool, String> {
 // ----------------------------------------------------------------------------
 
 /// Values substituted into a prompt template.
+///
+/// Every field is read-only metadata of the file: the prompt can describe the
+/// photo without the model ever writing back into the library.
 #[derive(Debug, Clone, Default)]
 pub struct PromptContext {
+    // identity and capture
     pub file_name: Option<String>,
     pub exif_summary: Option<String>,
     pub taken_at: Option<String>,
     pub camera: Option<String>,
+    // library relations
+    pub tags: Option<String>,
+    pub people: Option<String>,
+    // location
+    pub location: Option<String>,
+    pub gps: Option<String>,
+    // descriptive metadata
+    pub comments: Option<String>,
+    pub title: Option<String>,
+    pub headline: Option<String>,
+    pub description: Option<String>,
+    pub artist: Option<String>,
+    pub copyright: Option<String>,
+    pub software: Option<String>,
+    // camera and capture details
+    pub camera_make: Option<String>,
+    pub camera_model: Option<String>,
+    pub lens: Option<String>,
+    pub exposure: Option<String>,
+    pub f_number: Option<String>,
+    pub focal_length: Option<String>,
+    pub iso: Option<String>,
+    pub flash: Option<String>,
+    // file properties
+    pub dimensions: Option<String>,
+    pub duration: Option<String>,
+    pub rating: Option<String>,
+    pub favorite: Option<String>,
+    pub format: Option<String>,
+    pub file_size: Option<String>,
+    pub created_at: Option<String>,
+    pub modified_at: Option<String>,
 }
 
 /// Substitute the known placeholders. Missing values become an empty string
@@ -767,18 +803,110 @@ pub fn render_system(template: &str, context: &PromptContext) -> String {
 /// The shared placeholder substitution of the prompt and the system message.
 fn render_template(template: &str, context: &PromptContext) -> String {
     let mut rendered = template.to_string();
-    for (placeholder, value) in [
+    let values: [(&str, Option<&str>); 31] = [
         ("{file_name}", context.file_name.as_deref()),
         ("{exif_summary}", context.exif_summary.as_deref()),
         ("{taken_at}", context.taken_at.as_deref()),
         ("{camera}", context.camera.as_deref()),
-    ] {
+        ("{tags}", context.tags.as_deref()),
+        ("{people}", context.people.as_deref()),
+        ("{location}", context.location.as_deref()),
+        ("{gps}", context.gps.as_deref()),
+        ("{comments}", context.comments.as_deref()),
+        ("{title}", context.title.as_deref()),
+        ("{headline}", context.headline.as_deref()),
+        ("{description}", context.description.as_deref()),
+        ("{artist}", context.artist.as_deref()),
+        ("{copyright}", context.copyright.as_deref()),
+        ("{software}", context.software.as_deref()),
+        ("{camera_make}", context.camera_make.as_deref()),
+        ("{camera_model}", context.camera_model.as_deref()),
+        ("{lens}", context.lens.as_deref()),
+        ("{exposure}", context.exposure.as_deref()),
+        ("{f_number}", context.f_number.as_deref()),
+        ("{focal_length}", context.focal_length.as_deref()),
+        ("{iso}", context.iso.as_deref()),
+        ("{flash}", context.flash.as_deref()),
+        ("{dimensions}", context.dimensions.as_deref()),
+        ("{duration}", context.duration.as_deref()),
+        ("{rating}", context.rating.as_deref()),
+        ("{favorite}", context.favorite.as_deref()),
+        ("{format}", context.format.as_deref()),
+        ("{file_size}", context.file_size.as_deref()),
+        ("{created_at}", context.created_at.as_deref()),
+        ("{modified_at}", context.modified_at.as_deref()),
+    ];
+    for (placeholder, value) in values {
         rendered = rendered.replace(placeholder, value.unwrap_or(""));
     }
     rendered
 }
 
+/// A trimmed value, or `None` when it is empty.
+fn clean(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// Join the non-empty parts with a comma, dropping duplicates.
+fn joined_segments(parts: &[Option<String>]) -> Option<String> {
+    let mut kept: Vec<String> = Vec::new();
+    for part in parts.iter().flatten() {
+        let value = part.trim();
+        if value.is_empty() || kept.iter().any(|existing| existing == value) {
+            continue;
+        }
+        kept.push(value.to_string());
+    }
+    if kept.is_empty() {
+        None
+    } else {
+        Some(kept.join(", "))
+    }
+}
+
+/// A unix timestamp as local-looking `YYYY-MM-DD HH:MM:SS` (UTC fields, the
+/// same convention `taken_at` already used).
+fn timestamp_text(seconds: Option<i64>) -> Option<String> {
+    seconds
+        .and_then(|value| chrono::DateTime::from_timestamp(value, 0))
+        .map(|value| value.format("%Y-%m-%d %H:%M:%S").to_string())
+}
+
+/// A byte count as a short human readable string.
+fn human_size(bytes: i64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} {}", UNITS[0])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
+/// A duration in seconds as `M:SS` or `H:MM:SS`.
+fn duration_text(seconds: i64) -> String {
+    let seconds = seconds.max(0);
+    if seconds >= 3600 {
+        format!("{}:{:02}:{:02}", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
+    } else if seconds >= 60 {
+        format!("{}:{:02}", seconds / 60, seconds % 60)
+    } else {
+        format!("{seconds}s")
+    }
+}
+
 /// Build the prompt context of a file from its metadata.
+///
+/// Tags and people live in other tables; `prompt_context_with_conn` fills
+/// them. This builder stays pure so tests can exercise it without a database.
 pub fn prompt_context(file: &crate::t_sqlite::AFile) -> PromptContext {
     let camera = match (
         file.e_make.as_deref().unwrap_or("").trim(),
@@ -817,17 +945,130 @@ pub fn prompt_context(file: &crate::t_sqlite::AFile) -> PromptContext {
         }
     };
 
-    let taken_at = file.taken_date.and_then(|seconds| {
-        chrono::DateTime::from_timestamp(seconds, 0)
-            .map(|value| value.format("%Y-%m-%d %H:%M:%S").to_string())
-    });
+    let taken_at = timestamp_text(file.taken_date);
 
     PromptContext {
         file_name: Some(file.name.clone()),
         exif_summary,
         taken_at,
         camera,
+        tags: None,
+        people: None,
+        location: joined_segments(&[
+            clean(file.geo_name.as_deref()),
+            clean(file.geo_admin1.as_deref()),
+            clean(file.geo_admin2.as_deref()),
+            clean(file.geo_cc.as_deref()),
+        ]),
+        gps: match (file.gps_latitude, file.gps_longitude) {
+            (Some(latitude), Some(longitude)) => Some(format!("{latitude:.6}, {longitude:.6}")),
+            _ => None,
+        },
+        comments: clean(file.comments.as_deref()),
+        title: clean(file.e_title.as_deref()),
+        headline: clean(file.e_headline.as_deref()),
+        description: clean(file.e_description.as_deref()),
+        artist: clean(file.e_artist.as_deref()),
+        copyright: clean(file.e_copyright.as_deref()),
+        software: clean(file.e_software.as_deref()),
+        camera_make: clean(file.e_make.as_deref()),
+        camera_model: clean(file.e_model.as_deref()),
+        lens: joined_segments(&[
+            clean(file.e_lens_make.as_deref()),
+            clean(file.e_lens_model.as_deref()),
+        ]),
+        exposure: clean(file.e_exposure_time.as_deref()),
+        f_number: clean(file.e_f_number.as_deref()),
+        focal_length: clean(file.e_focal_length.as_deref()),
+        iso: clean(file.e_iso_speed.as_deref()),
+        flash: clean(file.e_flash.as_deref()),
+        dimensions: match (file.width, file.height) {
+            (Some(width), Some(height)) => Some(format!("{width}x{height}")),
+            _ => None,
+        },
+        duration: file.duration.map(duration_text),
+        rating: file.rating.map(|rating| rating.to_string()),
+        favorite: file
+            .is_favorite
+            .map(|favorite| if favorite { "true" } else { "false" }.to_string()),
+        format: clean(file.format_label.as_deref()),
+        file_size: (file.size > 0).then(|| human_size(file.size)),
+        created_at: timestamp_text(file.created_at),
+        modified_at: timestamp_text(file.modified_at),
     }
+}
+
+/// The prompt context including the tags and people of the file.
+pub fn prompt_context_with_conn(
+    conn: &Connection,
+    file: &crate::t_sqlite::AFile,
+) -> PromptContext {
+    let mut context = prompt_context(file);
+    if let Some(file_id) = file.id {
+        context.tags = names_text(tag_names(conn, file_id));
+        context.people = names_text(people_names(conn, file_id));
+    }
+    context
+}
+
+fn names_text(names: Vec<String>) -> Option<String> {
+    if names.is_empty() {
+        None
+    } else {
+        Some(names.join(", "))
+    }
+}
+
+fn table_exists(conn: &Connection, name: &str) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?1)",
+        params![name],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|exists| exists == 1)
+    .unwrap_or(false)
+}
+
+/// The names of the tags of a file, ordered by name.
+fn tag_names(conn: &Connection, file_id: i64) -> Vec<String> {
+    if !table_exists(conn, "afile_tags") || !table_exists(conn, "atags") {
+        return Vec::new();
+    }
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT DISTINCT t.name FROM afile_tags ft
+         JOIN atags t ON t.id = ft.tag_id
+         WHERE ft.file_id = ?1 AND t.name IS NOT NULL
+         ORDER BY t.name COLLATE NOCASE",
+    ) else {
+        return Vec::new();
+    };
+    let Ok(rows) = stmt.query_map(params![file_id], |row| row.get::<_, String>(0)) else {
+        return Vec::new();
+    };
+    rows.flatten()
+        .filter(|name| !name.trim().is_empty())
+        .collect()
+}
+
+/// The names of the people a file shows, ordered by name.
+fn people_names(conn: &Connection, file_id: i64) -> Vec<String> {
+    if !table_exists(conn, "faces") || !table_exists(conn, "persons") {
+        return Vec::new();
+    }
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT DISTINCT p.name FROM faces f
+         JOIN persons p ON p.id = f.person_id
+         WHERE f.file_id = ?1 AND p.name IS NOT NULL
+         ORDER BY p.name COLLATE NOCASE",
+    ) else {
+        return Vec::new();
+    };
+    let Ok(rows) = stmt.query_map(params![file_id], |row| row.get::<_, String>(0)) else {
+        return Vec::new();
+    };
+    rows.flatten()
+        .filter(|name| !name.trim().is_empty())
+        .collect()
 }
 
 // ----------------------------------------------------------------------------
@@ -988,6 +1229,320 @@ pub fn result_json(text: &str, spec: &str) -> (serde_json::Value, bool) {
         return (parsed, false);
     }
     (serde_json::Value::Object(filtered), false)
+}
+
+// ----------------------------------------------------------------------------
+// Cloud LLM rerank (search results)
+// ----------------------------------------------------------------------------
+
+/// How many candidates the rerank request carries. The prompt stays small
+/// enough for a flash model to answer in a few seconds.
+const VL_RERANK_MAX_CANDIDATES: usize = 20;
+/// The answer is a short id array; the budget also covers the gateway's
+/// hidden thinking tokens, which are billed even with thinking disabled.
+const VL_RERANK_MAX_TOKENS: usize = 1000;
+const VL_RERANK_TIMEOUT_SECS: u64 = 30;
+/// Thumbnails above this size are not sent; the rerank prompt must stay small.
+const VL_RERANK_MAX_IMAGE_BYTES: usize = 2 * 1024 * 1024;
+/// Override for the model; by default the model configured for image
+/// understanding (settings -> image understanding) is used.
+pub const VL_RERANK_MODEL_ENV: &str = "LAP_VL_RERANK_MODEL";
+
+/// One candidate for the vision rerank: its annotation text and, when the
+/// thumbnail cache has one, the small image that goes to the model.
+pub struct RerankCandidate {
+    pub file_id: i64,
+    pub text: String,
+    /// `(media_type, base64 data)`
+    pub image: Option<(String, String)>,
+}
+
+/// The multimodal instruction sent to the configured model.
+///
+/// The model is asked to *filter*, not to permute: returning a subset (or an
+/// empty array) is the expected answer. The earlier "rank all candidates"
+/// wording made the model echo non-matching photos at the tail.
+pub fn build_rerank_content(query: &str, candidates: &[RerankCandidate]) -> Vec<Value> {
+    let mut content = vec![json!({
+        "type": "text",
+        "text": format!(
+            "用户查询：{query}\n\
+             下面依次给出候选照片的编号，以及能取到缩略图时的画面。请逐张看画面判断：\n\
+             1) 核心主体、动作、场景是否与描述相符；\n\
+             2) 查询中明确写出的人物性别、人数、颜色、地点等限定必须相符，不能因为“差不多”而保留；\n\
+             3) 缺少次要细节（如没拍到道具）不算不符，但明显不是同一类场景、或主体相似而动作/场景不符的，必须排除。\n\
+             只输出符合描述的候选编号的 JSON 数组，按相关度从高到低；没有符合的返回 []。不要解释。"
+        ),
+    })];
+    for candidate in candidates {
+        match &candidate.image {
+            Some((media_type, data)) => {
+                content.push(json!({
+                    "type": "text",
+                    "text": format!("候选 [{}]：", candidate.file_id),
+                }));
+                content.push(json!({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": data,
+                    },
+                }));
+            }
+            None => content.push(json!({
+                "type": "text",
+                "text": format!(
+                    "候选 [{}] {}（没有缩略图，按标注判断）",
+                    candidate.file_id, candidate.text
+                ),
+            })),
+        }
+    }
+    content
+}
+
+/// Normalize the model answer into the ids it judged relevant.
+///
+/// Unknown and duplicate ids are dropped; omitted candidates stay out (the
+/// model is allowed to reject photos). An empty array is a valid answer that
+/// means nothing matched. Returns `None` when the answer is unusable, so the
+/// caller can retry instead of silently clearing the result list.
+pub fn parse_rerank_selection(text: &str, candidates: &[i64]) -> Option<Vec<i64>> {
+    let candidate = strip_code_fence(text).unwrap_or_else(|| text.trim().to_string());
+    let value: Value = serde_json::from_str(&candidate).ok()?;
+    // The model normally answers a bare array; accept the common wrapped
+    // shapes too ("{\"order\": [...]}") instead of failing the whole search.
+    let array = value.as_array().or_else(|| {
+        value
+            .as_object()
+            .and_then(|object| {
+                ["order", "ids", "result", "results", "ranking"]
+                    .iter()
+                    .find_map(|key| object.get(*key).and_then(Value::as_array))
+            })
+    })?;
+    let mut selection: Vec<i64> = Vec::new();
+    let mut saw_item = false;
+    for item in array {
+        saw_item = true;
+        let id = item
+            .as_i64()
+            .or_else(|| item.as_str().and_then(|raw| raw.trim().parse::<i64>().ok()));
+        let Some(id) = id else { continue };
+        if candidates.contains(&id) && !selection.contains(&id) {
+            selection.push(id);
+        }
+    }
+    // An answer with entries but no usable id is broken, not a rejection.
+    if saw_item && selection.is_empty() {
+        return None;
+    }
+    Some(selection)
+}
+
+/// A one-line summary of an annotation result for the rerank prompt.
+pub fn snippet_from_result_json(text: &str) -> Option<String> {
+    let value: Value = serde_json::from_str(text).ok()?;
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(object) = value.as_object() {
+        for item in object.values() {
+            match item {
+                Value::String(part) if !part.trim().is_empty() => parts.push(part.trim().to_string()),
+                Value::Array(items) => {
+                    for entry in items {
+                        if let Value::String(part) = entry && !part.trim().is_empty() {
+                            parts.push(part.trim().to_string());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+    Some(truncate_chars(&parts.join(" "), 240))
+}
+
+fn truncate_chars(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_string();
+    }
+    let mut truncated: String = text.chars().take(max).collect();
+    truncated.push('…');
+    truncated
+}
+
+/// Environment override first, then the model configured for image
+/// understanding. This keeps the lab in sync with the settings panel.
+fn rerank_model(config: &VlGatewayConfig) -> String {
+    std::env::var(VL_RERANK_MODEL_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            if config.model.trim().is_empty() {
+                VL_DEFAULT_MODEL.to_string()
+            } else {
+                config.model.trim().to_string()
+            }
+        })
+}
+
+/// Read the annotation text and cached thumbnail of every candidate.
+fn load_rerank_candidates(ids: &[i64]) -> Result<Vec<RerankCandidate>, String> {
+    let conn = crate::t_sqlite::open_conn()?;
+    let mut candidates = Vec::with_capacity(ids.len());
+    for file_id in ids {
+        let annotation = conn
+            .query_row(
+                "SELECT result_json, raw_text FROM vl_annotations
+                 WHERE file_id = ?1 ORDER BY id DESC LIMIT 1",
+                params![file_id],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let mut text = annotation
+            .as_ref()
+            .and_then(|(result, _)| result.as_deref())
+            .and_then(snippet_from_result_json)
+            .or_else(|| {
+                annotation
+                    .as_ref()
+                    .and_then(|(_, raw)| raw.as_deref())
+                    .map(|raw| truncate_chars(raw.trim(), 240))
+                    .filter(|raw| !raw.is_empty())
+            });
+        if text.is_none() {
+            text = conn
+                .query_row(
+                    "SELECT name FROM afiles WHERE id = ?1",
+                    params![file_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?;
+        }
+        let image = crate::t_sqlite::AThumb::fetch(*file_id)
+            .ok()
+            .flatten()
+            .and_then(|thumb| {
+                if thumb.error_code != 0 {
+                    return None;
+                }
+                let data = thumb.thumb_data?;
+                if data.is_empty() || data.len() > VL_RERANK_MAX_IMAGE_BYTES {
+                    return None;
+                }
+                let media_type = crate::t_protocol::detect_image_mime(&data).to_string();
+                Some((
+                    media_type,
+                    base64::engine::general_purpose::STANDARD.encode(&data),
+                ))
+            });
+        candidates.push(RerankCandidate {
+            file_id: *file_id,
+            text: text.unwrap_or_else(|| "-".to_string()),
+            image,
+        });
+    }
+    Ok(candidates)
+}
+
+/// Ask the configured model to keep only the candidates that match. Thinking
+/// is disabled: the job is a short visual check, not reasoning.
+async fn call_rerank_gateway(
+    client: &reqwest::Client,
+    config: &VlGatewayConfig,
+    content: &[Value],
+    model: &str,
+) -> Result<String, String> {
+    let endpoint = format!(
+        "{}/v1/messages",
+        config.gateway_url.trim().trim_end_matches('/')
+    );
+    let body = json!({
+        "model": model,
+        "max_tokens": VL_RERANK_MAX_TOKENS,
+        "temperature": 0,
+        "thinking": { "type": "disabled" },
+        "system": "只输出 JSON 数组，不要解释。",
+        "messages": [{ "role": "user", "content": content }],
+    });
+    let response = client
+        .post(&endpoint)
+        .header("x-api-key", config.api_key.trim())
+        .header("anthropic-version", VL_ANTHROPIC_VERSION)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("重排请求失败: {e}"))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| format!("重排响应读取失败: {e}"))?;
+    if !status.is_success() {
+        return Err(redact(
+            &format!("重排网关返回 {status}: {}", truncate_chars(&text, 300)),
+            &config.api_key,
+        ));
+    }
+    Ok(parse_response(&text)?.text)
+}
+
+/// Keep only the top search candidates that the cloud model judges relevant,
+/// in the model's order. Returns a subset of `file_ids` (possibly empty).
+#[tauri::command]
+pub async fn rerank_search_with_llm(
+    query: String,
+    file_ids: Vec<i64>,
+) -> Result<Vec<i64>, String> {
+    let query = query.trim().to_string();
+    if query.is_empty() {
+        return Ok(file_ids);
+    }
+    let mut ids: Vec<i64> = Vec::new();
+    for id in file_ids {
+        if id > 0 && !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    ids.truncate(VL_RERANK_MAX_CANDIDATES);
+    if ids.is_empty() {
+        return Ok(ids);
+    }
+
+    let config = resolve_gateway_config()?;
+    if config.gateway_url.trim().is_empty() || config.api_key.trim().is_empty() {
+        return Err("图片理解网关未配置，无法使用云端重排".to_string());
+    }
+    let candidates = load_rerank_candidates(&ids)?;
+    let content = build_rerank_content(&query, &candidates);
+    let model = rerank_model(&config);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(VL_RERANK_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut last_answer = String::new();
+    for _ in 0..2 {
+        last_answer = call_rerank_gateway(&client, &config, &content, &model).await?;
+        if let Some(selection) = parse_rerank_selection(&last_answer, &ids) {
+            return Ok(selection);
+        }
+    }
+    Err(format!(
+        "重排结果无法解析: {}",
+        truncate_chars(last_answer.trim(), 160)
+    ))
 }
 
 // ----------------------------------------------------------------------------
@@ -1410,7 +1965,11 @@ pub struct LibrarySource;
 impl VlSource for LibrarySource {
     fn prompt_context(&self, file_id: i64) -> Result<Option<PromptContext>, String> {
         let file = crate::t_sqlite::AFile::get_file_info(file_id)?;
-        Ok(file.as_ref().map(prompt_context))
+        let Some(file) = file else {
+            return Ok(None);
+        };
+        let conn = crate::t_sqlite::open_conn()?;
+        Ok(Some(prompt_context_with_conn(&conn, &file)))
     }
 
     fn image(&self, file_id: i64) -> Result<Option<VlImage>, String> {
@@ -2044,6 +2603,7 @@ mod tests {
             exif_summary: exif_summary.map(str::to_string),
             taken_at: taken_at.map(str::to_string),
             camera: camera.map(str::to_string),
+            ..PromptContext::default()
         }
     }
 
@@ -2080,6 +2640,171 @@ mod tests {
         let context = ctx(Some("a.jpg"), None, None, None);
         let rendered = render_prompt("{file_name} {unknown} {{literal}}", &context);
         assert_eq!(rendered, "a.jpg {unknown} {{literal}}");
+    }
+
+    #[test]
+    fn every_declared_placeholder_is_replaced() {
+        let mut context = PromptContext::default();
+        context.file_name = Some("v".into());
+        context.exif_summary = Some("v".into());
+        context.taken_at = Some("v".into());
+        context.camera = Some("v".into());
+        context.tags = Some("v".into());
+        context.people = Some("v".into());
+        context.location = Some("v".into());
+        context.gps = Some("v".into());
+        context.comments = Some("v".into());
+        context.title = Some("v".into());
+        context.headline = Some("v".into());
+        context.description = Some("v".into());
+        context.artist = Some("v".into());
+        context.copyright = Some("v".into());
+        context.software = Some("v".into());
+        context.camera_make = Some("v".into());
+        context.camera_model = Some("v".into());
+        context.lens = Some("v".into());
+        context.exposure = Some("v".into());
+        context.f_number = Some("v".into());
+        context.focal_length = Some("v".into());
+        context.iso = Some("v".into());
+        context.flash = Some("v".into());
+        context.dimensions = Some("v".into());
+        context.duration = Some("v".into());
+        context.rating = Some("v".into());
+        context.favorite = Some("v".into());
+        context.format = Some("v".into());
+        context.file_size = Some("v".into());
+        context.created_at = Some("v".into());
+        context.modified_at = Some("v".into());
+        let template = "{file_name}{exif_summary}{taken_at}{camera}{tags}{people}\
+             {location}{gps}{comments}{title}{headline}{description}{artist}{copyright}\
+             {software}{camera_make}{camera_model}{lens}{exposure}{f_number}{focal_length}\
+             {iso}{flash}{dimensions}{duration}{rating}{favorite}{format}{file_size}\
+             {created_at}{modified_at}";
+        let rendered = render_prompt(template, &context);
+        assert!(
+            !rendered.contains('{'),
+            "a declared placeholder was left unreplaced: {rendered}"
+        );
+        assert_eq!(rendered.chars().filter(|ch| *ch == 'v').count(), 31);
+    }
+
+    #[test]
+    fn extended_fields_render_their_own_values() {
+        let context = PromptContext {
+            tags: Some("春节, 旅行".into()),
+            people: Some("小明".into()),
+            location: Some("杭州西湖, 浙江, CN".into()),
+            gps: Some("30.123456, 120.654321".into()),
+            dimensions: Some("6000x4000".into()),
+            comments: Some("春节团聚".into()),
+            ..PromptContext::default()
+        };
+        assert_eq!(
+            render_prompt(
+                "[{tags}][{people}][{location}][{gps}][{dimensions}][{comments}]",
+                &context
+            ),
+            "[春节, 旅行][小明][杭州西湖, 浙江, CN][30.123456, 120.654321][6000x4000][春节团聚]"
+        );
+    }
+
+    #[test]
+    fn the_context_carries_the_extended_metadata() {
+        let file = crate::t_sqlite::AFile {
+            id: Some(1),
+            name: "a.jpg".to_string(),
+            comments: Some(" 春节 ".to_string()),
+            e_title: Some("家庭聚会".to_string()),
+            e_headline: Some("春节".to_string()),
+            e_description: Some("团聚".to_string()),
+            e_artist: Some("Some Artist".to_string()),
+            e_copyright: Some("(c)".to_string()),
+            e_software: Some("Lap".to_string()),
+            e_make: Some("Canon".to_string()),
+            e_model: Some("EOS R5".to_string()),
+            e_lens_make: Some("Canon".to_string()),
+            e_lens_model: Some("RF 24-70".to_string()),
+            e_exposure_time: Some("1/125".to_string()),
+            e_f_number: Some("f/2.8".to_string()),
+            e_focal_length: Some("35mm".to_string()),
+            e_iso_speed: Some("800".to_string()),
+            e_flash: Some("no".to_string()),
+            width: Some(6000),
+            height: Some(4000),
+            duration: Some(3723),
+            rating: Some(5),
+            is_favorite: Some(true),
+            format_label: Some("JPEG".to_string()),
+            size: 1_500_000,
+            created_at: Some(1_700_000_000),
+            modified_at: Some(1_700_000_100),
+            geo_name: Some("杭州西湖".to_string()),
+            geo_admin1: Some("浙江".to_string()),
+            geo_admin2: Some("西湖区".to_string()),
+            geo_cc: Some("CN".to_string()),
+            gps_latitude: Some(30.123456),
+            gps_longitude: Some(120.654321),
+            ..Default::default()
+        };
+        let context = prompt_context(&file);
+        assert_eq!(context.location.as_deref(), Some("杭州西湖, 浙江, 西湖区, CN"));
+        assert_eq!(context.lens.as_deref(), Some("Canon, RF 24-70"));
+        assert_eq!(context.dimensions.as_deref(), Some("6000x4000"));
+        assert_eq!(context.duration.as_deref(), Some("1:02:03"));
+        assert_eq!(context.favorite.as_deref(), Some("true"));
+        assert_eq!(context.rating.as_deref(), Some("5"));
+        assert_eq!(context.file_size.as_deref(), Some("1.4 MB"));
+        assert_eq!(context.comments.as_deref(), Some("春节"));
+        assert_eq!(context.title.as_deref(), Some("家庭聚会"));
+        assert_eq!(context.camera_make.as_deref(), Some("Canon"));
+        assert_eq!(context.camera_model.as_deref(), Some("EOS R5"));
+        assert_eq!(context.focal_length.as_deref(), Some("35mm"));
+        assert_eq!(context.gps.as_deref(), Some("30.123456, 120.654321"));
+        assert_eq!(context.format.as_deref(), Some("JPEG"));
+        assert!(context.created_at.is_some());
+        assert!(context.modified_at.is_some());
+        // Relations need a connection; the pure builder leaves them empty.
+        assert!(context.tags.is_none());
+        assert!(context.people.is_none());
+    }
+
+    #[test]
+    fn tags_and_people_are_read_from_the_library() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE atags(id INTEGER PRIMARY KEY, name TEXT);
+             CREATE TABLE afile_tags(file_id INTEGER, tag_id INTEGER);
+             CREATE TABLE persons(id INTEGER PRIMARY KEY, name TEXT);
+             CREATE TABLE faces(id INTEGER PRIMARY KEY, file_id INTEGER, person_id INTEGER);
+             INSERT INTO atags VALUES(1,'旅行'),(2,'春节');
+             INSERT INTO afile_tags VALUES(7,1),(7,2);
+             INSERT INTO persons VALUES(1,'小明');
+             INSERT INTO faces VALUES(1,7,1);",
+        )
+        .unwrap();
+        let file = crate::t_sqlite::AFile {
+            id: Some(7),
+            name: "a.jpg".to_string(),
+            ..Default::default()
+        };
+        let context = prompt_context_with_conn(&conn, &file);
+        assert_eq!(context.tags.as_deref(), Some("旅行, 春节"));
+        assert_eq!(context.people.as_deref(), Some("小明"));
+
+        // A library without the relation tables yields no relations, and a
+        // file without an id cannot be looked up at all.
+        let empty = Connection::open_in_memory().unwrap();
+        let context = prompt_context_with_conn(&empty, &file);
+        assert!(context.tags.is_none());
+        assert!(context.people.is_none());
+        let without_id = crate::t_sqlite::AFile {
+            name: "b.jpg".to_string(),
+            ..Default::default()
+        };
+        let context = prompt_context_with_conn(&empty, &without_id);
+        assert!(context.tags.is_none());
+        assert!(context.people.is_none());
     }
 
     #[test]
@@ -2159,6 +2884,107 @@ mod tests {
         assert!(context.camera.is_none());
         assert!(context.taken_at.is_none());
         assert!(context.exif_summary.is_none());
+    }
+
+    // ----- LLM rerank -----
+
+    fn rerank_candidate(file_id: i64, text: &str, image: bool) -> RerankCandidate {
+        RerankCandidate {
+            file_id,
+            text: text.to_string(),
+            image: image.then(|| ("image/jpeg".to_string(), "aGVsbG8=".to_string())),
+        }
+    }
+
+    #[test]
+    fn the_rerank_prompt_asks_for_matches_not_a_full_permutation() {
+        let content = build_rerank_content(
+            "摘葡萄",
+            &[
+                rerank_candidate(7, "一个男孩在葡萄园里采摘葡萄", true),
+                rerank_candidate(9, "城市夜景", false),
+            ],
+        );
+        let intro = content[0]["text"].as_str().expect("intro text block");
+        assert!(intro.contains("摘葡萄"));
+        assert!(intro.contains("JSON"));
+        // The model may drop candidates: "no match" is a valid answer.
+        assert!(intro.contains("没有符合"));
+        assert!(!intro.contains("不要遗漏"));
+    }
+
+    #[test]
+    fn the_rerank_content_carries_one_image_block_per_candidate_with_a_thumb() {
+        let content = build_rerank_content(
+            "摘葡萄",
+            &[
+                rerank_candidate(7, "一个男孩在葡萄园里采摘葡萄", true),
+                rerank_candidate(9, "城市夜景", false),
+            ],
+        );
+        let images: Vec<&Value> = content
+            .iter()
+            .filter(|block| block["type"] == "image")
+            .collect();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0]["source"]["media_type"], json!("image/jpeg"));
+        assert_eq!(images[0]["source"]["data"], json!("aGVsbG8="));
+        // A candidate without a thumbnail keeps its annotation text.
+        let texts: Vec<String> = content
+            .iter()
+            .filter_map(|block| block["text"].as_str().map(str::to_string))
+            .collect();
+        assert!(
+            texts
+                .iter()
+                .any(|text| text.contains("[9]") && text.contains("城市夜景"))
+        );
+    }
+
+    #[test]
+    fn a_plain_id_array_is_the_rerank_selection() {
+        assert_eq!(parse_rerank_selection("[9, 7]", &[7, 9]), Some(vec![9, 7]));
+    }
+
+    #[test]
+    fn a_fenced_id_array_is_accepted() {
+        assert_eq!(
+            parse_rerank_selection("```json\n[9, 7]\n```", &[7, 9]),
+            Some(vec![9, 7])
+        );
+    }
+
+    #[test]
+    fn a_wrapped_id_array_is_accepted() {
+        assert_eq!(
+            parse_rerank_selection("{\"order\": [9, 7]}", &[7, 9]),
+            Some(vec![9, 7])
+        );
+    }
+
+    #[test]
+    fn an_empty_answer_means_nothing_matches() {
+        assert_eq!(parse_rerank_selection("[]", &[7, 9]), Some(Vec::new()));
+        assert_eq!(
+            parse_rerank_selection("{\"ids\": []}", &[7, 9]),
+            Some(Vec::new())
+        );
+    }
+
+    #[test]
+    fn unknown_and_duplicate_ids_are_dropped_without_backfill() {
+        // 42 is not a candidate, 9 repeats, 7 was not selected -> 7 stays out.
+        assert_eq!(parse_rerank_selection("[42, 9, 9]", &[7, 9]), Some(vec![9]));
+        assert_eq!(parse_rerank_selection("[7]", &[7, 9]), Some(vec![7]));
+    }
+
+    #[test]
+    fn an_unreadable_rerank_answer_is_rejected() {
+        assert_eq!(parse_rerank_selection("不是 JSON", &[7, 9]), None);
+        assert_eq!(parse_rerank_selection("{\"foo\": 1}", &[7, 9]), None);
+        // An answer made up entirely of unknown ids is a broken answer, not
+        // a deliberate "nothing matches".
+        assert_eq!(parse_rerank_selection("[1]", &[7, 9]), None);
     }
 
     // ----- response parsing -----
@@ -2644,6 +3470,7 @@ mod tests {
                 exif_summary: Some("f/1.8".to_string()),
                 taken_at: Some("2024-05-01 10:00:00".to_string()),
                 camera: Some("Test Camera".to_string()),
+                ..PromptContext::default()
             }))
         }
 
@@ -3079,7 +3906,7 @@ mod tests {
     // ----- command registration -----
 
     /// The commands this module contributes to the Tauri handler.
-    const VL_COMMANDS: [&str; 10] = [
+    const VL_COMMANDS: [&str; 11] = [
         "get_vl_config",
         "set_vl_config",
         "list_vl_templates",
@@ -3090,6 +3917,7 @@ mod tests {
         "get_vl_annotations",
         "get_vl_calls",
         "cancel_vl_run",
+        "rerank_search_with_llm",
     ];
 
     #[test]

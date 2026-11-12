@@ -1206,7 +1206,6 @@
     "fields_default": "默认",
     "fields_all": "全部显示",
     "fields_custom": "自定义",
-
     "hide_empty_fields": "自动隐藏空值字段",
     "customize_fields": "自定义字段",
     "title": "信息",
@@ -1924,7 +1923,7 @@
     "system_template_unsupported": "当前后端不保存系统提示词。",
     "response_spec": "返回字段约定（JSON）",
     "response_spec_hint": "一个 JSON 对象：键是模型需要返回的字段，值是对该字段的说明。",
-    "placeholders_hint": "占位符：{file_name} {exif_summary} {taken_at} {camera}",
+    "placeholders_hint": "占位符：{file_name} {exif_summary} {taken_at} {camera} {tags} {people} {location} {gps} {comments} {title} {headline} {description} {artist} {copyright} {software} {camera_make} {camera_model} {lens} {exposure} {f_number} {focal_length} {iso} {flash} {dimensions} {duration} {rating} {favorite} {format} {file_size} {created_at} {modified_at}",
     "builtin": "内置",
     "builtin_readonly": "内置模板不可编辑或删除。",
     "builtin_edit_copy": "保存后会创建一份内置模板的副本，内置模板本身保持不变。",
@@ -1988,7 +1987,16 @@
       "search_button": "精确搜索",
       "searching": "搜索中…",
       "hits_summary": "命中 {count} 个",
-      "no_hits": "没有命中。"
+      "no_hits": "没有命中。",
+      "semantic_button": "语义搜索",
+      "semantic_hint": "按图像内容相似度排序（不是标注文字）；已安装多语言模型时，中文查询会自动使用它。",
+      "semantic_needs_multilingual": "中文语义检索需要「多语言」模型，请先在 设置→搜索 中下载。",
+      "precise_hint": "精确搜索 = 全文检索：按相关度排序，允许部分关键词命中（不再是“必须全部命中”）。",
+      "llm_rerank": "云端 LLM 重排",
+      "llm_rerank_hint": "勾选后把查询与候选缩略图发给模型，按画面判断并只保留真正符合描述的照片（关闭深度思考，约 3–6 秒）；缩略图会发送到已配置的网关。",
+      "llm_rerank_model": "模型：{model}（在 设置→图片理解 中修改）",
+      "llm_rerank_no_match": "没有与描述相符的照片",
+      "llm_rerank_failed": "云端重排失败，已保留原始排序"
     }
   }
 }

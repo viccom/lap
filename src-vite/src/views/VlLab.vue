@@ -205,18 +205,41 @@
             class="input input-bordered input-sm flex-1 min-w-48"
             :placeholder="$t('vl.lab.search_placeholder')"
             spellcheck="false"
-            @keydown.enter="runSearch"
+            @keydown.enter="runSearch()"
           >
-          <button class="btn btn-sm btn-primary" :disabled="!searchQuery.trim() || searching" @click="runSearch">
-            {{ searching ? $t('vl.lab.searching') : $t('vl.lab.search_button') }}
+          <button class="btn btn-sm btn-primary" :disabled="!searchQuery.trim() || searching" @click="runSearch()">
+            {{ searching && searchKind === 'precise' ? $t('vl.lab.searching') : $t('vl.lab.search_button') }}
+          </button>
+          <button
+            class="btn btn-sm btn-outline"
+            :disabled="!searchQuery.trim() || searching"
+            @click="runSearch('semantic')"
+          >
+            {{ searching && searchKind === 'semantic' ? $t('vl.lab.searching') : $t('vl.lab.semantic_button') }}
           </button>
         </div>
         <div v-if="isSingleCharQuery(searchQuery)" class="text-xs text-warning/80">{{ $t('search.mode.single_char_hint') }}</div>
+        <div class="text-[11px] text-base-content/40">{{ $t('vl.lab.precise_hint') }}</div>
+        <div class="text-[11px] text-base-content/40">{{ $t('vl.lab.semantic_hint') }}</div>
+        <label class="flex items-center gap-1 text-xs text-base-content/60 cursor-pointer">
+          <input v-model="llmRerank" type="checkbox" class="checkbox checkbox-xs" :disabled="searching" />
+          {{ $t('vl.lab.llm_rerank') }}
+        </label>
+        <div class="text-[11px] text-base-content/40">{{ $t('vl.lab.llm_rerank_hint') }}</div>
+        <div v-if="llmRerank && vlModel" class="text-[11px] text-base-content/40">
+          {{ $t('vl.lab.llm_rerank_model', { model: vlModel }) }}
+        </div>
+        <div v-if="searchError" class="text-xs text-error break-words">{{ searchError }}</div>
 
         <template v-if="searched">
           <div class="text-xs text-base-content/60">
+            <span v-if="searchKind === 'semantic'" class="text-base-content/40">{{ $t('search.mode.semantic') }} · </span>
+            <span v-if="reranked" class="text-base-content/40">{{ $t('vl.lab.llm_rerank') }} · </span>
             {{ $t('vl.lab.hits_summary', { count: searchHits.length }) }}
             <span v-if="matchColumnSummary" class="text-base-content/40">· {{ matchColumnSummary }}</span>
+          </div>
+          <div v-if="reranked && !searchHits.length" class="text-xs text-warning/80">
+            {{ $t('vl.lab.llm_rerank_no_match') }}
           </div>
           <div v-if="searchHits.length" class="max-h-64 overflow-y-auto rounded-box bg-base-100/20 border border-base-content/5 p-1">
             <div class="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-1">
@@ -259,7 +282,8 @@ import { IconRight } from '@/common/icons';
 import { config } from '@/common/config';
 import { useToast } from '@/common/toast';
 import { getThumbnailDataUrl, isWin, isLinux } from '@/common/utils';
-import { getFileThumb, getFilesByIds, getQueryFiles } from '@/common/api';
+import { invoke } from '@tauri-apps/api/core';
+import { getFileThumb, getFilesByIds, getQueryFiles, getImageSearchModelStatus, setImageSearchModel } from '@/common/api';
 import { getVlConfig, getVlAnnotations, getVlCalls, listVlTemplates, runVlAnalysis, cancelVlRun } from '@/common/vlApi';
 import {
   VL_SETTINGS_TAB,
@@ -279,6 +303,7 @@ import {
   LAB_POLL_INTERVAL_MS,
   LAB_POLL_LIMIT_MS,
   OUTCOME_LABEL_KEYS,
+  RERANK_MAX_CANDIDATES,
   annotatedIdSet,
   buildLabQueryParams,
   collectMatchedColumns,
@@ -289,6 +314,7 @@ import {
   indexIsConsistent,
   needsBatchConfirm,
   pickerRows,
+  rerankHitList,
   searchFts,
 } from '@/common/vlLabLogic';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -300,6 +326,7 @@ const showDesktopTitleBar = isWin || isLinux;
 // ----- gateway and index status -----
 
 const configured = ref(false);
+const vlModel = ref('');
 const ftsStatus = ref<{ documents: number; files: number } | null>(null);
 const rebuilding = ref(false);
 const indexConsistent = computed(() => indexIsConsistent(ftsStatus.value));
@@ -311,8 +338,10 @@ async function loadStatus() {
   try {
     const view = await getVlConfig();
     configured.value = Boolean(view?.configured);
+    vlModel.value = String(view?.model ?? '');
   } catch {
     configured.value = false;
+    vlModel.value = '';
   }
   try {
     ftsStatus.value = await getFtsStatus();
@@ -394,17 +423,20 @@ async function toggleSelect(fileId: number) {
     next.delete(id);
   } else {
     next.add(id);
-    if (!annotationsByFileId.value[id]) {
-      // The idempotence mark needs the annotations of the file; they load on
-      // selection only, not for every file of the picker.
-      try {
-        annotationsByFileId.value = { ...annotationsByFileId.value, [id]: await getVlAnnotations(id) };
-      } catch {
-        annotationsByFileId.value = { ...annotationsByFileId.value, [id]: [] };
-      }
-    }
   }
+  // Write before awaiting: two clicks inside the annotation-fetch round-trip
+  // would otherwise each start from the same stale set and the later write
+  // would silently drop the earlier selection.
   selectedIds.value = next;
+  if (next.has(id) && !annotationsByFileId.value[id]) {
+    // The idempotence mark needs the annotations of the file; they load on
+    // selection only, not for every file of the picker.
+    // Await first, spread later: spreading the cache inside the object literal
+    // snapshots it before the await, and a sibling toggle resolving in between
+    // would be silently dropped by the stale snapshot.
+    const fetched = await getVlAnnotations(id).catch(() => []);
+    annotationsByFileId.value = { ...annotationsByFileId.value, [id]: fetched };
+  }
 }
 
 async function loadTemplates() {
@@ -662,6 +694,10 @@ function outcomeBadgeClass(status: string) {
 const searchQuery = ref('');
 const searching = ref(false);
 const searched = ref(false);
+const searchKind = ref<'precise' | 'semantic'>('precise');
+const llmRerank = ref(false);
+const reranked = ref(false);
+const searchError = ref('');
 const searchHits = ref<any[]>([]);
 const searchFiles = ref<any[]>([]);
 
@@ -670,7 +706,10 @@ const searchResultItems = computed(() => {
   return searchHits.value.map(hit => ({
     hit,
     file: fileByIds.get(Number(hit.fileId)),
-    badges: hitBadges(hit).map(badge => ({ ...badge, labelText: badge.labelKey ? t(badge.labelKey) : badge.column })),
+    badges: [
+      ...(hit.rank ? [{ column: 'rank', labelText: `#${hit.rank}` }] : []),
+      ...hitBadges(hit).map(badge => ({ ...badge, labelText: badge.labelKey ? t(badge.labelKey) : badge.column })),
+    ],
   }));
 });
 
@@ -681,15 +720,84 @@ const matchColumnSummary = computed(() => {
   ));
 });
 
-async function runSearch() {
+async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
   const query = searchQuery.value.trim();
   if (!query || searching.value) return;
+  searchKind.value = kind;
   searching.value = true;
+  searchError.value = '';
+  reranked.value = false;
+  const rerankFailed = (error: unknown) => {
+    // Keep the original ranking when the cloud call fails; the user still
+    // gets results and sees why they were not reranked.
+    searchError.value = `${t('vl.lab.llm_rerank_failed')}: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+  };
   try {
-    const hits = await searchFts(query, SEARCH_RESULT_LIMIT);
-    searchHits.value = Array.isArray(hits) ? hits : [];
-    const fileIds = searchHits.value.map(hit => Number(hit.fileId)).filter(id => id > 0);
-    searchFiles.value = fileIds.length ? ((await getFilesByIds(fileIds)) ?? []) : [];
+    if (kind === 'semantic') {
+      // Ranked by the image embedding, not by the annotation text: this is
+      // the path that still finds a photo when the wording differs. The
+      // default text model is English-only, so a CJK query switches the
+      // in-memory model to the multilingual one when it is installed.
+      const cjk = /[\u3400-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(query);
+      if (cjk) {
+        const status = await getImageSearchModelStatus();
+        if (!status?.multilingualAvailable) {
+          errorMessage.value = t('vl.lab.semantic_needs_multilingual');
+          searchHits.value = [];
+          searchFiles.value = [];
+          searched.value = true;
+          return;
+        }
+        if (Number(status.activeModel) !== 1) await setImageSearchModel(1);
+      }
+      const threshold = config.imageSearchThresholds[config.settings.imageSearch.thresholdIndex] ?? 0.26;
+      const rows = await invoke<any[]>('search_similar_images', {
+        params: { searchText: query, fileId: 0, threshold, fileType: 1 },
+      });
+      const list = Array.isArray(rows) ? rows : [];
+      const fileById = new Map(list.map((file: any) => [Number(file?.id), file]));
+      let hits = list.map((file: any, index: number) => ({
+        fileId: Number(file?.id),
+        matchedColumns: [],
+        rank: index + 1,
+      }));
+      let files = list;
+      if (llmRerank.value && hits.length) {
+        // The visual check decides which of the semantic neighbours really
+        // show the described scene, so the tail stops being "same embedding".
+        const candidates = hits.slice(0, RERANK_MAX_CANDIDATES);
+        try {
+          const selected = await rerankHitList(query, candidates);
+          hits = selected.hits.map((hit, index) => ({ ...hit, rank: index + 1 }));
+          files = hits.map(hit => fileById.get(Number(hit.fileId))).filter(Boolean) as any[];
+          reranked.value = selected.reranked;
+        } catch (error) {
+          rerankFailed(error);
+        }
+      }
+      searchHits.value = hits;
+      searchFiles.value = files;
+    } else {
+      // With the LLM rerank checked the text search only needs to produce a
+      // candidate set; the cloud model keeps the photos that really match.
+      const limit = llmRerank.value ? RERANK_MAX_CANDIDATES : SEARCH_RESULT_LIMIT;
+      const hits = await searchFts(query, limit);
+      let list = Array.isArray(hits) ? hits : [];
+      if (llmRerank.value && list.length) {
+        try {
+          const selected = await rerankHitList(query, list);
+          list = selected.hits;
+          reranked.value = selected.reranked;
+        } catch (error) {
+          rerankFailed(error);
+        }
+      }
+      searchHits.value = list;
+      const fileIds = searchHits.value.map(hit => Number(hit.fileId)).filter(id => id > 0);
+      searchFiles.value = fileIds.length ? ((await getFilesByIds(fileIds)) ?? []) : [];
+    }
     searched.value = true;
     observeThumbs();
   } catch (error) {

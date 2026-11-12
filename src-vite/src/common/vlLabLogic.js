@@ -13,6 +13,9 @@ import { buildRunArgs } from './vlLogic.js';
 /// The picker loads at most this many files of the library.
 export const LAB_MAX_FILES = 200;
 
+/// The rerank request carries at most this many candidates (backend cap).
+export const RERANK_MAX_CANDIDATES = 20;
+
 /// The poll runs every 3 s; the backend gives up on a gateway call after
 /// ~180 s (VL_REQUEST_TIMEOUT_SECS), the rest is margin. Same value as the
 /// file info panel.
@@ -96,7 +99,9 @@ export function buildLabRunArgs(fileIds, templateId, force = false) {
 /**
  * The outcome of one file of a finished run.
  *
- * - success: a new annotation arrived (its id is above the baseline)
+ * - success: a new annotation arrived (its id is above the baseline), or a
+ *   forced rerun refreshed the existing row in place (the backend upserts, so
+ *   the id stays but the callId moves past the baseline call)
  * - skipped: an annotation existed and force was off, so the file kept it
  * - failed: a new call arrived but produced no annotation
  * - notRun: no new evidence at all — the run was cancelled or never arrived
@@ -113,6 +118,12 @@ export function deriveFileOutcome({
   const newAnnotation = annotationList.find(a => Number(a?.id) > Number(baselineAnnotationId)) ?? null;
   if (newAnnotation) {
     return { status: 'success', annotation: newAnnotation, call: null };
+  }
+  const refreshed = annotationList.find(
+    a => Number(a?.id) <= Number(baselineAnnotationId) && Number(a?.callId) > Number(baselineCallId),
+  ) ?? null;
+  if (refreshed) {
+    return { status: 'success', annotation: refreshed, call: null };
   }
   const newCall = callList.find(c => Number(c?.id) > Number(baselineCallId)) ?? null;
   if (!newCall && !force && annotationList.length) {
@@ -178,4 +189,44 @@ export async function ftsReindex(invoker = invoke) {
 /// The hits of an exact search.
 export async function searchFts(query, limit = SEARCH_RESULT_LIMIT, invoker = invoke) {
   return invoker('search_fts', { query: String(query ?? ''), limit: Number(limit) });
+}
+
+/// Keep only the hits the cloud model judged relevant, in its order.
+///
+/// Ids the model invented are ignored; ids it omitted stay out because the
+/// model is allowed to reject photos (an empty selection means "no match").
+/// The hit objects (and their matched columns) are reused.
+export function applyRerankSelection(hits, order) {
+  const list = Array.isArray(hits) ? hits : [];
+  const byId = new Map(list.map(hit => [Number(hit?.fileId), hit]));
+  const selected = [];
+  const seen = new Set();
+  for (const raw of Array.isArray(order) ? order : []) {
+    const id = Number(raw);
+    const hit = byId.get(id);
+    if (!hit || seen.has(id)) continue;
+    selected.push(hit);
+    seen.add(id);
+  }
+  return selected;
+}
+
+/// Let the cloud model keep only the candidates that match the query.
+export async function rerankSearchWithLlm(query, fileIds, invoker = invoke) {
+  return invoker('rerank_search_with_llm', {
+    query: String(query ?? ''),
+    fileIds: (Array.isArray(fileIds) ? fileIds : []).map(Number),
+  });
+}
+
+/// Rerank a hit list; returns the filtered hits and whether the call ran.
+export async function rerankHitList(query, hits, invoker = invoke) {
+  const list = Array.isArray(hits) ? hits : [];
+  if (!list.length) return { hits: [], reranked: false };
+  const order = await rerankSearchWithLlm(
+    query,
+    list.map(hit => Number(hit.fileId)),
+    invoker,
+  );
+  return { hits: applyRerankSelection(list, order), reranked: true };
 }
