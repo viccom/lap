@@ -494,49 +494,43 @@
                 class="ml-auto px-1.5 h-5 inline-flex items-center rounded-box text-[10px] font-semibold tracking-[0.08em] border border-base-content/10 bg-base-content/5 text-base-content/60"
               >{{ vlConfigured ? $t('settings.vl.api_key_configured') : $t('settings.vl.api_key_not_configured') }}</span>
             </div>
-            <div class="flex items-start justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
-              <div class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
-                <div>{{ $t('settings.vl.gateway_url') }}</div>
-                <div class="text-xs text-base-content/30">{{ $t('settings.vl.gateway_url_hint') }}</div>
-              </div>
+            <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.gateway_url') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.gateway_url_hint') }}</div>
               <input
                 v-model="vlGatewayUrl"
                 type="text"
-                class="input input-sm w-64 shrink-0"
+                class="input input-sm w-full"
                 :placeholder="vlConfig?.gatewayUrl || 'https://'"
                 spellcheck="false"
               />
             </div>
-            <div class="flex items-start justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
-              <div class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
-                <div>{{ $t('settings.vl.api_key') }}</div>
-                <div class="text-xs text-base-content/30">{{ $t('settings.vl.api_key_hint') }}</div>
-              </div>
-              <div class="flex items-center gap-2 shrink-0">
+            <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.api_key') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.api_key_hint') }}</div>
+              <div class="flex items-center gap-2">
                 <input
                   v-model="vlApiKey"
                   type="password"
-                  class="input input-sm w-56"
+                  class="input input-sm flex-1 min-w-0"
                   autocomplete="off"
                   :placeholder="$t('settings.vl.api_key_write_only')"
                 />
                 <button
-                  class="t-button-default btn-outline"
+                  class="t-button-default btn-outline shrink-0"
                   :disabled="!vlConfigured"
                   :title="$t('settings.vl.api_key_clear')"
                   @click="clearVlApiKey"
                 >{{ $t('settings.vl.api_key_clear') }}</button>
               </div>
             </div>
-            <div class="flex items-start justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
-              <div class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
-                <div>{{ $t('settings.vl.model') }}</div>
-                <div class="text-xs text-base-content/30">{{ $t('settings.vl.model_hint') }}</div>
-              </div>
+            <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.model') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.model_hint') }}</div>
               <input
                 v-model="vlModel"
                 type="text"
-                class="input input-sm w-64 shrink-0"
+                class="input input-sm w-full"
                 spellcheck="false"
               />
             </div>
