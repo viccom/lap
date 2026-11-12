@@ -1,0 +1,517 @@
+[
+  {
+    "target": 1,
+    "type": "keyword",
+    "query": "男孩 剪刀 绿葡萄 葡萄大棚"
+  },
+  {
+    "target": 1,
+    "type": "paraphrase",
+    "query": "穿紫白格衫的小孩在葡萄园剪摘青提"
+  },
+  {
+    "target": 1,
+    "type": "sentence",
+    "query": "想找一张小男孩在葡萄大棚里一手拿剪刀、一手举着刚摘绿葡萄的照片，他穿紫白格子衬衫和白色T恤。"
+  },
+  {
+    "target": 2,
+    "type": "keyword",
+    "query": "男孩 红葡萄 纸袋 葡萄架"
+  },
+  {
+    "target": 2,
+    "type": "paraphrase",
+    "query": "穿紫白格子衣的男童仰头伸手摘红葡萄"
+  },
+  {
+    "target": 2,
+    "type": "sentence",
+    "query": "找一张穿紫白格子衬衫的小男孩站在葡萄架下仰头伸手摘红葡萄的照片，旁边挂着套纸袋的葡萄。"
+  },
+  {
+    "target": 3,
+    "type": "keyword",
+    "query": "荧光绿T恤 塑料瓶 透瓶观察 树林"
+  },
+  {
+    "target": 3,
+    "type": "paraphrase",
+    "query": "男童把透明水瓶横放眼前透过瓶身凝视，树林虚化"
+  },
+  {
+    "target": 3,
+    "type": "sentence",
+    "query": "想找穿荧光绿T恤的小男孩把透明塑料瓶横在眼前、透过瓶子专注观察的照片，背景是虚化的树林和石头。"
+  },
+  {
+    "target": 4,
+    "type": "keyword",
+    "query": "荧光绿T恤 水瓶 右眼 徒步"
+  },
+  {
+    "target": 4,
+    "type": "paraphrase",
+    "query": "徒步男孩把矿泉水瓶举到右眼旁，左手放胸前"
+  },
+  {
+    "target": 4,
+    "type": "sentence",
+    "query": "找一张户外徒步时穿荧光绿T恤的男孩把透明水瓶贴近右眼、左手放在胸前的照片，背景有山石和同行徒步者。"
+  },
+  {
+    "target": 5,
+    "type": "keyword",
+    "query": "格纹双排扣大衣 男童 书架"
+  },
+  {
+    "target": 5,
+    "type": "paraphrase",
+    "query": "穿蓝绿格子双排扣外套的小男孩站在书柜前"
+  },
+  {
+    "target": 5,
+    "type": "sentence",
+    "query": "想找一个小男孩穿着蓝绿格纹双排扣大衣、右手拿着白色小袋子站在书架前的画面。"
+  },
+  {
+    "target": 6,
+    "type": "keyword",
+    "query": "蓝黄米袋 男孩 白书架"
+  },
+  {
+    "target": 6,
+    "type": "paraphrase",
+    "query": "男童在白色书柜前双手举着蓝黄配色的米袋摆姿势"
+  },
+  {
+    "target": 6,
+    "type": "sentence",
+    "query": "有没有一个小男孩在白色书架前双手举着蓝黄米袋、双腿分开站着的照片？"
+  },
+  {
+    "target": 7,
+    "type": "keyword",
+    "query": "黑色连帽外套 男孩 水果蛋糕"
+  },
+  {
+    "target": 7,
+    "type": "paraphrase",
+    "query": "穿黑连帽上衣的小男童在公园桌旁低头看生日蛋糕"
+  },
+  {
+    "target": 7,
+    "type": "sentence",
+    "query": "想找秋日公园里一个小男孩坐在桌边、手拿蜡烛看芒果草莓蓝莓蛋糕的照片。"
+  },
+  {
+    "target": 8,
+    "type": "keyword",
+    "query": "条纹连帽卫衣 男孩 切蛋糕"
+  },
+  {
+    "target": 8,
+    "type": "paraphrase",
+    "query": "穿蓝条纹连帽衫的小男孩在草地上拿塑料刀准备切水果蛋糕"
+  },
+  {
+    "target": 8,
+    "type": "sentence",
+    "query": "户外野餐时小男孩穿条纹连帽卫衣、拿塑料刀准备切草莓芒果蓝莓蛋糕的那张照片。"
+  },
+  {
+    "target": 9,
+    "type": "keyword",
+    "query": "戴泳帽儿童 教练 出发台"
+  },
+  {
+    "target": 9,
+    "type": "paraphrase",
+    "query": "泳帽小将和教练候在泳池出发台侧边"
+  },
+  {
+    "target": 9,
+    "type": "sentence",
+    "query": "找室内游泳馆里几个戴泳帽的孩子和教练站在出发台旁准备训练的照片"
+  },
+  {
+    "target": 10,
+    "type": "keyword",
+    "query": "运动员俯身 出发台 白制服裁判"
+  },
+  {
+    "target": 10,
+    "type": "paraphrase",
+    "query": "参赛选手伏在出发台就位，白制服工作人员池边巡视"
+  },
+  {
+    "target": 10,
+    "type": "sentence",
+    "query": "找室内游泳比赛出发前，多名运动员俯身在带号码的出发台上、白制服裁判沿池边巡视的照片"
+  },
+  {
+    "target": 11,
+    "type": "keyword",
+    "query": "冰面拖枯苇 男子 儿童"
+  },
+  {
+    "target": 11,
+    "type": "paraphrase",
+    "query": "大人陪孩子踩冰，孩童用木棍曳一束干芦苇"
+  },
+  {
+    "target": 11,
+    "type": "sentence",
+    "query": "找一张冬日清晨男子和孩子在结冰水面上走、孩子用木棍拖着一捆枯芦苇的照片"
+  },
+  {
+    "target": 12,
+    "type": "keyword",
+    "query": "白外套男子 黑外套孩子 冰面玩耍"
+  },
+  {
+    "target": 12,
+    "type": "paraphrase",
+    "query": "穿白衣的大人与黑衣小孩在结冰水面嬉戏"
+  },
+  {
+    "target": 12,
+    "type": "sentence",
+    "query": "找冬季晴天冰面上穿白外套的男子和穿黑外套的孩子一起玩耍、背景是金黄色芦苇的照片"
+  },
+  {
+    "target": 17,
+    "type": "keyword",
+    "query": "女性握鼠标操作电脑"
+  },
+  {
+    "target": 17,
+    "type": "paraphrase",
+    "query": "戴眼镜成年女性手握鼠标给黄外套孩子们演示笔记本"
+  },
+  {
+    "target": 17,
+    "type": "sentence",
+    "query": "想找一群穿黄色外套的孩子从两边探头看戴眼镜女性操作笔记本电脑，桌上还有粉色水杯和手机。"
+  },
+  {
+    "target": 18,
+    "type": "keyword",
+    "query": "黄色上衣围坐木桌"
+  },
+  {
+    "target": 18,
+    "type": "paraphrase",
+    "query": "黄衣儿童围在木桌边与眼镜老师共同注视电脑屏幕"
+  },
+  {
+    "target": 18,
+    "type": "sentence",
+    "query": "想找一群穿黄色上衣的小孩围坐在木桌旁，和戴眼镜的女性一起看笔记本电脑，桌上放着粉色水壶。"
+  },
+  {
+    "target": 19,
+    "type": "keyword",
+    "query": "蓝绿条纹男孩指蛋糕"
+  },
+  {
+    "target": 19,
+    "type": "paraphrase",
+    "query": "秋日公园草地上四个小孩围着敞开的水果蛋糕盒"
+  },
+  {
+    "target": 19,
+    "type": "sentence",
+    "query": "想找四个男孩在秋天公园草地上围着水果蛋糕盒，其中穿蓝绿条纹外套的男孩伸手指向蛋糕。"
+  },
+  {
+    "target": 20,
+    "type": "keyword",
+    "query": "男孩俯身吹蜡烛"
+  },
+  {
+    "target": 20,
+    "type": "paraphrase",
+    "query": "户外野餐垫上几个孩子为插蜡烛的蛋糕庆生"
+  },
+  {
+    "target": 20,
+    "type": "sentence",
+    "query": "想找几个小男孩在公园野餐垫上庆祝生日，一个男孩俯身准备吹灭水果蛋糕上的蜡烛，旁边伙伴笑着拍手。"
+  },
+  {
+    "target": 21,
+    "type": "keyword",
+    "query": "Fila卫衣 口罩 男孩"
+  },
+  {
+    "target": 21,
+    "type": "paraphrase",
+    "query": "白口罩拉到下巴的男童端详树叶"
+  },
+  {
+    "target": 21,
+    "type": "sentence",
+    "query": "找一张阳光下穿深色Fila连帽衫、把口罩挂在下巴看带叶枝条的小男孩照片"
+  },
+  {
+    "target": 22,
+    "type": "keyword",
+    "query": "掌中黄物 条纹外套 男孩"
+  },
+  {
+    "target": 22,
+    "type": "paraphrase",
+    "query": "短发男童低头盯着手里的小黄东西"
+  },
+  {
+    "target": 22,
+    "type": "sentence",
+    "query": "帮我找那个穿深灰蓝条纹拉链连帽外套、低头捧着掌心黄色小物的小男孩"
+  },
+  {
+    "target": 23,
+    "type": "keyword",
+    "query": "溪边 石头 鱼竿 男孩"
+  },
+  {
+    "target": 23,
+    "type": "paraphrase",
+    "query": "红黑格子衫小孩坐在溪石上垂钓"
+  },
+  {
+    "target": 23,
+    "type": "sentence",
+    "query": "我想看穿红黑格子衬衫、坐在溪边大石头上双手握绿色鱼竿的小男孩"
+  },
+  {
+    "target": 24,
+    "type": "keyword",
+    "query": "蹲姿 岩石 玩水 男孩"
+  },
+  {
+    "target": 24,
+    "type": "paraphrase",
+    "query": "穿格子衫的男童蹲在溪石上拿长条工具探水"
+  },
+  {
+    "target": 24,
+    "type": "sentence",
+    "query": "找清晨浅景深里蹲在溪边岩石上、用绿色长条工具伸向水面的格子衫小男孩"
+  },
+  {
+    "target": 25,
+    "type": "keyword",
+    "query": "白盔 安全绳 岩壁边"
+  },
+  {
+    "target": 25,
+    "type": "paraphrase",
+    "query": "戴白色头盔的攀岩者站在岩壁边缘，腰间系着保护绳"
+  },
+  {
+    "target": 25,
+    "type": "sentence",
+    "query": "找一张戴白色头盔、腰间连保护绳的攀岩者站在巨大岩壁边缘的照片"
+  },
+  {
+    "target": 26,
+    "type": "keyword",
+    "query": "背身攀岩者 白攀岩鞋 橙绿安全带"
+  },
+  {
+    "target": 26,
+    "type": "paraphrase",
+    "query": "一名穿深色羽绒服、头戴白盔的攀岩者背对镜头在岩壁上攀爬"
+  },
+  {
+    "target": 26,
+    "type": "sentence",
+    "query": "想找背对镜头、脚穿白色攀岩鞋并系着橙绿色安全带的攀岩者在岩壁攀爬的照片"
+  },
+  {
+    "target": 27,
+    "type": "keyword",
+    "query": "紫伞骑行 红砖步道 水洼倒影"
+  },
+  {
+    "target": 27,
+    "type": "paraphrase",
+    "query": "雨后公园里，有人撑着紫色雨伞骑自行车走湿红砖路"
+  },
+  {
+    "target": 27,
+    "type": "sentence",
+    "query": "找一张雨后公园红砖步道上撑紫伞骑车、车把挂着蓝色包包的照片"
+  },
+  {
+    "target": 28,
+    "type": "keyword",
+    "query": "紫伞背影 红砖小路 湿地面反光"
+  },
+  {
+    "target": 28,
+    "type": "paraphrase",
+    "query": "雨天林荫道上一位撑紫伞的背身行人走在湿红砖路"
+  },
+  {
+    "target": 28,
+    "type": "sentence",
+    "query": "想找雨中公园红砖小路上撑着紫色雨伞的行人背影，地面湿漉漉反光"
+  },
+  {
+    "target": 29,
+    "type": "keyword",
+    "query": "蹲冰面木棍男孩"
+  },
+  {
+    "target": 29,
+    "type": "paraphrase",
+    "query": "小孩蹲在结冰水面握着小树枝玩耍"
+  },
+  {
+    "target": 29,
+    "type": "sentence",
+    "query": "找一张冬天清晨小男孩蹲在结冰水面上、手里拿着小木棍玩耍的照片，身后是金黄色芦苇和蓝天。"
+  },
+  {
+    "target": 30,
+    "type": "keyword",
+    "query": "羽绒服仰头触树枝"
+  },
+  {
+    "target": 30,
+    "type": "paraphrase",
+    "query": "穿黑色羽绒服的人站在冰上抬手够弯枝，另一只手拿短棍"
+  },
+  {
+    "target": 30,
+    "type": "sentence",
+    "query": "想找一张冬季清晨冰面上有人穿着黑色羽绒服、仰头举手碰到低垂树枝的照片，背景有金黄芦苇和蓝天。"
+  },
+  {
+    "target": 31,
+    "type": "keyword",
+    "query": "红黑格纹男孩喊叫"
+  },
+  {
+    "target": 31,
+    "type": "paraphrase",
+    "query": "穿红黑格子衬衫的小男孩在山间步道旁张口大声呼喊"
+  },
+  {
+    "target": 31,
+    "type": "sentence",
+    "query": "找一张男孩穿红黑格子衬衫站在山间步道旁、张开嘴大喊的照片，背景有奇峰、蓝天白云和铁链护栏。"
+  },
+  {
+    "target": 32,
+    "type": "keyword",
+    "query": "19号格子衫男孩"
+  },
+  {
+    "target": 32,
+    "type": "paraphrase",
+    "query": "衣袖印数字19的小男孩侧身回眸微笑，手握红色细棒"
+  },
+  {
+    "target": 32,
+    "type": "sentence",
+    "query": "想找一张穿红黑格子衬衫的小男孩侧身回头微笑的照片，他袖子上印着数字19，手里还拿着一根红色细棒，背景是蓝天白云和山峰。"
+  },
+  {
+    "target": 37,
+    "type": "keyword",
+    "query": "红衣男孩雪地长椅"
+  },
+  {
+    "target": 37,
+    "type": "paraphrase",
+    "query": "穿红羽绒服的小男孩低头踩雪"
+  },
+  {
+    "target": 37,
+    "type": "sentence",
+    "query": "我想找那张公园雪景里穿红羽绒服的小男孩低头走路、身后有落雪木长椅的照片。"
+  },
+  {
+    "target": 101,
+    "type": "keyword",
+    "query": "草地蓝衣孩子滑板车"
+  },
+  {
+    "target": 101,
+    "type": "paraphrase",
+    "query": "穿蓝羽绒服的小孩仰躺在草坪旁停着橙滑板车"
+  },
+  {
+    "target": 101,
+    "type": "sentence",
+    "query": "帮我找阳光下穿蓝色羽绒服的孩子躺在草地上，旁边有橙色滑板车的那张。"
+  },
+  {
+    "target": 239,
+    "type": "keyword",
+    "query": "黄衣女孩头上晾衣夹"
+  },
+  {
+    "target": 239,
+    "type": "paraphrase",
+    "query": "短发女童室内满头彩色夹子"
+  },
+  {
+    "target": 239,
+    "type": "sentence",
+    "query": "找一张室内短发小女孩站着，头上夹满彩色晾衣夹、穿黄色外套的照片。"
+  },
+  {
+    "target": 250,
+    "type": "keyword",
+    "query": "孩子攀爬公园石头雕塑"
+  },
+  {
+    "target": 250,
+    "type": "paraphrase",
+    "query": "两个小孩趴在大石雕上伸手摆拍"
+  },
+  {
+    "target": 250,
+    "type": "sentence",
+    "query": "我想找公园树荫下两个孩子爬在大石头雕塑上摆姿势的那张照片。"
+  },
+  {
+    "target": 101,
+    "type": "user-synonym",
+    "query": "一个小男孩躺在草地上"
+  },
+  {
+    "target": 1,
+    "type": "user-synonym",
+    "query": "摘葡萄的小男孩"
+  },
+  {
+    "target": 101,
+    "type": "user-keyword",
+    "query": "草地上玩滑板车的孩子"
+  },
+  {
+    "target": 1,
+    "type": "user-keyword",
+    "query": "葡萄园采摘"
+  },
+  {
+    "target": null,
+    "type": "negative",
+    "query": "摘葡萄的小女孩"
+  },
+  {
+    "target": null,
+    "type": "negative",
+    "query": "飞机在跑道上起飞"
+  },
+  {
+    "target": null,
+    "type": "negative",
+    "query": "海边冲浪的女孩"
+  }
+]

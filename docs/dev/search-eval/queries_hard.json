@@ -1,0 +1,12 @@
+[
+  {"target": 1, "type": "hard", "query": "小孩在藤架下举着一挂青提"},
+  {"target": 2, "type": "hard", "query": "孩子仰头从藤上揪下一挂红果"},
+  {"target": 3, "type": "hard", "query": "少年把矿泉水瓶贴在眼前观察树林"},
+  {"target": 4, "type": "hard", "query": "爬山的人把饮料瓶凑到眼前"},
+  {"target": 5, "type": "hard", "query": "男童在书墙前举着零食袋"},
+  {"target": 6, "type": "hard", "query": "小孩双手拎着粮食口袋站在书墙前"},
+  {"target": 7, "type": "hard", "query": "寿星低头看插着小棒的甜品"},
+  {"target": 8, "type": "hard", "query": "小孩在草坪上准备切西点"},
+  {"target": 9, "type": "hard", "query": "戴橡胶头套的小选手在池边列队"},
+  {"target": 10, "type": "hard", "query": "室内比赛选手在跳台上弯腰待发"}
+]
