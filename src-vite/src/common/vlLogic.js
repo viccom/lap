@@ -50,11 +50,12 @@ export function toApiKeyArgument(value) {
 }
 
 /// The arguments of `set_vl_config`.
-export function buildVlConfigArgs({ gatewayUrl = '', apiKey = null, model = '' } = {}) {
+export function buildVlConfigArgs({ gatewayUrl = '', apiKey = null, model = '', rerankModel = '' } = {}) {
   return {
     gatewayUrl: String(gatewayUrl ?? '').trim(),
     apiKey: toApiKeyArgument(apiKey),
     model: String(model ?? '').trim(),
+    rerankModel: String(rerankModel ?? '').trim(),
   };
 }
 

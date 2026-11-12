@@ -83,6 +83,7 @@ pub struct VlGatewayConfig {
     pub gateway_url: String,
     pub api_key: String,
     pub model: String,
+    pub rerank_model: String,
 }
 
 /// Gateway settings as seen by the frontend. The API key is never included.
@@ -91,6 +92,7 @@ pub struct VlGatewayConfig {
 pub struct VlConfigView {
     pub gateway_url: String,
     pub model: String,
+    pub rerank_model: String,
     pub configured: bool,
 }
 
@@ -1236,70 +1238,62 @@ pub fn result_json(text: &str, spec: &str) -> (serde_json::Value, bool) {
 // ----------------------------------------------------------------------------
 
 /// How many candidates the rerank request carries. The prompt stays small
-/// enough for a flash model to answer in a few seconds.
+/// enough for a cheap text model to answer in about a second.
 const VL_RERANK_MAX_CANDIDATES: usize = 20;
-/// The answer is a short id array; the budget also covers the gateway's
-/// hidden thinking tokens, which are billed even with thinking disabled.
+/// The answer is a short id array; the budget covers hidden thinking tokens
+/// some gateway models emit even when thinking is disabled.
 const VL_RERANK_MAX_TOKENS: usize = 1000;
 const VL_RERANK_TIMEOUT_SECS: u64 = 30;
-/// Thumbnails above this size are not sent; the rerank prompt must stay small.
-const VL_RERANK_MAX_IMAGE_BYTES: usize = 2 * 1024 * 1024;
-/// Override for the model; by default the model configured for image
-/// understanding (settings -> image understanding) is used.
+/// Text-only rerank; the description already comes from the vision model, so
+/// no image is sent again. GLM-4.6 is the cheapest model that answered all
+/// benchmark queries correctly and quickly on the reference gateway.
 pub const VL_RERANK_MODEL_ENV: &str = "LAP_VL_RERANK_MODEL";
+pub const VL_RERANK_DEFAULT_MODEL: &str = "zhipu/glm-4.6";
 
-/// One candidate for the vision rerank: its annotation text and, when the
-/// thumbnail cache has one, the small image that goes to the model.
-pub struct RerankCandidate {
-    pub file_id: i64,
-    pub text: String,
-    /// `(media_type, base64 data)`
-    pub image: Option<(String, String)>,
-}
-
-/// The multimodal instruction sent to the configured model.
+/// The instruction sent to the configured text model.
 ///
-/// The model is asked to *filter*, not to permute: returning a subset (or an
-/// empty array) is the expected answer. The earlier "rank all candidates"
-/// wording made the model echo non-matching photos at the tail.
-pub fn build_rerank_content(query: &str, candidates: &[RerankCandidate]) -> Vec<Value> {
-    let mut content = vec![json!({
+/// The model only compares the query with the stored image description. It is
+/// asked to *filter*, not to permute: returning a subset (or an empty array)
+/// is the expected answer.
+pub fn build_rerank_content(
+    query: &str,
+    candidates: &[(i64, String)],
+) -> Vec<Value> {
+    let listing = candidates
+        .iter()
+        .map(|(file_id, text)| format!("[{file_id}] {text}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    vec![json!({
         "type": "text",
         "text": format!(
             "用户查询：{query}\n\
-             下面依次给出候选照片的编号，以及能取到缩略图时的画面。请逐张看画面判断：\n\
-             1) 核心主体、动作、场景是否与描述相符；\n\
+             下面给出候选照片的编号和它们的画面描述。请仅根据描述文字判断，逐条核对：\n\
+             1) 核心主体、动作、场景是否与查询相符；\n\
              2) 查询中明确写出的人物性别、人数、颜色、地点等限定必须相符，不能因为“差不多”而保留；\n\
-             3) 缺少次要细节（如没拍到道具）不算不符，但明显不是同一类场景、或主体相似而动作/场景不符的，必须排除。\n\
-             只输出符合描述的候选编号的 JSON 数组，按相关度从高到低；没有符合的返回 []。不要解释。"
+             3) 缺少次要细节（如没提到道具）不算不符，但描述明显属于另一类场景、或主体相似而动作/场景不符的，必须排除。\n\
+             只输出符合描述的候选编号的 JSON 数组，按相关度从高到低；没有符合的返回 []。不要解释。\n\
+             候选描述：\n{listing}"
         ),
-    })];
-    for candidate in candidates {
-        match &candidate.image {
-            Some((media_type, data)) => {
-                content.push(json!({
-                    "type": "text",
-                    "text": format!("候选 [{}]：", candidate.file_id),
-                }));
-                content.push(json!({
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": data,
-                    },
-                }));
-            }
-            None => content.push(json!({
-                "type": "text",
-                "text": format!(
-                    "候选 [{}] {}（没有缩略图，按标注判断）",
-                    candidate.file_id, candidate.text
-                ),
-            })),
+    })]
+}
+
+/// Split candidates into `(annotated, unannotated ids)`.
+///
+/// Only annotated photos can be judged by their description. The rest are
+/// returned to the caller untouched instead of being dropped or sent.
+pub fn split_rerank_candidates(
+    candidates: Vec<(i64, Option<String>)>,
+) -> (Vec<(i64, String)>, Vec<i64>) {
+    let mut annotated = Vec::new();
+    let mut unannotated = Vec::new();
+    for (file_id, text) in candidates {
+        match text {
+            Some(text) => annotated.push((file_id, text)),
+            None => unannotated.push(file_id),
         }
     }
-    content
+    (annotated, unannotated)
 }
 
 /// Normalize the model answer into the ids it judged relevant.
@@ -1375,24 +1369,28 @@ fn truncate_chars(text: &str, max: usize) -> String {
     truncated
 }
 
-/// Environment override first, then the model configured for image
-/// understanding. This keeps the lab in sync with the settings panel.
+/// Environment override first, then the rerank model stored in settings, then
+/// the built-in text model. The rerank model is independent of `model` (which
+/// is the vision model used to produce the descriptions).
 fn rerank_model(config: &VlGatewayConfig) -> String {
     std::env::var(VL_RERANK_MODEL_ENV)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| {
-            if config.model.trim().is_empty() {
-                VL_DEFAULT_MODEL.to_string()
+            if config.rerank_model.trim().is_empty() {
+                VL_RERANK_DEFAULT_MODEL.to_string()
             } else {
-                config.model.trim().to_string()
+                config.rerank_model.trim().to_string()
             }
         })
 }
 
-/// Read the annotation text and cached thumbnail of every candidate.
-fn load_rerank_candidates(ids: &[i64]) -> Result<Vec<RerankCandidate>, String> {
+/// Read the annotation text of every candidate.
+///
+/// `None` means the photo has no image description, so the rerank model has
+/// nothing to compare and the caller keeps the photo outside the request.
+fn load_rerank_candidates(ids: &[i64]) -> Result<Vec<(i64, Option<String>)>, String> {
     let conn = crate::t_sqlite::open_conn()?;
     let mut candidates = Vec::with_capacity(ids.len());
     for file_id in ids {
@@ -1410,7 +1408,7 @@ fn load_rerank_candidates(ids: &[i64]) -> Result<Vec<RerankCandidate>, String> {
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        let mut text = annotation
+        let text = annotation
             .as_ref()
             .and_then(|(result, _)| result.as_deref())
             .and_then(snippet_from_result_json)
@@ -1421,44 +1419,14 @@ fn load_rerank_candidates(ids: &[i64]) -> Result<Vec<RerankCandidate>, String> {
                     .map(|raw| truncate_chars(raw.trim(), 240))
                     .filter(|raw| !raw.is_empty())
             });
-        if text.is_none() {
-            text = conn
-                .query_row(
-                    "SELECT name FROM afiles WHERE id = ?1",
-                    params![file_id],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .map_err(|e| e.to_string())?;
-        }
-        let image = crate::t_sqlite::AThumb::fetch(*file_id)
-            .ok()
-            .flatten()
-            .and_then(|thumb| {
-                if thumb.error_code != 0 {
-                    return None;
-                }
-                let data = thumb.thumb_data?;
-                if data.is_empty() || data.len() > VL_RERANK_MAX_IMAGE_BYTES {
-                    return None;
-                }
-                let media_type = crate::t_protocol::detect_image_mime(&data).to_string();
-                Some((
-                    media_type,
-                    base64::engine::general_purpose::STANDARD.encode(&data),
-                ))
-            });
-        candidates.push(RerankCandidate {
-            file_id: *file_id,
-            text: text.unwrap_or_else(|| "-".to_string()),
-            image,
-        });
+        candidates.push((*file_id, text));
     }
     Ok(candidates)
 }
 
-/// Ask the configured model to keep only the candidates that match. Thinking
-/// is disabled: the job is a short visual check, not reasoning.
+/// Ask the configured text model to keep only the candidates whose stored
+/// description matches the query. Thinking is disabled: comparing a short
+/// description needs no reasoning.
 async fn call_rerank_gateway(
     client: &reqwest::Client,
     config: &VlGatewayConfig,
@@ -1499,17 +1467,23 @@ async fn call_rerank_gateway(
     Ok(parse_response(&text)?.text)
 }
 
-/// Keep only the top search candidates that the cloud model judges relevant,
-/// in the model's order. Returns a subset of `file_ids` (possibly empty).
+/// What the rerank decided: the matching ids, plus the candidates that have
+/// no description and therefore could not be judged.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerankSelection {
+    pub matched: Vec<i64>,
+    pub unannotated: Vec<i64>,
+}
+
+/// Keep only the top search candidates whose description matches the query,
+/// in the model's order. Candidates without a description are returned in
+/// `unannotated` instead of being dropped.
 #[tauri::command]
 pub async fn rerank_search_with_llm(
     query: String,
     file_ids: Vec<i64>,
-) -> Result<Vec<i64>, String> {
+) -> Result<RerankSelection, String> {
     let query = query.trim().to_string();
-    if query.is_empty() {
-        return Ok(file_ids);
-    }
     let mut ids: Vec<i64> = Vec::new();
     for id in file_ids {
         if id > 0 && !ids.contains(&id) {
@@ -1517,17 +1491,29 @@ pub async fn rerank_search_with_llm(
         }
     }
     ids.truncate(VL_RERANK_MAX_CANDIDATES);
-    if ids.is_empty() {
-        return Ok(ids);
+    if query.is_empty() || ids.is_empty() {
+        return Ok(RerankSelection {
+            matched: Vec::new(),
+            unannotated: ids,
+        });
+    }
+
+    let candidates = load_rerank_candidates(&ids)?;
+    let (annotated, unannotated) = split_rerank_candidates(candidates);
+    if annotated.is_empty() {
+        return Ok(RerankSelection {
+            matched: Vec::new(),
+            unannotated,
+        });
     }
 
     let config = resolve_gateway_config()?;
     if config.gateway_url.trim().is_empty() || config.api_key.trim().is_empty() {
         return Err("图片理解网关未配置，无法使用云端重排".to_string());
     }
-    let candidates = load_rerank_candidates(&ids)?;
-    let content = build_rerank_content(&query, &candidates);
+    let content = build_rerank_content(&query, &annotated);
     let model = rerank_model(&config);
+    let annotated_ids: Vec<i64> = annotated.iter().map(|(file_id, _)| *file_id).collect();
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(VL_RERANK_TIMEOUT_SECS))
         .build()
@@ -1535,8 +1521,11 @@ pub async fn rerank_search_with_llm(
     let mut last_answer = String::new();
     for _ in 0..2 {
         last_answer = call_rerank_gateway(&client, &config, &content, &model).await?;
-        if let Some(selection) = parse_rerank_selection(&last_answer, &ids) {
-            return Ok(selection);
+        if let Some(matched) = parse_rerank_selection(&last_answer, &annotated_ids) {
+            return Ok(RerankSelection {
+                matched,
+                unannotated,
+            });
         }
     }
     Err(format!(
@@ -1722,10 +1711,16 @@ pub fn resolve_gateway_config() -> Result<VlGatewayConfig, String> {
     } else {
         stored.vl.model.trim().to_string()
     };
+    let rerank_model = if stored.vl.rerank_model.trim().is_empty() {
+        VL_RERANK_DEFAULT_MODEL.to_string()
+    } else {
+        stored.vl.rerank_model.trim().to_string()
+    };
     Ok(VlGatewayConfig {
         gateway_url,
         api_key,
         model,
+        rerank_model,
     })
 }
 
@@ -1735,6 +1730,7 @@ pub fn config_view() -> Result<VlConfigView, String> {
     Ok(VlConfigView {
         gateway_url: config.gateway_url.clone(),
         model: config.model.clone(),
+        rerank_model: config.rerank_model.clone(),
         configured: is_configured(&config),
     })
 }
@@ -1748,6 +1744,7 @@ pub fn set_config(
     gateway_url: &str,
     api_key: Option<String>,
     model: &str,
+    rerank_model: &str,
 ) -> Result<VlConfigView, String> {
     let gateway_url = gateway_url.trim().to_string();
     let model = if model.trim().is_empty() {
@@ -1755,9 +1752,15 @@ pub fn set_config(
     } else {
         model.trim().to_string()
     };
+    let rerank_model = if rerank_model.trim().is_empty() {
+        VL_RERANK_DEFAULT_MODEL.to_string()
+    } else {
+        rerank_model.trim().to_string()
+    };
     crate::t_config::update_app_config(|config| {
         config.vl.gateway_url = gateway_url.clone();
         config.vl.model = model.clone();
+        config.vl.rerank_model = rerank_model.clone();
         if let Some(key) = api_key.as_ref() {
             config.vl.api_key = key.trim().to_string();
         }
@@ -2024,8 +2027,9 @@ pub fn set_vl_config(
     gateway_url: String,
     api_key: Option<String>,
     model: String,
+    rerank_model: String,
 ) -> Result<VlConfigView, String> {
-    set_config(&gateway_url, api_key, &model)
+    set_config(&gateway_url, api_key, &model, &rerank_model)
 }
 
 /// Every template version, newest version of a name first.
@@ -2888,25 +2892,19 @@ mod tests {
 
     // ----- LLM rerank -----
 
-    fn rerank_candidate(file_id: i64, text: &str, image: bool) -> RerankCandidate {
-        RerankCandidate {
-            file_id,
-            text: text.to_string(),
-            image: image.then(|| ("image/jpeg".to_string(), "aGVsbG8=".to_string())),
-        }
-    }
-
     #[test]
     fn the_rerank_prompt_asks_for_matches_not_a_full_permutation() {
         let content = build_rerank_content(
             "摘葡萄",
             &[
-                rerank_candidate(7, "一个男孩在葡萄园里采摘葡萄", true),
-                rerank_candidate(9, "城市夜景", false),
+                (7, "一个男孩在葡萄园里采摘葡萄".to_string()),
+                (9, "城市夜景".to_string()),
             ],
         );
         let intro = content[0]["text"].as_str().expect("intro text block");
         assert!(intro.contains("摘葡萄"));
+        assert!(intro.contains("[7] 一个男孩在葡萄园里采摘葡萄"));
+        assert!(intro.contains("[9] 城市夜景"));
         assert!(intro.contains("JSON"));
         // The model may drop candidates: "no match" is a valid answer.
         assert!(intro.contains("没有符合"));
@@ -2914,31 +2912,40 @@ mod tests {
     }
 
     #[test]
-    fn the_rerank_content_carries_one_image_block_per_candidate_with_a_thumb() {
+    fn the_rerank_request_is_text_only() {
         let content = build_rerank_content(
             "摘葡萄",
-            &[
-                rerank_candidate(7, "一个男孩在葡萄园里采摘葡萄", true),
-                rerank_candidate(9, "城市夜景", false),
-            ],
+            &[(7, "一个男孩在葡萄园里采摘葡萄".to_string())],
         );
-        let images: Vec<&Value> = content
-            .iter()
-            .filter(|block| block["type"] == "image")
-            .collect();
-        assert_eq!(images.len(), 1);
-        assert_eq!(images[0]["source"]["media_type"], json!("image/jpeg"));
-        assert_eq!(images[0]["source"]["data"], json!("aGVsbG8="));
-        // A candidate without a thumbnail keeps its annotation text.
-        let texts: Vec<String> = content
-            .iter()
-            .filter_map(|block| block["text"].as_str().map(str::to_string))
-            .collect();
-        assert!(
-            texts
-                .iter()
-                .any(|text| text.contains("[9]") && text.contains("城市夜景"))
+        // Descriptions already come from the vision model; no image is sent
+        // again, so any text model can do the comparison.
+        assert_eq!(content.len(), 1);
+        assert_eq!(content[0]["type"], json!("text"));
+    }
+
+    #[test]
+    fn the_rerank_model_defaults_to_the_cheap_text_model() {
+        assert_eq!(rerank_model(&test_config("http://x")), VL_RERANK_DEFAULT_MODEL);
+        let mut config = test_config("http://x");
+        config.rerank_model = "zhipu/glm-4.6".to_string();
+        assert_eq!(rerank_model(&config), "zhipu/glm-4.6");
+    }
+
+    #[test]
+    fn candidates_without_a_description_are_kept_out_of_the_request() {
+        let (annotated, unannotated) = split_rerank_candidates(vec![
+            (7, Some("一个男孩在葡萄园里采摘葡萄".to_string())),
+            (9, None),
+            (11, Some("城市夜景".to_string())),
+        ]);
+        assert_eq!(
+            annotated,
+            vec![
+                (7, "一个男孩在葡萄园里采摘葡萄".to_string()),
+                (11, "城市夜景".to_string()),
+            ]
         );
+        assert_eq!(unannotated, vec![9]);
     }
 
     #[test]
@@ -3190,6 +3197,7 @@ mod tests {
             gateway_url: url.to_string(),
             api_key: "test-key-not-a-real-secret".to_string(),
             model: "auto/deepseek-v4.1-flash".to_string(),
+            rerank_model: String::new(),
         }
     }
 
@@ -3355,6 +3363,7 @@ mod tests {
             gateway_url: String::new(),
             api_key: "test-key-not-a-real-secret".to_string(),
             model: VL_DEFAULT_MODEL.to_string(),
+            rerank_model: String::new(),
         };
         let error = call_gateway(&client, &config, &test_request())
             .await
@@ -3445,17 +3454,20 @@ mod tests {
             gateway_url: "http://127.0.0.1:1".to_string(),
             api_key: "test-key-not-a-real-secret".to_string(),
             model: VL_DEFAULT_MODEL.to_string(),
+            rerank_model: String::new(),
         };
         assert!(is_configured(&config));
-        // The view is built from the gateway URL, the model and a flag only.
+        // The view is built from the gateway URL, the models and a flag only.
         let view = VlConfigView {
             gateway_url: config.gateway_url.clone(),
             model: config.model.clone(),
+            rerank_model: config.rerank_model.clone(),
             configured: is_configured(&config),
         };
         let serialized = serde_json::to_string(&view).unwrap();
         assert!(!serialized.contains("test-key-not-a-real-secret"));
         assert!(serialized.contains("configured"));
+        assert!(serialized.contains("rerankModel"));
     }
 
     // ----- orchestration -----
@@ -4000,6 +4012,7 @@ mod tests {
             gateway_url,
             api_key,
             model: crate::t_common::VL_DEFAULT_MODEL.to_string(),
+            rerank_model: String::new(),
         };
         let request = VlRequest {
             image_base64: base64::engine::general_purpose::STANDARD.encode(&bytes),

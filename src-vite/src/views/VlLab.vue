@@ -226,8 +226,8 @@
           {{ $t('vl.lab.llm_rerank') }}
         </label>
         <div class="text-[11px] text-base-content/40">{{ $t('vl.lab.llm_rerank_hint') }}</div>
-        <div v-if="llmRerank && vlModel" class="text-[11px] text-base-content/40">
-          {{ $t('vl.lab.llm_rerank_model', { model: vlModel }) }}
+        <div v-if="llmRerank && vlRerankModel" class="text-[11px] text-base-content/40">
+          {{ $t('vl.lab.llm_rerank_model', { model: vlRerankModel }) }}
         </div>
         <div v-if="searchError" class="text-xs text-error break-words">{{ searchError }}</div>
 
@@ -237,6 +237,9 @@
             <span v-if="reranked" class="text-base-content/40">{{ $t('vl.lab.llm_rerank') }} · </span>
             {{ $t('vl.lab.hits_summary', { count: searchHits.length }) }}
             <span v-if="matchColumnSummary" class="text-base-content/40">· {{ matchColumnSummary }}</span>
+          </div>
+          <div v-if="reranked && unannotatedCount" class="text-xs text-base-content/40">
+            {{ $t('vl.lab.llm_rerank_unannotated', { count: unannotatedCount }) }}
           </div>
           <div v-if="reranked && !searchHits.length" class="text-xs text-warning/80">
             {{ $t('vl.lab.llm_rerank_no_match') }}
@@ -326,7 +329,7 @@ const showDesktopTitleBar = isWin || isLinux;
 // ----- gateway and index status -----
 
 const configured = ref(false);
-const vlModel = ref('');
+const vlRerankModel = ref('');
 const ftsStatus = ref<{ documents: number; files: number } | null>(null);
 const rebuilding = ref(false);
 const indexConsistent = computed(() => indexIsConsistent(ftsStatus.value));
@@ -338,10 +341,10 @@ async function loadStatus() {
   try {
     const view = await getVlConfig();
     configured.value = Boolean(view?.configured);
-    vlModel.value = String(view?.model ?? '');
+    vlRerankModel.value = String(view?.rerankModel ?? '');
   } catch {
     configured.value = false;
-    vlModel.value = '';
+    vlRerankModel.value = '';
   }
   try {
     ftsStatus.value = await getFtsStatus();
@@ -697,6 +700,7 @@ const searched = ref(false);
 const searchKind = ref<'precise' | 'semantic'>('precise');
 const llmRerank = ref(false);
 const reranked = ref(false);
+const unannotatedCount = ref(0);
 const searchError = ref('');
 const searchHits = ref<any[]>([]);
 const searchFiles = ref<any[]>([]);
@@ -727,6 +731,7 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
   searching.value = true;
   searchError.value = '';
   reranked.value = false;
+  unannotatedCount.value = 0;
   const rerankFailed = (error: unknown) => {
     // Keep the original ranking when the cloud call fails; the user still
     // gets results and sees why they were not reranked.
@@ -765,14 +770,15 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
       }));
       let files = list;
       if (llmRerank.value && hits.length) {
-        // The visual check decides which of the semantic neighbours really
-        // show the described scene, so the tail stops being "same embedding".
+        // Compare the query with the stored image descriptions; semantic
+        // neighbours without a description cannot be judged and stay at the end.
         const candidates = hits.slice(0, RERANK_MAX_CANDIDATES);
         try {
           const selected = await rerankHitList(query, candidates);
           hits = selected.hits.map((hit, index) => ({ ...hit, rank: index + 1 }));
           files = hits.map(hit => fileById.get(Number(hit.fileId))).filter(Boolean) as any[];
           reranked.value = selected.reranked;
+          unannotatedCount.value = selected.unannotatedCount ?? 0;
         } catch (error) {
           rerankFailed(error);
         }
@@ -781,7 +787,7 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
       searchFiles.value = files;
     } else {
       // With the LLM rerank checked the text search only needs to produce a
-      // candidate set; the cloud model keeps the photos that really match.
+      // candidate set; the text model keeps the photos whose description matches.
       const limit = llmRerank.value ? RERANK_MAX_CANDIDATES : SEARCH_RESULT_LIMIT;
       const hits = await searchFts(query, limit);
       let list = Array.isArray(hits) ? hits : [];
@@ -790,6 +796,7 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
           const selected = await rerankHitList(query, list);
           list = selected.hits;
           reranked.value = selected.reranked;
+          unannotatedCount.value = selected.unannotatedCount ?? 0;
         } catch (error) {
           rerankFailed(error);
         }

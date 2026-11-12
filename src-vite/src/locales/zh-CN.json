@@ -1877,6 +1877,8 @@
       "api_key_clear": "清除密钥",
       "model": "默认模型",
       "model_hint": "发送给网关的模型名称。",
+      "rerank_model": "重排模型",
+      "rerank_model_hint": "仅用于搜索结果重排的文本模型，不会发送图片；留空使用 zhipu/glm-4.6。",
       "save": "保存网关配置",
       "saving": "保存中…",
       "saved": "网关配置已保存",
@@ -1993,9 +1995,10 @@
       "semantic_needs_multilingual": "中文语义检索需要「多语言」模型，请先在 设置→搜索 中下载。",
       "precise_hint": "精确搜索 = 全文检索：按相关度排序，允许部分关键词命中（不再是“必须全部命中”）。",
       "llm_rerank": "云端 LLM 重排",
-      "llm_rerank_hint": "勾选后把查询与候选缩略图发给模型，按画面判断并只保留真正符合描述的照片（关闭深度思考，约 3–6 秒）；缩略图会发送到已配置的网关。",
+      "llm_rerank_hint": "勾选后把查询与候选的图片描述发给文本模型，只保留描述相符的照片（不发送图片，约 1–2 秒）；需要网关已配置。",
       "llm_rerank_model": "模型：{model}（在 设置→图片理解 中修改）",
       "llm_rerank_no_match": "没有与描述相符的照片",
+      "llm_rerank_unannotated": "其中 {count} 张没有图片描述，未参与重排",
       "llm_rerank_failed": "云端重排失败，已保留原始排序"
     }
   }

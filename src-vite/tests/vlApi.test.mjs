@@ -65,7 +65,7 @@ test('set_vl_config keeps the stored key when no key is given', async () => {
   const { calls, invoker } = recorder({ gatewayUrl: 'https://gw', model: 'auto/x', configured: true });
   const view = await setVlConfig({ gatewayUrl: ' https://gw ', model: ' auto/x ' }, invoker);
   assert.equal(calls[0].command, 'set_vl_config');
-  assert.deepEqual(calls[0].args, { gatewayUrl: 'https://gw', apiKey: null, model: 'auto/x' });
+  assert.deepEqual(calls[0].args, { gatewayUrl: 'https://gw', apiKey: null, model: 'auto/x', rerankModel: '' });
   assert.equal(view.configured, true);
 });
 
@@ -89,10 +89,11 @@ test('the api key argument distinguishes keep, clear and set', () => {
   assert.equal(toApiKeyArgument(undefined), null);
   assert.equal(toApiKeyArgument(''), '');
   assert.equal(toApiKeyArgument(' sk-1 '), 'sk-1');
-  assert.deepEqual(buildVlConfigArgs({ gatewayUrl: ' gw ', apiKey: null, model: ' m ' }), {
+  assert.deepEqual(buildVlConfigArgs({ gatewayUrl: ' gw ', apiKey: null, model: ' m ', rerankModel: ' r ' }), {
     gatewayUrl: 'gw',
     apiKey: null,
     model: 'm',
+    rerankModel: 'r',
   });
 });
 

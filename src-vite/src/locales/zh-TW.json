@@ -1877,6 +1877,8 @@
       "api_key_clear": "清除金鑰",
       "model": "預設模型",
       "model_hint": "傳送給閘道的模型名稱。",
+      "rerank_model": "重排模型",
+      "rerank_model_hint": "僅用於搜尋結果重排的文字模型，不會傳送圖片；留空使用 zhipu/glm-4.6。",
       "save": "儲存閘道設定",
       "saving": "儲存中…",
       "saved": "閘道設定已儲存",
@@ -1993,9 +1995,10 @@
       "semantic_needs_multilingual": "中文語意檢索需要「多語言」模型，請先在 設定→搜尋 中下載。",
       "precise_hint": "精確搜尋 = 全文檢索：依相關度排序，允許部分關鍵詞命中（不再是「必須全部命中」）。",
       "llm_rerank": "雲端 LLM 重排",
-      "llm_rerank_hint": "勾選後將查詢與候選縮圖送給模型，按畫面判斷並只保留真正符合描述的照片（關閉深度思考，約 3–6 秒）；縮圖會傳送到已設定的閘道。",
+      "llm_rerank_hint": "勾選後將查詢與候選的圖片描述送給文字模型，只保留描述相符的照片（不傳送圖片，約 1–2 秒）；需要閘道已設定。",
       "llm_rerank_model": "模型：{model}（在 設定→圖片理解 中修改）",
       "llm_rerank_no_match": "沒有與描述相符的照片",
+      "llm_rerank_unannotated": "其中 {count} 張沒有圖片描述，未參與重排",
       "llm_rerank_failed": "雲端重排失敗，已保留原始排序"
     }
   }

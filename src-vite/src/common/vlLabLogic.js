@@ -211,7 +211,7 @@ export function applyRerankSelection(hits, order) {
   return selected;
 }
 
-/// Let the cloud model keep only the candidates that match the query.
+/// Let the text model keep only the candidates whose description matches.
 export async function rerankSearchWithLlm(query, fileIds, invoker = invoke) {
   return invoker('rerank_search_with_llm', {
     query: String(query ?? ''),
@@ -219,14 +219,26 @@ export async function rerankSearchWithLlm(query, fileIds, invoker = invoke) {
   });
 }
 
-/// Rerank a hit list; returns the filtered hits and whether the call ran.
+/// Rerank a hit list using the stored image descriptions.
+///
+/// Only annotated hits are judged; hits without a description are appended
+/// unchanged so the caller can show them instead of silently dropping them.
 export async function rerankHitList(query, hits, invoker = invoke) {
   const list = Array.isArray(hits) ? hits : [];
-  if (!list.length) return { hits: [], reranked: false };
-  const order = await rerankSearchWithLlm(
+  if (!list.length) return { hits: [], reranked: false, unannotatedCount: 0 };
+  const selection = await rerankSearchWithLlm(
     query,
     list.map(hit => Number(hit.fileId)),
     invoker,
   );
-  return { hits: applyRerankSelection(list, order), reranked: true };
+  const matched = applyRerankSelection(list, selection?.matched);
+  const unannotatedIds = new Set(
+    (Array.isArray(selection?.unannotated) ? selection.unannotated : []).map(Number),
+  );
+  const unannotated = list.filter(hit => unannotatedIds.has(Number(hit.fileId)));
+  return {
+    hits: [...matched, ...unannotated],
+    reranked: true,
+    unannotatedCount: unannotated.length,
+  };
 }

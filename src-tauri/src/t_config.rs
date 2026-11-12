@@ -411,6 +411,10 @@ pub struct VlConfig {
     pub api_key: String,
     #[serde(default)]
     pub model: String,
+    /// Text model used only for search-result reranking; independent of the
+    /// vision model above.
+    #[serde(default)]
+    pub rerank_model: String,
 }
 
 /// App configuration stored in app-config.json

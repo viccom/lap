@@ -33,8 +33,8 @@ export async function getVlConfig(invoker = invoke) {
 }
 
 /// Store the gateway settings. `apiKey` of null keeps the stored key, '' clears it.
-export async function setVlConfig({ gatewayUrl, apiKey, model } = {}, invoker = invoke) {
-  const args = buildVlConfigArgs({ gatewayUrl, apiKey, model });
+export async function setVlConfig({ gatewayUrl, apiKey, model, rerankModel } = {}, invoker = invoke) {
+  const args = buildVlConfigArgs({ gatewayUrl, apiKey, model, rerankModel });
   try {
     return await invoker('set_vl_config', args);
   } catch (error) {

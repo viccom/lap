@@ -290,22 +290,25 @@ test('a rerank selection keeps only the hits the model judged relevant', () => {
   assert.deepEqual(applyRerankSelection(hits, []), []);
 });
 
-test('rerankHitList sends every candidate and applies the model selection', async () => {
+test('rerankHitList keeps matches and appends hits without a description', async () => {
   const calls = [];
   const invoker = async (command, args) => {
     calls.push({ command, args });
-    return [9];
+    return { matched: [9], unannotated: [11] };
   };
   const hits = [
     { fileId: 7, matchedColumns: ['caption'] },
     { fileId: 9, matchedColumns: ['name'] },
+    { fileId: 11, matchedColumns: ['tags'] },
   ];
   const result = await rerankHitList('摘葡萄', hits, invoker);
   assert.deepEqual(calls, [
-    { command: 'rerank_search_with_llm', args: { query: '摘葡萄', fileIds: [7, 9] } },
+    { command: 'rerank_search_with_llm', args: { query: '摘葡萄', fileIds: [7, 9, 11] } },
   ]);
   assert.equal(result.reranked, true);
-  assert.deepEqual(result.hits.map(hit => hit.fileId), [9]);
+  // 7 was rejected by the model, 9 matched, 11 could not be judged.
+  assert.deepEqual(result.hits.map(hit => hit.fileId), [9, 11]);
+  assert.equal(result.unannotatedCount, 1);
   // A single candidate is still verified; an empty list is not sent.
   await rerankHitList('摘葡萄', [hits[0]], invoker);
   assert.deepEqual(calls.at(-1).args.fileIds, [7]);
@@ -317,10 +320,10 @@ test('the rerank invoke sends the command and numeric ids', async () => {
   const calls = [];
   const invoker = async (command, args) => {
     calls.push({ command, args });
-    return [9, 7];
+    return { matched: [9, 7], unannotated: [] };
   };
   const order = await rerankSearchWithLlm('摘葡萄', [7, '9'], invoker);
-  assert.deepEqual(order, [9, 7]);
+  assert.deepEqual(order, { matched: [9, 7], unannotated: [] });
   assert.deepEqual(calls, [
     { command: 'rerank_search_with_llm', args: { query: '摘葡萄', fileIds: [7, 9] } },
   ]);

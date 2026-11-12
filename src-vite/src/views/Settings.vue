@@ -534,6 +534,16 @@
                 spellcheck="false"
               />
             </div>
+            <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.rerank_model') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.rerank_model_hint') }}</div>
+              <input
+                v-model="vlRerankModel"
+                type="text"
+                class="input input-sm w-full"
+                spellcheck="false"
+              />
+            </div>
             <div class="flex justify-end">
               <button class="t-button-primary" :disabled="savingVlConfig" @click="saveVlConfig">
                 {{ savingVlConfig ? $t('settings.vl.saving') : $t('settings.vl.save') }}
@@ -882,6 +892,7 @@ const vlConfig = ref<any>(null);
 const vlConfigured = ref(false);
 const vlGatewayUrl = ref('');
 const vlModel = ref('');
+const vlRerankModel = ref('');
 /// Write only: the key is never read back and never kept in the app config.
 const vlApiKey = ref('');
 const vlApiKeyClearPending = ref(false);
@@ -941,6 +952,7 @@ async function loadVlConfig() {
     vlConfigured.value = Boolean(view?.configured);
     vlGatewayUrl.value = String(view?.gatewayUrl ?? '');
     vlModel.value = String(view?.model ?? '');
+    vlRerankModel.value = String(view?.rerankModel ?? '');
   } catch (error) {
     console.error('Failed to read the image understanding configuration:', error);
   }
@@ -958,7 +970,12 @@ async function saveVlConfig() {
   try {
     // null keeps the stored key, an empty string removes it.
     const apiKey = resolveApiKeyInput(vlApiKeyClearPending.value, vlApiKey.value);
-    const view = await setVlConfig({ gatewayUrl: vlGatewayUrl.value, apiKey, model: vlModel.value });
+    const view = await setVlConfig({
+      gatewayUrl: vlGatewayUrl.value,
+      apiKey,
+      model: vlModel.value,
+      rerankModel: vlRerankModel.value,
+    });
     vlConfig.value = view;
     vlConfigured.value = Boolean(view?.configured);
     vlApiKey.value = '';

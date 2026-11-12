@@ -1877,6 +1877,8 @@
       "api_key_clear": "Clear key",
       "model": "Default model",
       "model_hint": "The model name that is sent to the gateway.",
+      "rerank_model": "Rerank model",
+      "rerank_model_hint": "Text model used only for search-result reranking; no images are sent. Leave empty to use zhipu/glm-4.6.",
       "save": "Save gateway settings",
       "saving": "Saving…",
       "saved": "Gateway settings saved",
@@ -1993,9 +1995,10 @@
       "semantic_needs_multilingual": "Chinese semantic search needs the multilingual model. Download it in Settings → Search.",
       "precise_hint": "Precise search is full-text search: results are ranked by relevance and partial keyword matches are allowed (no longer all-words-required).",
       "llm_rerank": "Cloud LLM rerank",
-      "llm_rerank_hint": "Send the query and candidate thumbnails to the model, which keeps only photos that actually match the described scene (thinking disabled, about 3–6 s); the gateway must be configured.",
+      "llm_rerank_hint": "Send the query and the stored image descriptions to a text model, which keeps only matching photos (no images are sent, about 1–2 s); the gateway must be configured.",
       "llm_rerank_model": "Model: {model}",
       "llm_rerank_no_match": "No photos match this description",
+      "llm_rerank_unannotated": "{count} photos have no image description and were not reranked",
       "llm_rerank_failed": "LLM rerank failed, keeping the original ranking"
     }
   }
