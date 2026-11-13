@@ -52,6 +52,56 @@ pub(crate) const VL_SCHEMA_SQL: &str = "
     CREATE INDEX IF NOT EXISTS idx_vl_calls_file ON vl_calls(file_id);
 ";
 
+/// v27 — one row per image-understanding run.
+///
+/// The run id is a UUID string: the in-process counter used before v27 was
+/// reused after every restart, so it can never be a persistent identity.
+pub(crate) const RUNS_SCHEMA_SQL: &str = "
+    CREATE TABLE IF NOT EXISTS vl_runs (
+        run_id TEXT PRIMARY KEY,
+        library_id TEXT NOT NULL,
+        library_name TEXT NOT NULL DEFAULT '',
+        template_id INTEGER NOT NULL,
+        template_version INTEGER NOT NULL,
+        template_name TEXT NOT NULL DEFAULT '',
+        force INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL,
+        total INTEGER NOT NULL DEFAULT 0,
+        processed INTEGER NOT NULL DEFAULT 0,
+        succeeded INTEGER NOT NULL DEFAULT 0,
+        failed INTEGER NOT NULL DEFAULT 0,
+        skipped INTEGER NOT NULL DEFAULT 0,
+        current_file_id INTEGER,
+        error TEXT,
+        started_at INTEGER NOT NULL,
+        finished_at INTEGER
+    );
+";
+
+/// The v27 schema, applied defensively: partial databases that predate the
+/// vision-language tables (test fixtures, very old libraries) simply have
+/// no calls to group, so the column and the index are skipped for them.
+pub(crate) fn ensure_runs_schema(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(RUNS_SCHEMA_SQL)
+        .map_err(|e| format!("creating vl_runs failed: {e}"))?;
+    let has_calls = table_has_column(conn, "vl_calls", "id")?;
+    if has_calls && !table_has_column(conn, "vl_calls", "run_id")? {
+        conn.execute(
+            "ALTER TABLE vl_calls ADD COLUMN run_id TEXT REFERENCES vl_runs(run_id) ON DELETE CASCADE",
+            [],
+        )
+        .map_err(|e| format!("adding vl_calls.run_id failed: {e}"))?;
+    }
+    if has_calls {
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_vl_calls_run ON vl_calls(run_id, id)",
+            [],
+        )
+        .map_err(|e| format!("creating the vl_calls run index failed: {e}"))?;
+    }
+    Ok(())
+}
+
 struct Migration {
     version: i32,
     description: &'static str,
@@ -245,6 +295,16 @@ fn get_migrations() -> Vec<Migration> {
             description: "Reindex with character tokens for relaxed matching",
             sql: "",
         },
+        Migration {
+            version: 26,
+            description: "Caption embeddings for semantic search over descriptions",
+            sql: crate::t_embed::EMBED_SCHEMA_SQL,
+        },
+        Migration {
+            version: 27,
+            description: "Persisted image understanding runs and call grouping",
+            sql: "",
+        },
     ]
 }
 
@@ -289,9 +349,12 @@ fn seed_vl_builtin_template(conn: &Connection) -> Result<(), String> {
 }
 
 fn migrate_unique_album_files(conn: &Connection) -> Result<(), String> {
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|e| format!("Migration 9 (deduplicate album files) failed starting transaction: {}", e))?;
+    let tx = conn.unchecked_transaction().map_err(|e| {
+        format!(
+            "Migration 9 (deduplicate album files) failed starting transaction: {}",
+            e
+        )
+    })?;
 
     tx.execute_batch(
         "
@@ -342,8 +405,12 @@ fn migrate_unique_album_files(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("Migration 9 (deduplicate album files) failed: {}", e))?;
 
-    tx.commit()
-        .map_err(|e| format!("Migration 9 (deduplicate album files) failed committing transaction: {}", e))
+    tx.commit().map_err(|e| {
+        format!(
+            "Migration 9 (deduplicate album files) failed committing transaction: {}",
+            e
+        )
+    })
 }
 
 fn table_has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
@@ -497,15 +564,20 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                 // --- Live Photo pairing columns ---
                 if !table_has_column(conn, "afiles", "content_identifier")? {
                     conn.execute("ALTER TABLE afiles ADD COLUMN content_identifier TEXT", [])
-                        .map_err(|e| format!("Migration 9 failed adding content_identifier: {}", e))?;
+                        .map_err(|e| {
+                            format!("Migration 9 failed adding content_identifier: {}", e)
+                        })?;
                 }
                 if !table_has_column(conn, "afiles", "media_subtype")? {
                     conn.execute("ALTER TABLE afiles ADD COLUMN media_subtype TEXT", [])
                         .map_err(|e| format!("Migration 9 failed adding media_subtype: {}", e))?;
                 }
                 if !table_has_column(conn, "afiles", "live_photo_video_id")? {
-                    conn.execute("ALTER TABLE afiles ADD COLUMN live_photo_video_id INTEGER", [])
-                        .map_err(|e| format!("Migration 9 failed adding live_photo_video_id: {}", e))?;
+                    conn.execute(
+                        "ALTER TABLE afiles ADD COLUMN live_photo_video_id INTEGER",
+                        [],
+                    )
+                    .map_err(|e| format!("Migration 9 failed adding live_photo_video_id: {}", e))?;
                 }
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_afiles_content_identifier ON afiles(content_identifier)",
@@ -521,7 +593,8 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                     "CREATE INDEX IF NOT EXISTS idx_afiles_folder_name_nocase
                      ON afiles(folder_id, name COLLATE NOCASE)",
                     [],
-                ).map_err(|e| format!("Migration 9 failed adding case-insensitive index: {}", e))?;
+                )
+                .map_err(|e| format!("Migration 9 failed adding case-insensitive index: {}", e))?;
 
                 // --- per-folder scan state ---
                 conn.execute_batch(
@@ -535,7 +608,8 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                     );
                     CREATE INDEX IF NOT EXISTS idx_folder_scan_state_scanner_version
                         ON folder_scan_state(scanner, version);",
-                ).map_err(|e| format!("Migration 9 failed creating folder scan state: {}", e))?;
+                )
+                .map_err(|e| format!("Migration 9 failed creating folder scan state: {}", e))?;
             } else if migration.version == 11 {
                 if !table_has_column(conn, "afiles", "culling_flag")? {
                     conn.execute(
@@ -565,10 +639,20 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                 )
                 .map_err(|e| format!("Migration 13 failed creating inode index: {}", e))?;
             } else if migration.version == 14 {
-                for column in ["skipped_count", "skipped_size", "failed_count", "failed_size", "merged_count", "merged_size"] {
+                for column in [
+                    "skipped_count",
+                    "skipped_size",
+                    "failed_count",
+                    "failed_size",
+                    "merged_count",
+                    "merged_size",
+                ] {
                     if !table_has_column(conn, "albums", column)? {
                         conn.execute(
-                            &format!("ALTER TABLE albums ADD COLUMN {} INTEGER NOT NULL DEFAULT 0", column),
+                            &format!(
+                                "ALTER TABLE albums ADD COLUMN {} INTEGER NOT NULL DEFAULT 0",
+                                column
+                            ),
                             [],
                         )
                         .map_err(|e| format!("Migration 14 failed adding {}: {}", column, e))?;
@@ -595,10 +679,13 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                 }
             } else if migration.version == 16 {
                 if !table_has_column(conn, "afiles", "motion_photo_offset")? {
-                    conn.execute("ALTER TABLE afiles ADD COLUMN motion_photo_offset INTEGER", [])
-                        .map_err(|e| {
-                            format!("Migration 16 failed adding motion_photo_offset: {}", e)
-                        })?;
+                    conn.execute(
+                        "ALTER TABLE afiles ADD COLUMN motion_photo_offset INTEGER",
+                        [],
+                    )
+                    .map_err(|e| {
+                        format!("Migration 16 failed adding motion_photo_offset: {}", e)
+                    })?;
                 }
             } else if migration.version == 17 {
                 migrate_tag_groups(conn)?;
@@ -610,8 +697,11 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                     ("excluded_folders", "TEXT NOT NULL DEFAULT '[]'"),
                 ] {
                     if !table_has_column(&tx, "albums", column)? {
-                        tx.execute(&format!("ALTER TABLE albums ADD COLUMN {column} {definition}"), [])
-                            .map_err(|e| e.to_string())?;
+                        tx.execute(
+                            &format!("ALTER TABLE albums ADD COLUMN {column} {definition}"),
+                            [],
+                        )
+                        .map_err(|e| e.to_string())?;
                     }
                 }
                 tx.commit().map_err(|e| e.to_string())?;
@@ -619,33 +709,56 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                 let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
                 for column in ["cloud_only", "metadata_pending"] {
                     if !table_has_column(&tx, "afiles", column)? {
-                        tx.execute(&format!("ALTER TABLE afiles ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"), [])
-                            .map_err(|e| e.to_string())?;
+                        tx.execute(
+                            &format!(
+                                "ALTER TABLE afiles ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                            ),
+                            [],
+                        )
+                        .map_err(|e| e.to_string())?;
                     }
                 }
                 tx.commit().map_err(|e| e.to_string())?;
             } else if migration.version == 20 {
                 let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-                for (column, definition) in [("icc_profile", "TEXT"), ("color_space", "TEXT"), ("bit_depth", "INTEGER")] {
+                for (column, definition) in [
+                    ("icc_profile", "TEXT"),
+                    ("color_space", "TEXT"),
+                    ("bit_depth", "INTEGER"),
+                ] {
                     if !table_has_column(&tx, "afiles", column)? {
-                        tx.execute(&format!("ALTER TABLE afiles ADD COLUMN {column} {definition}"), [])
-                            .map_err(|e| format!("Migration {} failed adding {column}: {e}", migration.version))?;
+                        tx.execute(
+                            &format!("ALTER TABLE afiles ADD COLUMN {column} {definition}"),
+                            [],
+                        )
+                        .map_err(|e| {
+                            format!(
+                                "Migration {} failed adding {column}: {e}",
+                                migration.version
+                            )
+                        })?;
                     }
                 }
                 // Schedule one content read; empty color fields are valid after extraction.
-                tx.execute("UPDATE afiles SET metadata_pending=1 WHERE file_type IN (1,3)", [])
-                    .map_err(|e| format!("Migration 20 failed marking metadata pending: {e}"))?;
+                tx.execute(
+                    "UPDATE afiles SET metadata_pending=1 WHERE file_type IN (1,3)",
+                    [],
+                )
+                .map_err(|e| format!("Migration 20 failed marking metadata pending: {e}"))?;
                 // Schema, pending markers and version advance together.
-                tx.pragma_update(None, "user_version", migration.version).map_err(|e| e.to_string())?;
+                tx.pragma_update(None, "user_version", migration.version)
+                    .map_err(|e| e.to_string())?;
                 tx.commit().map_err(|e| e.to_string())?;
             } else if migration.version == 22 {
                 let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
                 for column in ["e_title", "e_headline"] {
                     if !table_has_column(&tx, "afiles", column)? {
-                        tx.execute(&format!("ALTER TABLE afiles ADD COLUMN {column} TEXT"), []).map_err(|e| e.to_string())?;
+                        tx.execute(&format!("ALTER TABLE afiles ADD COLUMN {column} TEXT"), [])
+                            .map_err(|e| e.to_string())?;
                     }
                 }
-                tx.pragma_update(None, "user_version", migration.version).map_err(|e| e.to_string())?;
+                tx.pragma_update(None, "user_version", migration.version)
+                    .map_err(|e| e.to_string())?;
                 tx.commit().map_err(|e| e.to_string())?;
             } else if migration.version == 21 {
                 migrate_tag_tree(conn)?;
@@ -673,6 +786,9 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                         migration.version, e
                     )
                 })?;
+            } else if migration.version == 27 {
+                ensure_runs_schema(conn)
+                    .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
             } else if !migration.sql.trim().is_empty() {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
@@ -698,7 +814,8 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
 // Idempotent and atomic, including when a previous migration run was interrupted.
 pub(crate) fn migrate_tag_groups(conn: &Connection) -> Result<(), String> {
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    tx.execute_batch("CREATE TABLE IF NOT EXISTS atag_groups (
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS atag_groups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL COLLATE NOCASE UNIQUE,
         sort_order INTEGER NOT NULL DEFAULT 0,
@@ -707,13 +824,17 @@ pub(crate) fn migrate_tag_groups(conn: &Connection) -> Result<(), String> {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_atag_groups_default
         ON atag_groups(is_default) WHERE is_default = 1;
     INSERT INTO atag_groups(name, is_default)
-        SELECT 'Default', 1 WHERE NOT EXISTS (SELECT 1 FROM atag_groups WHERE is_default = 1);")
-        .map_err(|e| e.to_string())?;
+        SELECT 'Default', 1 WHERE NOT EXISTS (SELECT 1 FROM atag_groups WHERE is_default = 1);",
+    )
+    .map_err(|e| e.to_string())?;
     if !table_has_column(&tx, "atags", "group_id")? {
-        tx.execute_batch("ALTER TABLE atags ADD COLUMN group_id INTEGER REFERENCES atag_groups(id);")
-            .map_err(|e| e.to_string())?;
+        tx.execute_batch(
+            "ALTER TABLE atags ADD COLUMN group_id INTEGER REFERENCES atag_groups(id);",
+        )
+        .map_err(|e| e.to_string())?;
     }
-    tx.execute_batch("UPDATE atags SET group_id = (SELECT id FROM atag_groups WHERE is_default = 1)
+    tx.execute_batch(
+        "UPDATE atags SET group_id = (SELECT id FROM atag_groups WHERE is_default = 1)
         WHERE group_id IS NULL;
         CREATE INDEX IF NOT EXISTS idx_atags_group_id ON atags(group_id);
         CREATE TRIGGER IF NOT EXISTS protect_default_tag_group_delete BEFORE DELETE ON atag_groups
@@ -725,8 +846,9 @@ pub(crate) fn migrate_tag_groups(conn: &Connection) -> Result<(), String> {
         WHEN NEW.group_id IS NULL BEGIN UPDATE atags
         SET group_id = (SELECT id FROM atag_groups WHERE is_default = 1) WHERE id = NEW.id; END;
         CREATE TRIGGER IF NOT EXISTS require_tag_group BEFORE UPDATE OF group_id ON atags
-        WHEN NEW.group_id IS NULL BEGIN SELECT RAISE(ABORT, 'Tag group is required'); END;")
-        .map_err(|e| e.to_string())?;
+        WHEN NEW.group_id IS NULL BEGIN SELECT RAISE(ABORT, 'Tag group is required'); END;",
+    )
+    .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())
 }
 
@@ -763,7 +885,62 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            25
+            27
+        );
+    }
+
+    #[test]
+    fn migration_27_persists_runs_and_groups_calls() {
+        let conn = migrated();
+        // The run table exists and carries the snapshot columns.
+        let has_runs: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='vl_runs'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(has_runs, 1);
+        // vl_calls gained a nullable run_id.
+        let columns: Vec<String> = {
+            let mut stmt = conn.prepare("PRAGMA table_info(vl_calls)").unwrap();
+            let rows = stmt.query_map([], |r| r.get::<_, String>(1)).unwrap();
+            rows.collect::<Result<Vec<_>, _>>().unwrap()
+        };
+        assert!(columns.contains(&"run_id".to_string()));
+
+        // A call written before the migration keeps its NULL run_id.
+        conn.execute(
+            "INSERT INTO vl_calls(file_id,template_id,template_version,prompt_actual,status,created_at)
+             VALUES(1,1,1,'p','ok',1)",
+            [],
+        )
+        .unwrap();
+        let legacy_run: Option<String> = conn
+            .query_row("SELECT run_id FROM vl_calls WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert!(legacy_run.is_none());
+
+        // A run groups its calls; deleting the run drops the grouped calls.
+        conn.execute(
+            "INSERT INTO vl_runs(run_id,library_id,template_id,template_version,state,total,started_at)
+             VALUES('u1','default',1,1,'finished',1,1)",
+            [],
+        )
+        .unwrap();
+        conn.execute("UPDATE vl_calls SET run_id='u1' WHERE id = 1", [])
+            .unwrap();
+        conn.execute("DELETE FROM vl_runs WHERE run_id='u1'", [])
+            .unwrap();
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM vl_calls", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(remaining, 0, "the call evidence follows its run");
+
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
+                .unwrap(),
+            27
         );
     }
 
@@ -932,7 +1109,7 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            25
+            27
         );
     }
 }
@@ -968,7 +1145,7 @@ mod fts_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
                 .unwrap(),
-            25
+            27
         );
     }
 
@@ -994,7 +1171,7 @@ mod fts_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
                 .unwrap(),
-            25
+            27
         );
     }
 }
@@ -1006,48 +1183,79 @@ mod album_filter_migration_tests {
     #[test]
     fn image_properties_schedule_one_backfill_without_clearing_other_pending_work() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);").unwrap();
+        conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);")
+            .unwrap();
         conn.execute_batch("CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER, metadata_pending INTEGER NOT NULL DEFAULT 0);
             INSERT INTO afiles VALUES(1,1,0),(2,3,0),(3,2,0),(4,2,1);
             PRAGMA user_version=19;").unwrap();
         check_and_migrate(&conn).unwrap();
-        let pending: Vec<i64> = conn.prepare("SELECT metadata_pending FROM afiles ORDER BY id").unwrap()
-            .query_map([], |row| row.get(0)).unwrap().map(Result::unwrap).collect();
+        let pending: Vec<i64> = conn
+            .prepare("SELECT metadata_pending FROM afiles ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
         assert_eq!(pending, vec![1, 1, 0, 1]);
-        conn.execute("UPDATE afiles SET metadata_pending=0", []).unwrap();
+        conn.execute("UPDATE afiles SET metadata_pending=0", [])
+            .unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("SELECT SUM(metadata_pending) FROM afiles", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(
+            conn.query_row("SELECT SUM(metadata_pending) FROM afiles", [], |row| row
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
     fn album_filter_migration_is_restartable_and_defaults_to_off() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);").unwrap();
+        conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);")
+            .unwrap();
         conn.execute_batch("CREATE TABLE albums(id INTEGER PRIMARY KEY); CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER); INSERT INTO albums VALUES(1); PRAGMA user_version=17;").unwrap();
         check_and_migrate(&conn).unwrap();
-        let settings: (i64, Option<i64>, String) = conn.query_row(
-            "SELECT file_types,small_image_filter,excluded_folders FROM albums", [],
-            |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?))).unwrap();
-        assert_eq!(settings, (7,Some(0),"[]".into()));
+        let settings: (i64, Option<i64>, String) = conn
+            .query_row(
+                "SELECT file_types,small_image_filter,excluded_folders FROM albums",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(settings, (7, Some(0), "[]".into()));
         // Simulate migration completing before the version was persisted.
         conn.execute_batch("PRAGMA user_version=17;").unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(),25);
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            27
+        );
     }
 
     #[test]
     fn cloud_state_migration_is_restartable_and_defaults_to_local() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);").unwrap();
+        conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);")
+            .unwrap();
         conn.execute_batch("CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER); INSERT INTO afiles(id) VALUES(1); PRAGMA user_version=18;").unwrap();
         check_and_migrate(&conn).unwrap();
-        let state: (i64, i64) = conn.query_row("SELECT cloud_only, metadata_pending FROM afiles", [],
-            |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+        let state: (i64, i64) = conn
+            .query_row(
+                "SELECT cloud_only, metadata_pending FROM afiles",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
         assert_eq!(state, (0, 0));
         // Simulate migration completing before the version was persisted.
         conn.execute_batch("PRAGMA user_version=18;").unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0)).unwrap(), 25);
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            27
+        );
     }
 
     #[test]
@@ -1055,17 +1263,29 @@ mod album_filter_migration_tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE afiles(id INTEGER PRIMARY KEY,metadata_pending INTEGER DEFAULT 0); INSERT INTO afiles(id) VALUES(1); PRAGMA user_version=21;").unwrap();
         check_and_migrate(&conn).unwrap();
-        let values: (Option<String>,Option<String>,i32) = conn.query_row(
-            "SELECT e_title,e_headline,metadata_pending FROM afiles", [],
-            |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap();
-        assert_eq!(values, (None,None,0));
-        conn.execute_batch("UPDATE afiles SET e_title='Existing'; PRAGMA user_version=21;").unwrap();
+        let values: (Option<String>, Option<String>, i32) = conn
+            .query_row(
+                "SELECT e_title,e_headline,metadata_pending FROM afiles",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(values, (None, None, 0));
+        conn.execute_batch("UPDATE afiles SET e_title='Existing'; PRAGMA user_version=21;")
+            .unwrap();
         check_and_migrate(&conn).unwrap();
-        assert_eq!(conn.query_row("SELECT e_title FROM afiles", [], |r| r.get::<_,String>(0)).unwrap(), "Existing");
-        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_,i32>(0)).unwrap(), 25);
+        assert_eq!(
+            conn.query_row("SELECT e_title FROM afiles", [], |r| r.get::<_, String>(0))
+                .unwrap(),
+            "Existing"
+        );
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
+                .unwrap(),
+            27
+        );
     }
 }
-
 
 /// Rebuild only the tag table: preserve IDs, spelling and every file association.
 pub(crate) fn migrate_tag_tree(conn: &Connection) -> Result<(), String> {
@@ -1172,17 +1392,20 @@ mod tag_tree_migration_tests {
                 .unwrap(),
             0
         );
-        assert!(!conn
-            .prepare("PRAGMA foreign_key_check")
-            .unwrap()
-            .query([])
-            .unwrap()
-            .next()
-            .unwrap()
-            .is_some());
-        assert!(conn
-            .execute("INSERT INTO atags(name) VALUES('paris')", [])
-            .is_err());
+        assert!(
+            !conn
+                .prepare("PRAGMA foreign_key_check")
+                .unwrap()
+                .query([])
+                .unwrap()
+                .next()
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            conn.execute("INSERT INTO atags(name) VALUES('paris')", [])
+                .is_err()
+        );
         conn.execute("INSERT INTO atags(name,parent_id) VALUES('Paris',20)", [])
             .unwrap();
         assert!(conn.last_insert_rowid() > 99);

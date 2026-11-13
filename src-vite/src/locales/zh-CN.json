@@ -11,7 +11,8 @@
     "people": "人物",
     "camera": "相机",
     "map": "地图",
-    "settings": "设置"
+    "settings": "设置",
+    "ai_search": "AI 搜索"
   },
   "collection": {
     "title": "合集",
@@ -799,7 +800,9 @@
       "save_xmp": "保存元数据到 XMP",
       "xmp_save_success": "已保存 {count} 个文件的 XMP 元数据",
       "xmp_save_failed": "{count} 个文件的 XMP 保存失败",
-      "comment": "描述…"
+      "comment": "描述…",
+      "vl_analyze": "AI 理解（云端）",
+      "vl_analyze_selected": "AI 理解（云端）"
     },
     "calendar": {
       "monthly": "按月",
@@ -1291,7 +1294,12 @@
     },
     "metadata_details_retry": "元数据读取失败，点击重试",
     "true_north": "真北",
-    "magnetic_north": "磁北"
+    "magnetic_north": "磁北",
+    "vl_understanding": "图片理解",
+    "vl_loading": "正在载入理解结果…",
+    "vl_empty": "这张照片还没有理解结果",
+    "vl_copy": "复制描述",
+    "vl_copied": "已复制描述"
   },
   "map": {
     "show_map": "显示地图",
@@ -1879,11 +1887,57 @@
       "model_hint": "发送给网关的模型名称。",
       "rerank_model": "重排模型",
       "rerank_model_hint": "仅用于搜索结果重排的文本模型，不会发送图片；留空使用 zhipu/glm-4.6。",
+      "embed_source": "嵌入源",
+      "embed_source_hint": "语义搜索用哪个模型把描述与查询转为向量：本地 BGE 模型（把模型放入 models/bge-local/，零网络）或走图片理解网关的云端 embedding。",
+      "embed_model": "云端嵌入模型",
+      "embed_model_hint": "仅嵌入源为云端时使用；留空使用 zhipu/embedding-3。",
       "save": "保存网关配置",
       "saving": "保存中…",
       "saved": "网关配置已保存",
       "open_lab": "打开实验台",
-      "open_lab_hint": "在隔离页面中试用图片理解与精确检索。"
+      "open_lab_hint": "在隔离页面中试用图片理解与精确检索。",
+      "protocol": "网关协议",
+      "protocol_hint": "网关的请求/响应协议",
+      "models_title": "云端模型",
+      "embed_title": "嵌入模型",
+      "refresh_models": "刷新",
+      "models_auth_required": "模型列表需要鉴权；仍可手动输入模型名。",
+      "model_unsupported": "网关标注该模型仅支持文本",
+      "model_unknown": "网关未说明该模型是否支持图片",
+      "model_context": "上下文窗口",
+      "runs_title": "任务历史",
+      "runs_empty": "还没有图片理解任务",
+      "embed_source_local": "本地（BGE 模型）",
+      "embed_source_cloud": "云端（走网关）",
+      "max_concurrency": "并发任务数",
+      "max_concurrency_hint": "同时执行的理解任务数，超出的任务排队等待。仅在服务商能承受并发时调大；默认 2 比较稳妥。",
+      "models_expand": "展开 {count} 个模型",
+      "models_collapse": "收起模型",
+      "rerank_model_pick_hint": "可点刷新后的列表选择文本模型，也可继续手动输入。",
+      "tasks_tab": "VL 任务",
+      "tasks_refresh": "刷新",
+      "run_state_queued": "排队中",
+      "run_state_running": "执行中",
+      "run_state_finished": "已完成",
+      "run_state_cancelled": "已取消",
+      "run_state_failed": "失败",
+      "run_state_interrupted": "已中断",
+      "run_state_unknown": "未知",
+      "run_detail_show": "查看详细",
+      "run_detail_hide": "收起详细",
+      "run_calls_empty": "该任务没有调用记录（被跳过的照片不产生记录）。",
+      "run_calls_more": "再显示 {count} 条",
+      "run_call_success": "成功",
+      "run_call_failed": "失败",
+      "run_call_file": "照片",
+      "run_call_model": "模型",
+      "run_call_duration": "耗时",
+      "run_call_tokens": "Token",
+      "run_call_response": "原始返回",
+      "run_call_error": "错误",
+      "run_started_at": "开始于",
+      "run_finished_at": "结束于",
+      "run_progress_label": "进度"
     }
   },
   "vl": {
@@ -1900,7 +1954,7 @@
     "re_understand_hint": "用同一个模板重新理解，并替换当前结果。",
     "running": "正在理解…",
     "running_hint": "单张图片通常需要一两分钟，可以继续使用其他功能。",
-    "cancel_run": "取消本次运行",
+    "cancel_run": "取消",
     "still_running_hint": "任务仍在后台执行，可稍后手动刷新查看结果。",
     "no_annotation": "还没有理解结果。",
     "raw_response": "原始返回",
@@ -1991,7 +2045,10 @@
       "hits_summary": "命中 {count} 个",
       "no_hits": "没有命中。",
       "semantic_button": "语义搜索",
-      "semantic_hint": "按图像内容相似度排序（不是标注文字）；已安装多语言模型时，中文查询会自动使用它。",
+      "semantic_hint": "按图片描述的语义匹配排序：查询与描述共用一个文本向量空间，措辞可以不同；无描述的照片不参与。",
+      "embed_status": "语义索引（{source}）：{embedded}/{captions} 条描述已向量化 · {model}",
+      "embed_source_local": "本地 BGE 模型",
+      "embed_source_cloud": "云端 embedding",
       "semantic_needs_multilingual": "中文语义检索需要「多语言」模型，请先在 设置→搜索 中下载。",
       "precise_hint": "精确搜索 = 全文检索：按相关度排序，允许部分关键词命中（不再是“必须全部命中”）。",
       "llm_rerank": "云端 LLM 重排",
@@ -2000,6 +2057,37 @@
       "llm_rerank_no_match": "没有与描述相符的照片",
       "llm_rerank_unannotated": "其中 {count} 张没有图片描述，未参与重排",
       "llm_rerank_failed": "云端重排失败，已保留原始排序"
+    },
+    "run_started": "正在后台理解 {count} 张照片",
+    "run_progress": "理解进度 {done}/{total}",
+    "run_finished": "完成：成功 {ok}，失败 {fail}，跳过 {skip}",
+    "failed": "失败",
+    "skipped": "跳过",
+    "run_title": "AI 理解（云端）",
+    "run_count": "将把 {count} 张照片发送到已配置的网关",
+    "run_template": "模板",
+    "run_no_template": "没有可用模板",
+    "force_rerun": "重新理解已标注的照片",
+    "run_configure_first": "请先配置网关或启用模板",
+    "run_start": "开始"
+  },
+  "aiSearch": {
+    "title": "AI 搜索",
+    "placeholder": "描述你想找的照片",
+    "vl_group": "图片理解",
+    "vl_annotated": "已理解",
+    "vl_unannotated": "未理解",
+    "empty_no_annotations": "还没有照片被理解过",
+    "empty_no_match": "已理解的照片中没有语义匹配",
+    "mode": {
+      "all": "全部",
+      "precise": "精确",
+      "semantic": "语义"
+    },
+    "hint": {
+      "all": "全文索引 + 图片描述",
+      "precise": "按文件名、元数据、标签、人名与描述做精确检索",
+      "semantic": "按图片描述的语义相似度匹配"
     }
   }
 }

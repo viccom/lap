@@ -242,3 +242,15 @@ export async function rerankHitList(query, hits, invoker = invoke) {
     unannotatedCount: unannotated.length,
   };
 }
+
+/// Map `search_captions` rows (`{fileId, score}`, best first) into lab hits.
+/// The similarity score rides along as a badge; there are no matched columns
+/// because the match is semantic, not lexical.
+export function captionHitsFrom(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row, index) => ({
+    fileId: Number(row?.fileId),
+    score: Number(row?.score ?? 0),
+    matchedColumns: [],
+    rank: index + 1,
+  }));
+}

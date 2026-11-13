@@ -207,7 +207,7 @@ const selectedTemplateId = ref(0);
 const annotations = ref<any[]>([]);
 const calls = ref<any[]>([]);
 const running = ref(false);
-const runId = ref<number | null>(null);
+const runId = ref<string | null>(null);
 const errorMessage = ref('');
 const showRaw = ref(false);
 /// Shown when polling gave up but the backend run may still be going.
@@ -216,7 +216,7 @@ const stillRunningHint = ref(false);
 /// The id of the newest call before the current run started.
 let baselineCallId = 0;
 /// The run of the last finished event; it may arrive before the run id is known.
-let lastFinishedRunId: number | null = null;
+let lastFinishedRunId: string | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let stopProgressListener: (() => void) | null = null;
 /// Polling stops after this long: the backend gives up on a gateway call
@@ -296,12 +296,12 @@ async function startRun(force: boolean) {
   stillRunningHint.value = false;
   try {
     const id = await runVlAnalysis([fileId], templateId, force);
-    runId.value = Number(id);
+    runId.value = String(id);
     running.value = true;
     baselineCallId = Number(calls.value[0]?.id || 0);
     startPolling();
     // The backend may have finished the run before the answer arrived.
-    if (lastFinishedRunId !== null && lastFinishedRunId === Number(id)) finishRun();
+    if (lastFinishedRunId !== null && lastFinishedRunId === String(id)) finishRun();
   } catch (error) {
     running.value = false;
     errorMessage.value = error instanceof Error ? error.message : String(error);
@@ -395,9 +395,9 @@ onMounted(async () => {
   stopProgressListener = await listen('vl-analysis-finished', (event: any) => {
     const payload = event?.payload;
     if (!payload) return;
-    lastFinishedRunId = Number(payload.runId);
+    lastFinishedRunId = String(payload.runId);
     if (!running.value) return;
-    if (runId.value !== null && Number(payload.runId) !== runId.value) return;
+    if (runId.value !== null && String(payload.runId) !== runId.value) return;
     finishRun();
   });
 });

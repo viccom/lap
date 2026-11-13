@@ -592,3 +592,47 @@ test('every locale has the search mode translations', async () => {
     }
   }
 });
+
+/// --- AI search dispatch ---
+
+test('the AI search panel plans the caption-aware query kind', () => {
+  const plan = planNavigationQuery(baseState({
+    sidebarIndex: SIDEBAR.AI_SEARCH,
+    search: { text: '海边的猫' },
+    aiSearch: { mode: 'semantic' },
+  }));
+  assert.equal(plan.kind, QUERY_KIND.AI_SEARCH);
+  assert.equal(plan.text, '海边的猫');
+  assert.equal(plan.mode, 'semantic');
+  assert.deepEqual(plan.title, { type: TITLE_KIND.AI_SEARCH, text: '海边的猫' });
+});
+
+test('the AI search panel normalizes an unknown mode and shows the empty state without text', () => {
+  const plan = planNavigationQuery(baseState({
+    sidebarIndex: SIDEBAR.AI_SEARCH,
+    search: { text: 'cat' },
+    aiSearch: { mode: 'nonsense' },
+  }));
+  assert.equal(plan.mode, 'all');
+  const empty = planNavigationQuery(baseState({
+    sidebarIndex: SIDEBAR.AI_SEARCH,
+    aiSearch: { mode: 'precise' },
+  }));
+  assert.equal(empty.kind, QUERY_KIND.EMPTY);
+  assert.deepEqual(empty.title, { type: TITLE_KIND.LOCALE, key: 'aiSearch.title' });
+});
+
+test('the library panel queries the VL annotation state', () => {
+  const annotated = planNavigationQuery(baseState({
+    library: { item: LIB_ITEM.VL_ANNOTATED, smartId: null, smartTag: null },
+  }));
+  assert.equal(annotated.kind, QUERY_KIND.FILES);
+  assert.deepEqual(annotated.params, { vlAnnotated: true });
+  assert.deepEqual(annotated.title, { type: TITLE_KIND.LOCALE, key: 'aiSearch.vl_annotated' });
+
+  const unannotated = planNavigationQuery(baseState({
+    library: { item: LIB_ITEM.VL_UNANNOTATED, smartId: null, smartTag: null },
+  }));
+  assert.deepEqual(unannotated.params, { vlAnnotated: false });
+  assert.deepEqual(unannotated.title, { type: TITLE_KIND.LOCALE, key: 'aiSearch.vl_unannotated' });
+});

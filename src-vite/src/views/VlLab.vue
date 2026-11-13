@@ -21,6 +21,7 @@
           >{{ configured ? $t('vl.lab.gateway_ok') : $t('vl.lab.gateway_missing') }}</span>
 
           <span class="ml-auto text-xs text-base-content/60">{{ indexStatusText }}</span>
+          <span v-if="embedStatusText" class="text-xs text-base-content/40">{{ embedStatusText }}</span>
           <button
             v-if="!indexConsistent"
             class="btn btn-xs btn-warning"
@@ -286,7 +287,7 @@ import { config } from '@/common/config';
 import { useToast } from '@/common/toast';
 import { getThumbnailDataUrl, isWin, isLinux } from '@/common/utils';
 import { invoke } from '@tauri-apps/api/core';
-import { getFileThumb, getFilesByIds, getQueryFiles, getImageSearchModelStatus, setImageSearchModel } from '@/common/api';
+import { getFileThumb, getFilesByIds, getQueryFiles } from '@/common/api';
 import { getVlConfig, getVlAnnotations, getVlCalls, listVlTemplates, runVlAnalysis, cancelVlRun } from '@/common/vlApi';
 import {
   VL_SETTINGS_TAB,
@@ -309,6 +310,7 @@ import {
   RERANK_MAX_CANDIDATES,
   annotatedIdSet,
   buildLabQueryParams,
+  captionHitsFrom,
   collectMatchedColumns,
   deriveFileOutcome,
   ftsReindex,
@@ -331,11 +333,25 @@ const showDesktopTitleBar = isWin || isLinux;
 const configured = ref(false);
 const vlRerankModel = ref('');
 const ftsStatus = ref<{ documents: number; files: number } | null>(null);
+const embedStatus = ref<{ source: string; localAvailable: boolean; model: string; embedded: number; captions: number } | null>(null);
 const rebuilding = ref(false);
 const indexConsistent = computed(() => indexIsConsistent(ftsStatus.value));
 const indexStatusText = computed(() => (
   ftsStatus.value ? t('vl.lab.index_status', { documents: ftsStatus.value.documents, files: ftsStatus.value.files }) : ''
 ));
+const embedStatusText = computed(() => {
+  if (!embedStatus.value) return '';
+  const status = embedStatus.value;
+  const source = status.source === 'cloud'
+    ? t('vl.lab.embed_source_cloud')
+    : t('vl.lab.embed_source_local');
+  return t('vl.lab.embed_status', {
+    source,
+    embedded: status.embedded,
+    captions: status.captions,
+    model: status.model,
+  });
+});
 
 async function loadStatus() {
   try {
@@ -351,6 +367,11 @@ async function loadStatus() {
   } catch {
     ftsStatus.value = null;
   }
+  try {
+    embedStatus.value = await invoke('embed_status');
+  } catch {
+    embedStatus.value = null;
+  }
 }
 
 async function rebuildIndex() {
@@ -358,6 +379,7 @@ async function rebuildIndex() {
   rebuilding.value = true;
   try {
     await ftsReindex();
+    await invoke('rebuild_caption_embeds');
     await loadStatus();
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
@@ -496,14 +518,14 @@ async function loadThumb(fileId: number) {
 // ----- F1 run -----
 
 const running = ref(false);
-const runId = ref<number | null>(null);
+const runId = ref<string | null>(null);
 const progress = ref({ processed: 0, total: 0 });
 const stillRunningHint = ref(false);
 const errorMessage = ref('');
 const pendingConfirm = ref(false);
 const expandedRaw = reactive(new Set<number>());
 const resultRows = ref<any[]>([]);
-let lastFinishedRunId: number | null = null;
+let lastFinishedRunId: string | null = null;
 let baselineAnnotationIds = new Map<number, number>();
 let baselineCallIds = new Map<number, number>();
 let lastRunIds: number[] = [];
@@ -552,12 +574,14 @@ async function startRun() {
     const id = await runVlAnalysis(ids, currentTemplate, forceRerun.value);
     lastRunIds = ids;
     lastRunForce = forceRerun.value;
-    runId.value = Number(id);
+    // Run ids are UUID strings; they survive restarts and must never pass
+    // through Number().
+    runId.value = String(id);
     progress.value = { processed: 0, total: ids.length };
     running.value = true;
     startPolling();
     // The backend may have finished the run before the answer arrived.
-    if (lastFinishedRunId !== null && lastFinishedRunId === Number(id)) await finishRun();
+    if (lastFinishedRunId !== null && lastFinishedRunId === String(id)) await finishRun();
   } catch (error) {
     running.value = false;
     errorMessage.value = error instanceof Error ? error.message : String(error);
@@ -712,6 +736,9 @@ const searchResultItems = computed(() => {
     file: fileByIds.get(Number(hit.fileId)),
     badges: [
       ...(hit.rank ? [{ column: 'rank', labelText: `#${hit.rank}` }] : []),
+      ...(hit.score != null && Number.isFinite(hit.score)
+        ? [{ column: 'score', labelText: hit.score.toFixed(2) }]
+        : []),
       ...hitBadges(hit).map(badge => ({ ...badge, labelText: badge.labelKey ? t(badge.labelKey) : badge.column })),
     ],
   }));
@@ -741,34 +768,17 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
   };
   try {
     if (kind === 'semantic') {
-      // Ranked by the image embedding, not by the annotation text: this is
-      // the path that still finds a photo when the wording differs. The
-      // default text model is English-only, so a CJK query switches the
-      // in-memory model to the multilingual one when it is installed.
-      const cjk = /[\u3400-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(query);
-      if (cjk) {
-        const status = await getImageSearchModelStatus();
-        if (!status?.multilingualAvailable) {
-          errorMessage.value = t('vl.lab.semantic_needs_multilingual');
-          searchHits.value = [];
-          searchFiles.value = [];
-          searched.value = true;
-          return;
-        }
-        if (Number(status.activeModel) !== 1) await setImageSearchModel(1);
-      }
-      const threshold = config.imageSearchThresholds[config.settings.imageSearch.thresholdIndex] ?? 0.26;
-      const rows = await invoke<any[]>('search_similar_images', {
-        params: { searchText: query, fileId: 0, threshold, fileType: 1 },
+      // Ranked by the stored image-description embeddings: the query and the
+      // captions share one text-vector space, so the wording may differ.
+      // Photos without a description cannot match and are simply absent.
+      const limit = llmRerank.value ? RERANK_MAX_CANDIDATES : SEARCH_RESULT_LIMIT;
+      const rows = await invoke<any[]>('search_captions', {
+        query,
+        threshold: null,
+        limit,
       });
-      const list = Array.isArray(rows) ? rows : [];
-      const fileById = new Map(list.map((file: any) => [Number(file?.id), file]));
-      let hits = list.map((file: any, index: number) => ({
-        fileId: Number(file?.id),
-        matchedColumns: [],
-        rank: index + 1,
-      }));
-      let files = list;
+      let hits = captionHitsFrom(rows);
+      let files = hits.length ? ((await getFilesByIds(hits.map(hit => Number(hit.fileId)))) ?? []) : [];
       if (llmRerank.value && hits.length) {
         // Compare the query with the stored image descriptions; semantic
         // neighbours without a description cannot be judged and stay at the end.
@@ -776,7 +786,7 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
         try {
           const selected = await rerankHitList(query, candidates);
           hits = selected.hits.map((hit, index) => ({ ...hit, rank: index + 1 }));
-          files = hits.map(hit => fileById.get(Number(hit.fileId))).filter(Boolean) as any[];
+          files = hits.length ? ((await getFilesByIds(hits.map(hit => Number(hit.fileId)))) ?? []) : [];
           reranked.value = selected.reranked;
           unannotatedCount.value = selected.unannotatedCount ?? 0;
         } catch (error) {
@@ -829,15 +839,15 @@ onMounted(async () => {
   stopFinishedListener = await listen('vl-analysis-finished', (event: any) => {
     const payload = event?.payload;
     if (!payload) return;
-    lastFinishedRunId = Number(payload.runId);
+    lastFinishedRunId = String(payload.runId);
     if (!running.value) return;
-    if (runId.value !== null && Number(payload.runId) !== runId.value) return;
+    if (runId.value !== null && String(payload.runId) !== runId.value) return;
     void finishRun();
   });
   stopProgressListener = await listen('vl-analysis-progress', (event: any) => {
     const payload = event?.payload;
     if (!running.value || runId.value === null) return;
-    if (Number(payload?.runId) !== runId.value) return;
+    if (String(payload?.runId) !== runId.value) return;
     progress.value = { processed: Number(payload?.processed || 0), total: Number(payload?.total || progress.value.total) };
   });
 

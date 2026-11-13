@@ -71,6 +71,17 @@ impl ImageSearchTextModel {
     }
 }
 
+/// The fixed position count of each text tower. The tokenizer is not
+/// configured with truncation, so `encode_text` has to cut the sequence
+/// itself; longer input crashed the default CLIP model with a broadcast
+/// error (`77 by 120`).
+fn text_token_limit(model: ImageSearchTextModel) -> usize {
+    match model {
+        ImageSearchTextModel::Default => 77,
+        ImageSearchTextModel::Multilingual => 512,
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageSearchModelStatus {
@@ -334,21 +345,31 @@ impl AiEngine {
             .encode(text, true)
             .map_err(|e| format!("Tokenization error: {}", e))?;
 
-        let input_ids = encoding.get_ids();
-        let attention_mask = encoding.get_attention_mask();
+        // The token towers have fixed position counts: the default CLIP text
+        // model accepts 77 tokens and the multilingual one 512. A longer
+        // sequence crashed inference ("Attempting to broadcast ... 77 by 120"
+        // on a long Chinese query), so the ids are truncated to the limit of
+        // the active model.
+        let limit = text_token_limit(self.text_model_kind);
+        let input_ids: Vec<i64> = encoding
+            .get_ids()
+            .iter()
+            .take(limit)
+            .map(|&x| x as i64)
+            .collect();
+        let attention_mask: Vec<i64> = encoding
+            .get_attention_mask()
+            .iter()
+            .take(input_ids.len())
+            .map(|&x| x as i64)
+            .collect();
 
-        let input_ids_array = Array::from_shape_vec(
-            (1, input_ids.len()),
-            input_ids.iter().map(|&x| x as i64).collect(),
-        )
-        .map_err(|e| e.to_string())?;
+        let input_ids_array =
+            Array::from_shape_vec((1, input_ids.len()), input_ids).map_err(|e| e.to_string())?;
 
         let input_ids_value = Value::from_array(input_ids_array).map_err(|e| e.to_string())?;
-        let attention_mask_array = Array::from_shape_vec(
-            (1, attention_mask.len()),
-            attention_mask.iter().map(|&x| x as i64).collect(),
-        )
-        .map_err(|e| e.to_string())?;
+        let attention_mask_array = Array::from_shape_vec((1, attention_mask.len()), attention_mask)
+            .map_err(|e| e.to_string())?;
         let attention_mask_value =
             Value::from_array(attention_mask_array).map_err(|e| e.to_string())?;
 
@@ -1088,5 +1109,18 @@ mod download_resume_tests {
         );
         assert!(!path.exists());
         server.await.unwrap();
+    }
+}
+
+#[cfg(test)]
+mod text_limit_tests {
+    use super::*;
+
+    #[test]
+    fn the_default_clip_tower_is_capped_at_77_tokens() {
+        // Regression guard for the long-query crash: a Chinese sentence of
+        // ~120 tokens hit "Attempting to broadcast ... 77 by 120".
+        assert_eq!(text_token_limit(ImageSearchTextModel::Default), 77);
+        assert!(text_token_limit(ImageSearchTextModel::Multilingual) >= 128);
     }
 }

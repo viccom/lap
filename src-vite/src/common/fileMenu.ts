@@ -31,6 +31,7 @@ import {
   IconSplitOn,
   IconSplitOn4,
   IconCollage,
+  IconSparkles,
 } from '@/common/icons';
 import { isWin } from '@/common/utils';
 
@@ -133,6 +134,12 @@ export const useFileMenuItems = (
       // A mixed image+video selection has no single external-app target, so
       // disable the entry rather than showing an empty app list.
       { ...externalAppMenu(externalAppKind), disabled: unavailable || kind === 'mixed' },
+      {
+        label: String(localeMsg.value.menu.file.vl_analyze_selected || 'AI understanding (cloud)'),
+        icon: markRaw(IconSparkles),
+        disabled: selectionCount === 0 || kind === 'video',
+        action: createAction('vl-analyze-selected'),
+      },
       {
         label: String(localeMsg.value.menu.file.create_montage || 'Create montage...'),
         icon: markRaw(IconCollage),
@@ -378,6 +385,14 @@ export const useFileMenuItems = (
         shortcut: shortcut('file.searchSimilar'),
         disabled: !isImage,
         action: createAction('search-similar')
+      },
+      {
+        // Queue the cloud vision-language understanding of this file. The
+        // run happens in the background; progress arrives via toasts.
+        label: String(localeMsg.value.menu.file.vl_analyze || 'AI understanding (cloud)'),
+        icon: markRaw(IconSparkles),
+        disabled: !isImage,
+        action: createAction('vl-analyze'),
       },
       {
         label: localeMsg.value.menu.file.find_person_images,

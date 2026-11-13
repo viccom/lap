@@ -18,7 +18,7 @@
     "test:vl": "node --test tests/vlApi.test.mjs",
     "test:lab": "node --test tests/vlLab.test.mjs",
     "test:searchable": "node --test tests/searchableOptions.test.mjs tests/searchableSelectState.test.mjs",
-    "test:search": "node --test tests/searchMode.test.mjs"
+    "test:search": "node --test tests/searchMode.test.mjs tests/aiSearch.test.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",

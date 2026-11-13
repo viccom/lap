@@ -188,7 +188,11 @@ pub(super) const DETAIL_FIELDS: &[DetailField] = &[
     DetailField {
         key: "headline",
         backend_names: &["Headline"],
-        xmp: Some(XmpProperty { uri: NS_PHOTOSHOP, prefix: "photoshop", name: "Headline" }),
+        xmp: Some(XmpProperty {
+            uri: NS_PHOTOSHOP,
+            prefix: "photoshop",
+            name: "Headline",
+        }),
         stored: true,
         descriptive: true,
         section: Some(DetailSection::Source),

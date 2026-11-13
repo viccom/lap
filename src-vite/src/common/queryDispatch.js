@@ -10,6 +10,8 @@
  * test file compares both sources so they cannot drift apart.
  */
 
+import { normalizeAiSearchMode } from './aiSearch.js';
+
 export const SIDEBAR = {
   LIBRARY: 0,
   ALBUM: 1,
@@ -20,6 +22,7 @@ export const SIDEBAR = {
   PERSON: 6,
   LOCATION: 7,
   CAMERA: 8,
+  AI_SEARCH: 9,
 };
 
 export const LIB_ITEM = {
@@ -29,6 +32,8 @@ export const LIB_ITEM = {
   RATINGS: 'ratings',
   CULLING: 'culling',
   SUBJECTS: 'subjects',
+  VL_ANNOTATED: 'vl-annotated',
+  VL_UNANNOTATED: 'vl-unannotated',
 };
 
 export const RATE = {
@@ -53,6 +58,7 @@ export const QUERY_KIND = {
   IMAGE_SEARCH: 'image-search', // a vector search over a prompt
   SMART_ALBUM: 'smart-album',   // a smart album query
   UNIFIED_SEARCH: 'unified-search', // the combined search
+  AI_SEARCH: 'ai-search',     // the image-understanding search entry
   EMPTY: 'empty',             // no results, show the empty state
   BLANK: 'blank',             // no title, no query
   ALBUM: 'album',             // the album record has to be loaded first
@@ -74,6 +80,7 @@ export const TITLE_KIND = {
   CALENDAR: 'calendar',
   SMART_ALBUM: 'smart-album',
   SEARCH: 'search',
+  AI_SEARCH: 'ai-search',
   TAG_NAME: 'tag-name',
 };
 
@@ -103,6 +110,8 @@ export function planNavigationQuery(state = {}) {
       return planLocationQuery(state);
     case SIDEBAR.CAMERA:
       return planCameraQuery(state);
+    case SIDEBAR.AI_SEARCH:
+      return planAiSearchQuery(state);
     default:
       return { kind: QUERY_KIND.NONE, title: { type: TITLE_KIND.BLANK } };
   }
@@ -171,6 +180,20 @@ function planLibraryQuery(state) {
         title: { type: TITLE_KIND.LOCALE_PAIR, key: 'culling.title', subKey },
       };
     }
+
+    case LIB_ITEM.VL_ANNOTATED:
+      return {
+        kind: QUERY_KIND.FILES,
+        params: { vlAnnotated: true },
+        title: { type: TITLE_KIND.LOCALE, key: 'aiSearch.vl_annotated' },
+      };
+
+    case LIB_ITEM.VL_UNANNOTATED:
+      return {
+        kind: QUERY_KIND.FILES,
+        params: { vlAnnotated: false },
+        title: { type: TITLE_KIND.LOCALE, key: 'aiSearch.vl_unannotated' },
+      };
 
     case LIB_ITEM.SUBJECTS: {
       const smartTag = library.smartTag || null;
@@ -268,6 +291,29 @@ function planSearchQuery(state) {
   return {
     kind: QUERY_KIND.EMPTY,
     title: { type: TITLE_KIND.LOCALE, key: 'search.title' },
+  };
+}
+
+/**
+ * The AI search panel: BM25 and/or the caption embeddings.
+ *
+ * The mode comes from `config.settings.aiSearchMode`; the official
+ * `searchMode` setting belongs to the unified search and is never read here.
+ */
+function planAiSearchQuery(state) {
+  const text = state.search?.text || '';
+  const mode = normalizeAiSearchMode(state.aiSearch?.mode);
+  if (text) {
+    return {
+      kind: QUERY_KIND.AI_SEARCH,
+      text,
+      mode,
+      title: { type: TITLE_KIND.AI_SEARCH, text },
+    };
+  }
+  return {
+    kind: QUERY_KIND.EMPTY,
+    title: { type: TITLE_KIND.LOCALE, key: 'aiSearch.title' },
   };
 }
 

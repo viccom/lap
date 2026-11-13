@@ -48,7 +48,12 @@ pub(crate) fn build_apple_sidecar_rename_plan(
     new_name: &str,
 ) -> Result<Vec<SidecarRenamePlan>, String> {
     let components = AFile::live_photo_component_files(file_id)?;
-    build_rename_plan(file_path, new_name, &components, apple_aae_sidecar_paths(file_path))
+    build_rename_plan(
+        file_path,
+        new_name,
+        &components,
+        apple_aae_sidecar_paths(file_path),
+    )
 }
 
 pub(crate) fn build_apple_sidecar_rename_plan_cached(
@@ -58,7 +63,12 @@ pub(crate) fn build_apple_sidecar_rename_plan_cached(
     cache: &mut ImportAaeCache,
 ) -> Result<Vec<SidecarRenamePlan>, String> {
     let components = component.map(std::slice::from_ref).unwrap_or(&[]);
-    build_rename_plan(file_path, new_name, components, cache.paths(Path::new(file_path)))
+    build_rename_plan(
+        file_path,
+        new_name,
+        components,
+        cache.paths(Path::new(file_path)),
+    )
 }
 
 fn build_rename_plan(
@@ -330,12 +340,14 @@ pub(crate) fn copy_apple_aae_paths_for_import(
         let Some(name) = build_aae_transfer_target_name(
             source,
             &sidecar,
-            destination.file_name().and_then(|name| name.to_str()).ok_or_else(|| {
-                format!("Invalid import destination: {}", destination.display())
-            })?,
-            destination.file_stem().and_then(|stem| stem.to_str()).ok_or_else(|| {
-                format!("Invalid import destination: {}", destination.display())
-            })?,
+            destination
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| format!("Invalid import destination: {}", destination.display()))?,
+            destination
+                .file_stem()
+                .and_then(|stem| stem.to_str())
+                .ok_or_else(|| format!("Invalid import destination: {}", destination.display()))?,
         ) else {
             continue;
         };
@@ -347,13 +359,20 @@ pub(crate) fn copy_apple_aae_paths_for_import(
             for copied_path in copied {
                 let _ = fs::remove_file(copied_path);
             }
-            return Err(format!("Destination sidecar already exists: {}", target.display()));
+            return Err(format!(
+                "Destination sidecar already exists: {}",
+                target.display()
+            ));
         }
         if let Err(error) = fs::copy(&sidecar, &target) {
             for copied_path in copied {
                 let _ = fs::remove_file(copied_path);
             }
-            return Err(format!("Failed to copy sidecar '{}': {}", sidecar.display(), error));
+            return Err(format!(
+                "Failed to copy sidecar '{}': {}",
+                sidecar.display(),
+                error
+            ));
         }
         copied.push(target);
     }
@@ -538,10 +557,18 @@ pub(crate) fn resolve_group_primary_target(
             &sidecar_sources,
         )?;
         let conflicts = xmp_cache.conflicts(
-            std::iter::once((Path::new(file_path), base_target.as_path()))
-                .chain(sidecar_plans.iter().map(|p| (p.old_path.as_path(), p.new_path.as_path()))),
+            std::iter::once((Path::new(file_path), base_target.as_path())).chain(
+                sidecar_plans
+                    .iter()
+                    .map(|p| (p.old_path.as_path(), p.new_path.as_path())),
+            ),
         )?;
-        if !conflicts.is_empty() { return Err(format!("Destination XMP already exists: {}", conflicts[0].display())); }
+        if !conflicts.is_empty() {
+            return Err(format!(
+                "Destination XMP already exists: {}",
+                conflicts[0].display()
+            ));
+        }
         return Ok((base_target, sidecar_plans));
     }
 
@@ -553,8 +580,16 @@ pub(crate) fn resolve_group_primary_target(
             &sidecar_sources,
         )?;
         if !group_target_conflicts(&primary_target, &sidecar_plans)
-            && xmp_cache.conflicts(std::iter::once((Path::new(file_path), primary_target.as_path()))
-                .chain(sidecar_plans.iter().map(|p| (p.old_path.as_path(), p.new_path.as_path()))))?.is_empty() {
+            && xmp_cache
+                .conflicts(
+                    std::iter::once((Path::new(file_path), primary_target.as_path())).chain(
+                        sidecar_plans
+                            .iter()
+                            .map(|p| (p.old_path.as_path(), p.new_path.as_path())),
+                    ),
+                )?
+                .is_empty()
+        {
             return Ok((primary_target, sidecar_plans));
         }
     }

@@ -13,6 +13,26 @@
  */
 export const VL_SETTINGS_TAB = 10;
 
+/// The settings tab that hosts the VL tasks monitor: the next free id after
+/// VL_SETTINGS_TAB, mirroring the SETTINGS_TAB layout.
+export const VL_TASKS_TAB = 11;
+
+/// The i18n key of a persisted run state; unknown states fall back to a
+/// generic label instead of showing the raw English token.
+export function runStateLabelKey(state) {
+  const value = String(state ?? '').trim().toLowerCase();
+  const known = ['queued', 'running', 'finished', 'cancelled', 'failed', 'interrupted'];
+  return `settings.vl.run_state_${known.includes(value) ? value : 'unknown'}`;
+}
+
+/// The concurrency value sent to the backend: a whole number in 1..=16,
+/// defaulting to 2 for empty or invalid input.
+export function normalizeMaxConcurrency(value) {
+  const parsed = Math.trunc(Number(value));
+  if (!Number.isFinite(parsed) || parsed <= 0) return 2;
+  return Math.min(16, Math.max(1, parsed));
+}
+
 /// Placeholders the backend substitutes into a prompt template.
 export const VL_PROMPT_PLACEHOLDERS = ['{file_name}', '{exif_summary}', '{taken_at}', '{camera}'];
 
@@ -49,14 +69,71 @@ export function toApiKeyArgument(value) {
   return String(value).trim();
 }
 
+/// The gateway dialects the backend understands. Anything else — including
+/// a pre-protocol configuration — is Anthropic.
+export function normalizeProtocol(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  return text === 'openai' ? 'openai' : 'anthropic';
+}
+
 /// The arguments of `set_vl_config`.
-export function buildVlConfigArgs({ gatewayUrl = '', apiKey = null, model = '', rerankModel = '' } = {}) {
+export function buildVlConfigArgs({
+  gatewayUrl = '',
+  apiKey = null,
+  model = '',
+  rerankModel = '',
+  embedSource = '',
+  embedModel = '',
+  protocol = '',
+  maxConcurrency = '',
+} = {}) {
   return {
     gatewayUrl: String(gatewayUrl ?? '').trim(),
     apiKey: toApiKeyArgument(apiKey),
+    protocol: normalizeProtocol(protocol),
     model: String(model ?? '').trim(),
     rerankModel: String(rerankModel ?? '').trim(),
+    embedSource: String(embedSource ?? '').trim(),
+    embedModel: String(embedModel ?? '').trim(),
+    maxConcurrency: normalizeMaxConcurrency(maxConcurrency),
   };
+}
+
+/// Split a model list into the three capability partitions. Models with an
+/// unknown capability stay selectable instead of being silently dropped.
+export function partitionModels(models) {
+  const groups = { supported: [], unsupported: [], unknown: [] };
+  if (!Array.isArray(models)) return groups;
+  for (const model of models) {
+    if (!model) continue;
+    const vision = String(model.vision ?? 'unknown');
+    if (vision === 'supported') groups.supported.push(model);
+    else if (vision === 'unsupported') groups.unsupported.push(model);
+    else groups.unknown.push(model);
+  }
+  return groups;
+}
+
+/// The dropdown label of a model: its display name when the gateway offers
+/// one, its id otherwise.
+export function modelLabel(model) {
+  if (!model) return '';
+  return String(model.displayName ?? '').trim() || String(model.id ?? '');
+}
+
+/// The status of a stored call as the backend writes it: `ok` or `error`.
+export const CALL_STATUS_OK = 'ok';
+export const CALL_STATUS_ERROR = 'error';
+
+/**
+ * Whether one call evidence row succeeded.
+ *
+ * The backend stores `ok` for a successful gateway call and `error` for a
+ * failed one (`vl_calls.status`); anything that is not `ok` is a failure, so an
+ * unknown token is never rendered as a success.
+ */
+export function callSucceeded(call) {
+  return String(call?.status ?? '') === CALL_STATUS_OK;
 }
 
 /**

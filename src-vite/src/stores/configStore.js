@@ -204,6 +204,7 @@ export const useConfigStore = defineStore('configStore', {
 
       // search settings
       searchMode: 'all',            // search mode (all: word + vector, precise: full text index, semantic: vector only)
+      aiSearchMode: 'all',          // AI search entry mode (all: fts + caption embeddings, precise: fts only, semantic: captions only)
 
       // image search settings
       imageSearch: {

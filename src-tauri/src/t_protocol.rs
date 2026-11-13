@@ -1,7 +1,7 @@
 use tauri::{Builder, Wry};
 
-use crate::{t_image, t_sqlite};
 use crate::t_raw_display::{RawDisplayOptions, RawPreviewMode};
+use crate::{t_image, t_sqlite};
 
 fn text_response(status: http::StatusCode, body: &str) -> http::Response<Vec<u8>> {
     http::Response::builder()
@@ -98,17 +98,31 @@ fn raw_display_options(query: Option<&str>) -> RawDisplayOptions {
 fn raw_image_response(data: Vec<u8>) -> http::Response<Vec<u8>> {
     let mut response = image_response(data);
     // Revalidate external companion changes even when the RAW itself is unchanged.
-    response.headers_mut().insert(http::header::CACHE_CONTROL, http::HeaderValue::from_static("no-cache"));
+    response.headers_mut().insert(
+        http::header::CACHE_CONTROL,
+        http::HeaderValue::from_static("no-cache"),
+    );
     response
 }
 
-fn raw_preview_response(data: Vec<u8>, source: &'static str, unavailable: bool, pair: &'static str) -> http::Response<Vec<u8>> {
+fn raw_preview_response(
+    data: Vec<u8>,
+    source: &'static str,
+    unavailable: bool,
+    pair: &'static str,
+) -> http::Response<Vec<u8>> {
     let mut response = raw_image_response(data);
     let headers = response.headers_mut();
     headers.insert("X-Raw-Source", http::HeaderValue::from_static(source));
-    headers.insert("X-Raw-Embedded-Unavailable", http::HeaderValue::from_static(if unavailable { "true" } else { "false" }));
+    headers.insert(
+        "X-Raw-Embedded-Unavailable",
+        http::HeaderValue::from_static(if unavailable { "true" } else { "false" }),
+    );
     headers.insert("X-Raw-Pair", http::HeaderValue::from_static(pair));
-    headers.insert(http::header::ACCESS_CONTROL_EXPOSE_HEADERS, http::HeaderValue::from_static("X-Raw-Source, X-Raw-Embedded-Unavailable, X-Raw-Pair"));
+    headers.insert(
+        http::header::ACCESS_CONTROL_EXPOSE_HEADERS,
+        http::HeaderValue::from_static("X-Raw-Source, X-Raw-Embedded-Unavailable, X-Raw-Pair"),
+    );
     response
 }
 
@@ -303,8 +317,13 @@ mod raw_display_tests {
         let options = raw_display_options(Some("v=42&rawPreviewMode=rendered&rawPairDisplay=jpeg"));
         assert_eq!(options.mode, RawPreviewMode::Rendered);
         assert!(options.prefer_pair);
-        assert_eq!(raw_display_options(Some("rawPreviewMode=embedded")).mode, RawPreviewMode::Embedded);
-        assert!(raw_display_options(Some("rawPreviewMode=embedded&rawAutoBright=true")).auto_bright);
+        assert_eq!(
+            raw_display_options(Some("rawPreviewMode=embedded")).mode,
+            RawPreviewMode::Embedded
+        );
+        assert!(
+            raw_display_options(Some("rawPreviewMode=embedded&rawAutoBright=true")).auto_bright
+        );
         assert!(!raw_display_options(None).prefer_pair);
     }
 }

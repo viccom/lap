@@ -287,15 +287,19 @@ mod tests {
         let mut data = fixture(false, &[(jpeg(16, 12), 1)]);
         let exif = metadata(&data);
         data.pop();
-        assert!(select(&mut Cursor::new(&data), &exif, None)
-            .unwrap()
-            .is_none());
+        assert!(
+            select(&mut Cursor::new(&data), &exif, None)
+                .unwrap()
+                .is_none()
+        );
         // JPEGInterchangeFormatLength exceeds the bounded allocation limit.
         data[42..46].copy_from_slice(&((MAX_JPEG_BYTES + 1) as u32).to_le_bytes());
         let exif = metadata(&data);
-        assert!(select(&mut Cursor::new(&data), &exif, None)
-            .unwrap()
-            .is_none());
+        assert!(
+            select(&mut Cursor::new(&data), &exif, None)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Batch rename planning and rollback. Commands live in t_cmds.
 use crate::{
-    metadata::apple_sidecar::{build_apple_sidecar_rename_plan_cached, ImportAaeCache},
+    metadata::apple_sidecar::{ImportAaeCache, build_apple_sidecar_rename_plan_cached},
     t_sqlite::AFile,
     t_utils,
 };
@@ -158,7 +158,10 @@ fn plan_files(
         i64,
         &str,
         &str,
-    ) -> Result<Vec<crate::metadata::apple_sidecar::SidecarRenamePlan>, String>,
+    ) -> Result<
+        Vec<crate::metadata::apple_sidecar::SidecarRenamePlan>,
+        String,
+    >,
 ) -> Result<(RenamePreview, Vec<RenameMove>), String> {
     // A selected RAW/JPEG or Live Photo companion follows its primary, rather
     // than receiving a different sequence number and breaking the pair.
@@ -191,10 +194,14 @@ fn plan_files(
             id: **id,
             old_name: file.name.clone(),
             new_name: new_name.clone(),
-            companions: sidecars.len() + xmp_cache.count(
-                std::iter::once((old.as_path(), new.as_path()))
-                    .chain(sidecars.iter().map(|p| (p.old_path.as_path(), p.new_path.as_path()))),
-            )?,
+            companions: sidecars.len()
+                + xmp_cache.count(
+                    std::iter::once((old.as_path(), new.as_path())).chain(
+                        sidecars
+                            .iter()
+                            .map(|p| (p.old_path.as_path(), p.new_path.as_path())),
+                    ),
+                )?,
         });
         moves.push(RenameMove {
             id: Some(**id),
@@ -218,8 +225,12 @@ fn plan_files(
         }
     }
     preview.errors = check_plan(&moves);
-    preview.errors.extend(xmp_cache.conflicts(moves.iter().map(|p| (p.old.as_path(), p.new.as_path())))?
-        .into_iter().map(|path| format!("Destination XMP already exists: {}", path.display())));
+    preview.errors.extend(
+        xmp_cache
+            .conflicts(moves.iter().map(|p| (p.old.as_path(), p.new.as_path())))?
+            .into_iter()
+            .map(|path| format!("Destination XMP already exists: {}", path.display())),
+    );
     Ok((preview, moves))
 }
 
@@ -292,8 +303,8 @@ pub(crate) fn rename_exclusive(old: &Path, new: &Path) -> Result<(), String> {
     {
         use std::os::windows::ffi::OsStrExt;
         use windows::{
+            Win32::Storage::FileSystem::{MOVE_FILE_FLAGS, MoveFileExW},
             core::PCWSTR,
-            Win32::Storage::FileSystem::{MoveFileExW, MOVE_FILE_FLAGS},
         };
         let old: Vec<u16> = old.as_os_str().encode_wide().chain(Some(0)).collect();
         let new: Vec<u16> = new.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -405,7 +416,8 @@ pub fn execute(
         })
         .collect();
     let xmp = crate::metadata::files::Guard::new(
-        moves.iter().map(|p| (p.old.as_path(), p.new.as_path())), crate::metadata::files::Operation::Move,
+        moves.iter().map(|p| (p.old.as_path(), p.new.as_path())),
+        crate::metadata::files::Operation::Move,
     )?;
     apply_moves(&moves, || AFile::batch_rename_names(&updates))?;
     xmp.commit();
@@ -464,15 +476,17 @@ mod tests {
         for name in ["", "../path", "CON", "a.", "a ", "a\n"] {
             assert!(validate_name(name).is_err(), "{name}");
         }
-        assert!(numbered_name(
-            "x.jpg",
-            &RenameOptions {
-                start: u32::MAX,
-                ..options
-            },
-            1
-        )
-        .is_err());
+        assert!(
+            numbered_name(
+                "x.jpg",
+                &RenameOptions {
+                    start: u32::MAX,
+                    ..options
+                },
+                1
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -508,11 +522,13 @@ mod tests {
         fs::write(f.0.join("a.jpg"), b"A").unwrap();
         fs::write(f.0.join("b.jpg"), b"B").unwrap();
         fs::write(f.0.join("taken.jpg"), b"existing").unwrap();
-        assert!(apply_moves(
-            &[f.entry("a.jpg", "new.jpg"), f.entry("b.jpg", "taken.jpg")],
-            || Ok(())
-        )
-        .is_err());
+        assert!(
+            apply_moves(
+                &[f.entry("a.jpg", "new.jpg"), f.entry("b.jpg", "taken.jpg")],
+                || Ok(())
+            )
+            .is_err()
+        );
         assert_eq!(fs::read(f.0.join("taken.jpg")).unwrap(), b"existing");
         assert_eq!(fs::read(f.0.join("a.jpg")).unwrap(), b"A");
         assert_eq!(fs::read(f.0.join("b.jpg")).unwrap(), b"B");
@@ -585,10 +601,12 @@ mod tests {
             .collect();
         let mut stale = updates.clone();
         stale.last_mut().unwrap().1 = "stale.JPG".into();
-        assert!(apply_moves(&moves, || AFile::batch_rename_names_with_conn(
-            &mut conn, &stale
-        ))
-        .is_err());
+        assert!(
+            apply_moves(&moves, || AFile::batch_rename_names_with_conn(
+                &mut conn, &stale
+            ))
+            .is_err()
+        );
         for entry in &moves {
             assert!(entry.old.exists());
             assert!(!entry.new.exists());

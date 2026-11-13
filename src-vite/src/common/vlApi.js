@@ -33,12 +33,49 @@ export async function getVlConfig(invoker = invoke) {
 }
 
 /// Store the gateway settings. `apiKey` of null keeps the stored key, '' clears it.
-export async function setVlConfig({ gatewayUrl, apiKey, model, rerankModel } = {}, invoker = invoke) {
-  const args = buildVlConfigArgs({ gatewayUrl, apiKey, model, rerankModel });
+export async function setVlConfig(
+  { gatewayUrl, apiKey, model, rerankModel, embedSource, embedModel, protocol, maxConcurrency } = {},
+  invoker = invoke,
+) {
+  const args = buildVlConfigArgs({ gatewayUrl, apiKey, model, rerankModel, embedSource, embedModel, protocol, maxConcurrency });
   try {
     return await invoker('set_vl_config', args);
   } catch (error) {
     fail('save the image understanding configuration', error);
+  }
+}
+
+/// The models the gateway offers. `authRequired` marks a 401 answer: the
+/// list is unusable but the chat surface may still work.
+export async function listVlModels(invoker = invoke) {
+  try {
+    const answer = await invoker('list_vl_models');
+    return {
+      models: Array.isArray(answer?.models) ? answer.models : [],
+      authRequired: Boolean(answer?.authRequired),
+    };
+  } catch (error) {
+    fail('list the gateway models', error);
+  }
+}
+
+/// Every persisted run across the configured libraries, newest first.
+export async function listVlRuns(invoker = invoke) {
+  try {
+    const runs = await invoker('list_vl_runs');
+    return Array.isArray(runs) ? runs : [];
+  } catch (error) {
+    fail('list the image understanding runs', error);
+  }
+}
+
+/// The call evidence of one run, oldest first.
+export async function listVlRunCalls(runId, invoker = invoke) {
+  try {
+    const calls = await invoker('list_vl_run_calls', { runId: String(runId ?? '') });
+    return Array.isArray(calls) ? calls : [];
+  } catch (error) {
+    fail('list the calls of the image understanding run', error);
   }
 }
 
@@ -95,10 +132,11 @@ export async function runVlAnalysis(fileIds, templateId, force = false, invoker 
   }
 }
 
-/// Cancel a running analysis.
+/// Cancel a running analysis. Run ids are UUID strings and are passed
+/// through verbatim — never through Number().
 export async function cancelVlRun(runId, invoker = invoke) {
   try {
-    return await invoker('cancel_vl_run', { runId: Number(runId) });
+    return await invoker('cancel_vl_run', { runId: String(runId ?? '') });
   } catch (error) {
     fail('cancel the image understanding run', error);
   }

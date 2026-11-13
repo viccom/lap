@@ -11,7 +11,8 @@
     "people": "Lidé",
     "camera": "Fotoaparáty",
     "map": "Mapa",
-    "settings": "Nastavení"
+    "settings": "Nastavení",
+    "ai_search": "AI Search"
   },
   "collection": {
     "title": "Kolekce",
@@ -799,7 +800,9 @@
       "save_xmp": "Uložit metadata do XMP",
       "xmp_save_success": "Metadata XMP uložena pro tento počet souborů: {count}",
       "xmp_save_failed": "Nepodařilo se uložit XMP pro {count} souborů",
-      "comment": "Popis…"
+      "comment": "Popis…",
+      "vl_analyze": "AI understanding (cloud)",
+      "vl_analyze_selected": "AI understanding (cloud)"
     },
     "calendar": {
       "monthly": "Měsíčně",
@@ -1291,7 +1294,12 @@
     },
     "metadata_details_retry": "Metadata se nepodařilo načíst. Klikněte pro nový pokus.",
     "true_north": "Zeměpisný sever",
-    "magnetic_north": "Magnetický sever"
+    "magnetic_north": "Magnetický sever",
+    "vl_understanding": "Image understanding",
+    "vl_loading": "Loading annotations...",
+    "vl_empty": "No understanding results for this photo",
+    "vl_copy": "Copy description",
+    "vl_copied": "Description copied"
   },
   "map": {
     "show_map": "Zobrazit mapu",
@@ -1879,11 +1887,57 @@
       "model_hint": "The model name that is sent to the gateway.",
       "rerank_model": "Rerank model",
       "rerank_model_hint": "Text model used only for search-result reranking; no images are sent. Leave empty to use zhipu/glm-4.6.",
+      "embed_source": "Embedding source",
+      "embed_source_hint": "Which model turns descriptions and queries into vectors for semantic search: local BGE model (place the model under models/bge-local/, no network) or the cloud embedding via the image-understanding gateway.",
+      "embed_model": "Cloud embedding model",
+      "embed_model_hint": "Used only when the embedding source is cloud; leave empty for zhipu/embedding-3.",
       "save": "Save gateway settings",
       "saving": "Saving…",
       "saved": "Gateway settings saved",
       "open_lab": "Open the lab",
-      "open_lab_hint": "Try image understanding and exact search on an isolated page."
+      "open_lab_hint": "Try image understanding and exact search on an isolated page.",
+      "protocol": "Gateway protocol",
+      "protocol_hint": "Request/response dialect of the gateway",
+      "models_title": "Cloud models",
+      "embed_title": "Embedding models",
+      "refresh_models": "Refresh",
+      "models_auth_required": "The model list requires authentication; you can still type a model name manually.",
+      "model_unsupported": "The gateway lists this model as text-only",
+      "model_unknown": "The gateway does not report whether this model accepts images",
+      "model_context": "Context window",
+      "runs_title": "Task history",
+      "runs_empty": "No image understanding runs yet",
+      "embed_source_local": "Local (BGE model)",
+      "embed_source_cloud": "Cloud (via the gateway)",
+      "max_concurrency": "Concurrent tasks",
+      "max_concurrency_hint": "How many understanding tasks run at the same time. Waiting tasks are queued. Raise it only when the provider tolerates parallel requests; 2 is a safe default.",
+      "models_expand": "Show {count} models",
+      "models_collapse": "Hide models",
+      "rerank_model_pick_hint": "Pick a text model from the refreshed list, or keep typing a name.",
+      "tasks_tab": "VL tasks",
+      "tasks_refresh": "Refresh",
+      "run_state_queued": "Queued",
+      "run_state_running": "Running",
+      "run_state_finished": "Finished",
+      "run_state_cancelled": "Cancelled",
+      "run_state_failed": "Failed",
+      "run_state_interrupted": "Interrupted",
+      "run_state_unknown": "Unknown",
+      "run_detail_show": "Details",
+      "run_detail_hide": "Hide details",
+      "run_calls_empty": "No calls recorded for this task (skipped photos produce no record).",
+      "run_calls_more": "Show {count} more",
+      "run_call_success": "Succeeded",
+      "run_call_failed": "Failed",
+      "run_call_file": "Photo",
+      "run_call_model": "Model",
+      "run_call_duration": "Duration",
+      "run_call_tokens": "Tokens",
+      "run_call_response": "Raw response",
+      "run_call_error": "Error",
+      "run_started_at": "Started",
+      "run_finished_at": "Finished",
+      "run_progress_label": "Progress"
     }
   },
   "vl": {
@@ -1900,7 +1954,7 @@
     "re_understand_hint": "Runs the template again and replaces the current result.",
     "running": "Understanding the photo…",
     "running_hint": "A single photo often takes one to two minutes. You can keep using the app while it runs.",
-    "cancel_run": "Cancel the run",
+    "cancel_run": "Cancel",
     "still_running_hint": "The run is still going in the background. Refresh later to see the result.",
     "no_annotation": "No understanding result yet.",
     "raw_response": "Raw response",
@@ -1991,7 +2045,10 @@
       "hits_summary": "{count} hits",
       "no_hits": "No hits.",
       "semantic_button": "Semantic search",
-      "semantic_hint": "Ranks by image embedding similarity, not by the annotation text. Chinese queries use the multilingual model automatically when it is installed.",
+      "semantic_hint": "Ranked by semantic matching against the stored image descriptions; the wording may differ. Photos without a description cannot match.",
+      "embed_status": "Semantic index ({source}): {embedded}/{captions} descriptions embedded · {model}",
+      "embed_source_local": "local BGE model",
+      "embed_source_cloud": "cloud embedding",
       "semantic_needs_multilingual": "Chinese semantic search needs the multilingual model. Download it in Settings → Search.",
       "precise_hint": "Precise search is full-text search: results are ranked by relevance and partial keyword matches are allowed (no longer all-words-required).",
       "llm_rerank": "Cloud LLM rerank",
@@ -2000,6 +2057,37 @@
       "llm_rerank_no_match": "No photos match this description",
       "llm_rerank_unannotated": "{count} photos have no image description and were not reranked",
       "llm_rerank_failed": "LLM rerank failed, keeping the original ranking"
+    },
+    "run_started": "Understanding {count} photo(s) in the background",
+    "run_progress": "Understanding {done}/{total}",
+    "run_finished": "Done: {ok} succeeded, {fail} failed, {skip} skipped",
+    "failed": "failed",
+    "skipped": "skipped",
+    "run_title": "AI understanding (cloud)",
+    "run_count": "{count} photo(s) will be sent to the configured gateway",
+    "run_template": "Template",
+    "run_no_template": "No enabled template",
+    "force_rerun": "Re-understand already annotated photos",
+    "run_configure_first": "Configure the gateway or enable a template first",
+    "run_start": "Start"
+  },
+  "aiSearch": {
+    "title": "AI Search",
+    "placeholder": "Describe the photos you are looking for",
+    "vl_group": "Image Understanding",
+    "vl_annotated": "VL annotated",
+    "vl_unannotated": "VL unannotated",
+    "empty_no_annotations": "No photos have been understood yet",
+    "empty_no_match": "No semantic match among the understood photos",
+    "mode": {
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic"
+    },
+    "hint": {
+      "all": "Full text index and image descriptions",
+      "precise": "BM25 over names, metadata, tags, people and descriptions",
+      "semantic": "Matches the stored image descriptions by meaning"
     }
   }
 }

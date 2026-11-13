@@ -54,8 +54,11 @@ pub(super) fn apply_with_source_text(
         ).map_err(|e| e.to_string())?;
     }
     if let Some((date, taken)) = capture.as_ref().and_then(|capture| capture.date.as_ref()) {
-        tx.execute("UPDATE afiles SET e_date_time=?1, taken_date=?2 WHERE id=?3",
-            params![date, taken, file_id]).map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE afiles SET e_date_time=?1, taken_date=?2 WHERE id=?3",
+            params![date, taken, file_id],
+        )
+        .map_err(|e| e.to_string())?;
     }
     if let Some((lat, lon, alt)) = capture.and_then(|capture| capture.gps) {
         let (name, admin1, admin2, country) = crate::t_sqlite::AFile::geocode(lat, lon);
@@ -63,7 +66,8 @@ pub(super) fn apply_with_source_text(
             "UPDATE afiles SET gps_latitude=?1, gps_longitude=?2, gps_altitude=?3,
              geo_name=?4, geo_admin1=?5, geo_admin2=?6, geo_cc=?7 WHERE id=?8",
             params![lat, lon, alt, name, admin1, admin2, country, file_id],
-        ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())?;
     Ok(result)

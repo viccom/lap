@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 /**
  * t_http.rs - Local HTTP Server for Media Streaming
  *
@@ -11,8 +13,6 @@
  */
 #[cfg(target_os = "linux")]
 use once_cell::sync::OnceCell;
-#[cfg(target_os = "linux")]
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 #[cfg(target_os = "linux")]
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 

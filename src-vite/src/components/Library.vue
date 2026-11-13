@@ -95,6 +95,55 @@
         </div>
       </Transition>
 
+      <div class="sidebar-item sidebar-item-hover" @click="toggleVl">
+        <IconRight
+          :class="[
+            'p-1 w-6 h-6 shrink-0 transition-transform',
+            libConfig.library.vlExpanded ? 'rotate-90' : '',
+          ]"
+          @click.stop="toggleVl"
+        />
+        <span class="sidebar-item-label">{{ localeMsg.aiSearch.vl_group }}</span>
+      </div>
+
+      <Transition
+        @before-enter="onBeforeEnter"
+        @enter="onEnter"
+        @after-enter="onAfterEnter"
+        @leave="onLeave"
+      >
+        <div v-if="libConfig.library.vlExpanded" class="overflow-hidden">
+          <ul class="mb-2">
+            <li class="pl-4">
+              <div
+                :class="[
+                  'sidebar-item sidebar-item-compact ml-2',
+                  libConfig.library.item === LIB_ITEM.VL_ANNOTATED ? 'sidebar-item-selected' : 'sidebar-item-hover',
+                ]"
+                @click="selectVl(LIB_ITEM.VL_ANNOTATED)"
+              >
+                <IconSparkles class="mx-1 w-4 h-4 shrink-0" />
+                <span class="sidebar-item-label">{{ localeMsg.aiSearch.vl_annotated }}</span>
+                <span v-if="vlAnnotatedCount" class="ml-auto text-[10px] tabular-nums text-base-content/30 mr-2">{{ vlAnnotatedCount.toLocaleString() }}</span>
+              </div>
+            </li>
+            <li class="pl-4">
+              <div
+                :class="[
+                  'sidebar-item sidebar-item-compact ml-2',
+                  libConfig.library.item === LIB_ITEM.VL_UNANNOTATED ? 'sidebar-item-selected' : 'sidebar-item-hover',
+                ]"
+                @click="selectVl(LIB_ITEM.VL_UNANNOTATED)"
+              >
+                <IconSparkles class="mx-1 w-4 h-4 shrink-0 opacity-40" />
+                <span class="sidebar-item-label">{{ localeMsg.aiSearch.vl_unannotated }}</span>
+                <span v-if="vlUnannotatedCount" class="ml-auto text-[10px] tabular-nums text-base-content/30 mr-2">{{ vlUnannotatedCount.toLocaleString() }}</span>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </Transition>
+
       <div class="sidebar-item sidebar-item-hover" @click="toggleCulling">
         <IconRight
           :class="[
@@ -175,14 +224,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { config, libConfig } from '@/common/config';
 import { useUIStore } from '@/stores/uiStore';
 import { createEmptyLibraryCounts } from '@/stores/libraryStore';
 import { CULLING, LIB_ITEM, RATE, SIDEBAR, type LibItem } from '@/common/constants';
 
-import { IconFiles, IconHeartFilled, IconRight, IconBolt, IconFlag, IconFlagFilled, IconFlagOff, IconStar, IconStarFilled, IconHistory } from '@/common/icons';
+import { IconFiles, IconHeartFilled, IconRight, IconBolt, IconFlag, IconFlagFilled, IconFlagOff, IconStar, IconStarFilled, IconHistory, IconSparkles } from '@/common/icons';
 import { SMART_TAG_CATEGORIES } from '@/common/smartTags';
 import { getLibraryVisibleCounts } from '@/common/api';
 
@@ -205,6 +254,10 @@ const unratedCount = computed(() => Number(libraryCounts.value.unrated || 0));
 const ratedCount = computed(() => Number(libraryCounts.value.rated || 0));
 const cullingCounts = computed(() => libraryCounts.value.culling);
 const ratingCounts = computed(() => libraryCounts.value.ratings);
+const vlAnnotatedCount = computed(() => Number(libraryCounts.value.vlAnnotated || 0));
+// The unannotated side is the complement of the annotated one over the
+// visible library — the backend counts both sides from the same conditions.
+const vlUnannotatedCount = computed(() => Math.max(0, totalCount.value - vlAnnotatedCount.value));
 let libraryCountRequest = 0;
 async function refreshLibraryCounts() {
   const request = ++libraryCountRequest;
@@ -218,11 +271,28 @@ async function refreshLibraryCounts() {
   libConfig.library.counts = {
     all: counts.all, favorite: counts.favorite, today: counts.today,
     rated: counts.rated, unrated: counts.unrated,
+    vlAnnotated: counts.vlAnnotated,
     ratings: { 1: counts.rating1, 2: counts.rating2, 3: counts.rating3, 4: counts.rating4, 5: counts.rating5 },
     culling: { [CULLING.PICK]: counts.pick, [CULLING.REJECT]: counts.reject, [CULLING.UNREVIEWED]: counts.unreviewed },
   };
 }
 onMounted(() => { void refreshLibraryCounts(); });
+// A finished image-understanding run changes the annotated/unannotated split.
+let unlistenVlFinished: (() => void) | null = null;
+onMounted(async () => {
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    unlistenVlFinished = await listen('vl-analysis-finished', () => {
+      if (isActiveLibraryView()) void refreshLibraryCounts();
+    });
+  } catch (error) {
+    console.error('vl-analysis-finished listener failed:', error);
+  }
+});
+onUnmounted(() => {
+  unlistenVlFinished?.();
+  unlistenVlFinished = null;
+});
 const isActiveLibraryView = () => libConfig.activePane === 'main' && config.main.sidebarIndex === SIDEBAR.LIBRARY;
 watch(() => [config.main.sidebarIndex, libConfig.activePane], () => {
   if (isActiveLibraryView()) void refreshLibraryCounts();
@@ -285,6 +355,18 @@ function toggleRatings() {
 
 function toggleCulling() {
   libConfig.library.cullingExpanded = !libConfig.library.cullingExpanded;
+}
+
+function toggleVl() {
+  libConfig.library.vlExpanded = !libConfig.library.vlExpanded;
+}
+
+// The VL group is a single-select view like ratings: picking one side leaves
+// the other, and rating/culling, untouched.
+function selectVl(item: string) {
+  libConfig.library.item = item;
+  uiStore.requestCountUpdate({ source: 'library', item });
+  libConfig.library.activateTick = Number(libConfig.library.activateTick || 0) + 1;
 }
 
 function onBeforeEnter(el: Element) {

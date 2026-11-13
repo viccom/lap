@@ -436,9 +436,9 @@ fn normalize(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{extract_comment, format_ai_metadata, format_prompt_metadata, PNG_SIGNATURE};
-    use flate2::write::GzEncoder;
+    use super::{PNG_SIGNATURE, extract_comment, format_ai_metadata, format_prompt_metadata};
     use flate2::Compression;
+    use flate2::write::GzEncoder;
     use image::{Rgba, RgbaImage};
     use std::fs;
     use std::io::Write;

@@ -5,8 +5,8 @@ use std::{
     fs,
     path::{Component, Path, PathBuf},
     sync::{
-        atomic::{AtomicU8, Ordering},
         Arc, Mutex, RwLock, RwLockReadGuard,
+        atomic::{AtomicU8, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -986,9 +986,11 @@ mod tests {
             None
         );
         let custom = PathBuf::from("/custom/lap-thumbnail-cache");
-        assert!(cache
-            .commit(Some(custom.clone()), || Err("save failed".into()))
-            .is_err());
+        assert!(
+            cache
+                .commit(Some(custom.clone()), || Err("save failed".into()))
+                .is_err()
+        );
         assert_eq!(cache.get(|| panic!("must retain old root")).unwrap(), None);
         cache.commit(Some(custom.clone()), || Ok(())).unwrap();
         assert_eq!(
@@ -1268,10 +1270,12 @@ mod tests {
         assert!(warnings.is_empty());
         assert!(!custom.0.join("lap-thumbnail-cache/default").exists());
         assert!(!system.0.join("default").exists());
-        assert!(custom
-            .0
-            .join("lap-thumbnail-cache/second/2/cd/cde.jpg")
-            .exists());
+        assert!(
+            custom
+                .0
+                .join("lap-thumbnail-cache/second/2/cd/cde.jpg")
+                .exists()
+        );
         assert!(system.0.join("second/motion/movie.mp4").exists());
         // An unavailable thumbnail root must not prevent system-cache cleanup.
         let warnings = remove_library_cache_from_roots(
@@ -1289,25 +1293,28 @@ mod tests {
         source.put("default/1/ab/abc.jpg", b"original");
         target.put("unrelated.txt", b"keep");
         let trees = vec![PathBuf::from("default/1")];
-        assert!(transfer(
-            &source.0,
-            &target.0,
-            &trees,
-            |_| {},
-            || Err("config save failed".into())
-        )
-        .is_err());
+        assert!(
+            transfer(
+                &source.0,
+                &target.0,
+                &trees,
+                |_| {},
+                || Err("config save failed".into())
+            )
+            .is_err()
+        );
         assert_eq!(
             fs::read(source.0.join("default/1/ab/abc.jpg")).unwrap(),
             b"original"
         );
         assert!(!target.0.join("default/1").exists());
         assert_eq!(fs::read(target.0.join("unrelated.txt")).unwrap(), b"keep");
-        assert!(!fs::read_dir(&target.0).unwrap().any(|e| e
-            .unwrap()
-            .file_name()
-            .to_string_lossy()
-            .starts_with(".lap-cache-migration")));
+        assert!(!fs::read_dir(&target.0).unwrap().any(|e| {
+            e.unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".lap-cache-migration")
+        }));
     }
 
     #[test]
@@ -1349,14 +1356,16 @@ mod tests {
         let target = TestDir::new();
         source.put("default/1/ab/abc.jpg", b"new");
         target.put("default/1/ab/abc.jpg", b"old");
-        assert!(transfer(
-            &source.0,
-            &target.0,
-            &["default/1".into()],
-            |_| {},
-            || panic!("must not commit")
-        )
-        .is_err());
+        assert!(
+            transfer(
+                &source.0,
+                &target.0,
+                &["default/1".into()],
+                |_| {},
+                || panic!("must not commit")
+            )
+            .is_err()
+        );
         assert_eq!(
             fs::read(target.0.join("default/1/ab/abc.jpg")).unwrap(),
             b"old"
@@ -1383,14 +1392,16 @@ mod tests {
         external.put("private.jpg", b"private");
         source.put("default/1/ab/abc.jpg", b"thumbnail");
         std::os::unix::fs::symlink(&external.0, source.0.join("default/1/link")).unwrap();
-        assert!(transfer(
-            &source.0,
-            &target.0,
-            &["default/1".into()],
-            |_| {},
-            || panic!("must not commit")
-        )
-        .is_err());
+        assert!(
+            transfer(
+                &source.0,
+                &target.0,
+                &["default/1".into()],
+                |_| {},
+                || panic!("must not commit")
+            )
+            .is_err()
+        );
         assert_eq!(
             fs::read(external.0.join("private.jpg")).unwrap(),
             b"private"

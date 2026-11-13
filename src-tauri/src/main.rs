@@ -23,6 +23,7 @@ mod t_common;
 mod t_config;
 mod t_dedup;
 mod t_drag;
+mod t_embed;
 mod t_embedded_jpeg;
 mod t_face;
 mod t_fts;
@@ -50,6 +51,8 @@ mod t_startup;
 mod t_utils;
 mod t_video;
 mod t_vl;
+mod t_vl_protocol;
+mod t_vl_tags;
 
 /// The main function is the entry point for the Tauri application.
 #[tokio::main]
@@ -415,6 +418,10 @@ async fn main() {
             t_cmds::cancel_multilingual_image_search_model_download,
             t_cmds::generate_embedding,
             t_cmds::search_similar_images,
+            // caption embeddings (semantic search over descriptions)
+            t_embed::embed_status,
+            t_embed::rebuild_caption_embeds,
+            t_embed::search_captions,
             // person (face recognition)
             t_cmds::index_faces,
             t_cmds::cancel_face_index,
@@ -457,6 +464,9 @@ async fn main() {
             t_vl::get_vl_calls,
             t_vl::cancel_vl_run,
             t_vl::rerank_search_with_llm,
+            t_vl::list_vl_models,
+            t_vl::list_vl_runs,
+            t_vl::list_vl_run_calls,
             // exact search
             t_fts::search_fts,
             t_fts::fts_reindex,

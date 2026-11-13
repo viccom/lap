@@ -11,7 +11,8 @@
     "people": "人物",
     "camera": "カメラ",
     "map": "地図",
-    "settings": "設定"
+    "settings": "設定",
+    "ai_search": "AI 検索"
   },
   "collection": {
     "title": "コレクション",
@@ -799,7 +800,9 @@
       "save_xmp": "メタデータを XMP に保存",
       "xmp_save_success": "{count} 個のファイルの XMP メタデータを保存しました",
       "xmp_save_failed": "{count} 個のファイルで XMP の保存に失敗しました",
-      "comment": "説明…"
+      "comment": "説明…",
+      "vl_analyze": "AI understanding (cloud)",
+      "vl_analyze_selected": "AI understanding (cloud)"
     },
     "calendar": {
       "monthly": "月別",
@@ -1291,7 +1294,12 @@
     },
     "metadata_details_retry": "メタデータを読み込めません。クリックして再試行。",
     "true_north": "真北",
-    "magnetic_north": "磁北"
+    "magnetic_north": "磁北",
+    "vl_understanding": "Image understanding",
+    "vl_loading": "Loading annotations...",
+    "vl_empty": "No understanding results for this photo",
+    "vl_copy": "Copy description",
+    "vl_copied": "Description copied"
   },
   "map": {
     "show_map": "地図を表示",
@@ -1879,11 +1887,57 @@
       "model_hint": "The model name that is sent to the gateway.",
       "rerank_model": "Rerank model",
       "rerank_model_hint": "Text model used only for search-result reranking; no images are sent. Leave empty to use zhipu/glm-4.6.",
+      "embed_source": "Embedding source",
+      "embed_source_hint": "Which model turns descriptions and queries into vectors for semantic search: local BGE model (place the model under models/bge-local/, no network) or the cloud embedding via the image-understanding gateway.",
+      "embed_model": "Cloud embedding model",
+      "embed_model_hint": "Used only when the embedding source is cloud; leave empty for zhipu/embedding-3.",
       "save": "Save gateway settings",
       "saving": "Saving…",
       "saved": "Gateway settings saved",
       "open_lab": "Open the lab",
-      "open_lab_hint": "Try image understanding and exact search on an isolated page."
+      "open_lab_hint": "Try image understanding and exact search on an isolated page.",
+      "protocol": "Gateway protocol",
+      "protocol_hint": "Request/response dialect of the gateway",
+      "models_title": "Cloud models",
+      "embed_title": "Embedding models",
+      "refresh_models": "Refresh",
+      "models_auth_required": "The model list requires authentication; you can still type a model name manually.",
+      "model_unsupported": "The gateway lists this model as text-only",
+      "model_unknown": "The gateway does not report whether this model accepts images",
+      "model_context": "Context window",
+      "runs_title": "Task history",
+      "runs_empty": "No image understanding runs yet",
+      "embed_source_local": "ローカル（BGE モデル）",
+      "embed_source_cloud": "クラウド（ゲートウェイ経由）",
+      "max_concurrency": "同時実行タスク数",
+      "max_concurrency_hint": "同時に実行する理解タスク数。超えた分は待機します。プロバイダーが並列を許容する場合のみ増やしてください。既定の 2 が安全です。",
+      "models_expand": "{count} 件のモデルを表示",
+      "models_collapse": "モデルを隠す",
+      "rerank_model_pick_hint": "更新後の一覧からテキストモデルを選ぶか、名前を直接入力できます。",
+      "tasks_tab": "VL タスク",
+      "tasks_refresh": "更新",
+      "run_state_queued": "待機中",
+      "run_state_running": "実行中",
+      "run_state_finished": "完了",
+      "run_state_cancelled": "キャンセル済み",
+      "run_state_failed": "失敗",
+      "run_state_interrupted": "中断",
+      "run_state_unknown": "不明",
+      "run_detail_show": "詳細",
+      "run_detail_hide": "詳細を閉じる",
+      "run_calls_empty": "このタスクの呼び出し記録はありません（スキップした写真は記録されません）。",
+      "run_calls_more": "さらに {count} 件表示",
+      "run_call_success": "成功",
+      "run_call_failed": "失敗",
+      "run_call_file": "写真",
+      "run_call_model": "モデル",
+      "run_call_duration": "所要時間",
+      "run_call_tokens": "トークン",
+      "run_call_response": "生の応答",
+      "run_call_error": "エラー",
+      "run_started_at": "開始",
+      "run_finished_at": "終了",
+      "run_progress_label": "進捗"
     }
   },
   "vl": {
@@ -1900,7 +1954,7 @@
     "re_understand_hint": "Runs the template again and replaces the current result.",
     "running": "Understanding the photo…",
     "running_hint": "A single photo often takes one to two minutes. You can keep using the app while it runs.",
-    "cancel_run": "Cancel the run",
+    "cancel_run": "Cancel",
     "still_running_hint": "The run is still going in the background. Refresh later to see the result.",
     "no_annotation": "No understanding result yet.",
     "raw_response": "Raw response",
@@ -1991,7 +2045,10 @@
       "hits_summary": "{count} hits",
       "no_hits": "No hits.",
       "semantic_button": "Semantic search",
-      "semantic_hint": "Ranks by image embedding similarity, not by the annotation text. Chinese queries use the multilingual model automatically when it is installed.",
+      "semantic_hint": "Ranked by semantic matching against the stored image descriptions; the wording may differ. Photos without a description cannot match.",
+      "embed_status": "Semantic index ({source}): {embedded}/{captions} descriptions embedded · {model}",
+      "embed_source_local": "local BGE model",
+      "embed_source_cloud": "cloud embedding",
       "semantic_needs_multilingual": "Chinese semantic search needs the multilingual model. Download it in Settings → Search.",
       "precise_hint": "Precise search is full-text search: results are ranked by relevance and partial keyword matches are allowed (no longer all-words-required).",
       "llm_rerank": "Cloud LLM rerank",
@@ -2000,6 +2057,37 @@
       "llm_rerank_no_match": "No photos match this description",
       "llm_rerank_unannotated": "{count} photos have no image description and were not reranked",
       "llm_rerank_failed": "LLM rerank failed, keeping the original ranking"
+    },
+    "run_started": "Understanding {count} photo(s) in the background",
+    "run_progress": "Understanding {done}/{total}",
+    "run_finished": "Done: {ok} succeeded, {fail} failed, {skip} skipped",
+    "failed": "failed",
+    "skipped": "skipped",
+    "run_title": "AI understanding (cloud)",
+    "run_count": "{count} photo(s) will be sent to the configured gateway",
+    "run_template": "Template",
+    "run_no_template": "No enabled template",
+    "force_rerun": "Re-understand already annotated photos",
+    "run_configure_first": "Configure the gateway or enable a template first",
+    "run_start": "Start"
+  },
+  "aiSearch": {
+    "title": "AI 検索",
+    "placeholder": "探したい写真を言葉で説明してください",
+    "vl_group": "画像理解",
+    "vl_annotated": "理解済み",
+    "vl_unannotated": "未理解",
+    "empty_no_annotations": "まだ理解された写真はありません",
+    "empty_no_match": "理解済みの写真に意味の一致はありません",
+    "mode": {
+      "all": "すべて",
+      "precise": "精密",
+      "semantic": "意味"
+    },
+    "hint": {
+      "all": "全文索引と画像の説明",
+      "precise": "ファイル名・メタデータ・タグ・人物・説明を対象に検索",
+      "semantic": "画像の説明と意味で照合"
     }
   }
 }

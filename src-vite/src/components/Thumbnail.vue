@@ -259,6 +259,7 @@ import {
   IconCollection,
   IconRotate,
   IconComment,
+  IconSparkles,
   IconStarFilled,
   IconFlagFilled,
   IconFlagOff,
@@ -767,6 +768,16 @@ const statusBadges = computed<ThumbnailBadge[]>(() => {
     badges.push({
       key: 'meta',
       icons: metaIcons,
+    });
+  }
+
+  // The VL annotation state is its own badge, deliberately not folded into
+  // the rating or the meta row: it answers "was this photo ever understood".
+  if (props.file.vl_annotated ?? props.file.vlAnnotated) {
+    badges.push({
+      key: 'vl-annotated',
+      icon: IconSparkles,
+      iconClass: 'text-primary/70',
     });
   }
 

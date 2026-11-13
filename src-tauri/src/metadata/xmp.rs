@@ -20,14 +20,14 @@
 //! Existing PickLabel fields follow manual culling export; pending (2) is retained
 //! while Lap remains unflagged. No digiKam field is created when it was absent.
 
-use super::schema::{self, CatalogField};
 use super::merge::apply_with_state;
 #[cfg(test)]
 use super::merge::apply_xmp_metadata_to_db;
+use super::schema::{self, CatalogField};
 use quick_xml::{events::Event, name::ResolveResult, reader::NsReader};
-use rusqlite::{Connection, OptionalExtension};
 #[cfg(test)]
 use rusqlite::params;
+use rusqlite::{Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
@@ -38,13 +38,13 @@ use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use crate::metadata::keywords as keywords;
 #[cfg(test)]
-use super::schema::{NS_LR, NS_DIGIKAM, NS_ACDSEE};
+use super::schema::{NS_ACDSEE, NS_DIGIKAM, NS_LR};
+use crate::metadata::keywords;
 
-pub use super::schema::{NS_XMP, NS_XMP_DM, NS_DARKTABLE, NS_DC, NS_RDF};
 #[cfg(test)]
 pub use super::schema::NS_LAP;
+pub use super::schema::{NS_DARKTABLE, NS_DC, NS_RDF, NS_XMP, NS_XMP_DM};
 
 static XMP_IMPORT_ENABLED: AtomicBool = AtomicBool::new(true);
 
@@ -56,8 +56,7 @@ pub fn set_xmp_import_enabled(enabled: bool) {
     XMP_IMPORT_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
-pub use super::model::{XmpMetadata, XmpImportMode};
-
+pub use super::model::{XmpImportMode, XmpMetadata};
 
 const MAX_XMP_BYTES: usize = 16 * 1024 * 1024;
 const MAX_XML_DEPTH: usize = 64;
@@ -71,23 +70,51 @@ type SidecarIndex = (i64, PathBuf, u64, HashMap<String, PathBuf>);
 /// Update a current, small scan index in-place so batch imports avoid rescanning
 /// the whole destination directory for each newly copied sidecar.
 pub(crate) fn sidecars_changed(paths: &[PathBuf]) {
-    if paths.is_empty() { return; }
+    if paths.is_empty() {
+        return;
+    }
     let previous = SIDECAR_REVISION.fetch_add(1, Ordering::AcqRel);
     INDEX.with(|index| {
         let mut index = index.borrow_mut();
-        if paths.len() > 64 { *index = None; return; }
-        let Some((_, folder, revision, names)) = index.as_mut() else { return; };
-        if *revision != previous { return; }
+        if paths.len() > 64 {
+            *index = None;
+            return;
+        }
+        let Some((_, folder, revision, names)) = index.as_mut() else {
+            return;
+        };
+        if *revision != previous {
+            return;
+        }
         let canonical_folder = folder.canonicalize().unwrap_or_else(|_| folder.clone());
-        let changed: Vec<_> = paths.iter().filter(|path| {
-            path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("xmp"))
-                && path.parent().is_some_and(|parent| parent.canonicalize().unwrap_or_else(|_| parent.to_path_buf()) == canonical_folder)
-        }).collect();
-        for base in changed.iter().filter_map(|path| path.file_stem().and_then(|name| name.to_str())) {
-            let chosen = changed.iter().copied().filter(|path| path.file_stem().and_then(|name| name.to_str()) == Some(base))
-                .cloned().chain(names.get(base).cloned()).filter(|path| path.is_file()).min();
-            if let Some(path) = chosen { names.insert(base.to_owned(), path); }
-            else {
+        let changed: Vec<_> = paths
+            .iter()
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("xmp"))
+                    && path.parent().is_some_and(|parent| {
+                        parent
+                            .canonicalize()
+                            .unwrap_or_else(|_| parent.to_path_buf())
+                            == canonical_folder
+                    })
+            })
+            .collect();
+        for base in changed
+            .iter()
+            .filter_map(|path| path.file_stem().and_then(|name| name.to_str()))
+        {
+            let chosen = changed
+                .iter()
+                .copied()
+                .filter(|path| path.file_stem().and_then(|name| name.to_str()) == Some(base))
+                .cloned()
+                .chain(names.get(base).cloned())
+                .filter(|path| path.is_file())
+                .min();
+            if let Some(path) = chosen {
+                names.insert(base.to_owned(), path);
+            } else {
                 names.remove(base);
                 // A differently cased extension may remain outside the cached winner.
                 // Leave the revision stale so the next lookup rebuilds the directory.
@@ -192,9 +219,9 @@ pub fn find_xmp_sidecar(image_path: &Path) -> Option<PathBuf> {
         let revision = SIDECAR_REVISION.load(Ordering::Acquire);
         let mut cache = cache.borrow_mut();
         if generation.is_none()
-            || cache
-                .as_ref()
-                .is_none_or(|(scan, dir, old_revision, _)| Some(*scan) != generation || dir != parent || *old_revision != revision)
+            || cache.as_ref().is_none_or(|(scan, dir, old_revision, _)| {
+                Some(*scan) != generation || dir != parent || *old_revision != revision
+            })
         {
             let mut names = HashMap::<String, PathBuf>::new();
             for entry in fs::read_dir(parent).ok()?.flatten() {
@@ -211,7 +238,12 @@ pub fn find_xmp_sidecar(image_path: &Path) -> Option<PathBuf> {
                     }
                 }
             }
-            *cache = Some((generation.unwrap_or(0), parent.to_path_buf(), revision, names));
+            *cache = Some((
+                generation.unwrap_or(0),
+                parent.to_path_buf(),
+                revision,
+                names,
+            ));
         }
         let names = &cache.as_ref()?.3;
         names.get(file_name).or_else(|| names.get(stem)).cloned()
@@ -261,33 +293,64 @@ pub(crate) fn fingerprint_has_capture_override(fingerprint: &str) -> bool {
 }
 
 fn capture_overrides(fingerprint: &str) -> (bool, bool) {
-    fingerprint.split_once(':')
+    fingerprint
+        .split_once(':')
         .filter(|(version, _)| version.starts_with("embedded-"))
         .map_or((false, false), |(_, value)| {
             let rest = value.strip_prefix(GPS_FINGERPRINT_MARKER);
-            (rest.is_some(), rest.unwrap_or(value).starts_with(DATE_FINGERPRINT_MARKER))
+            (
+                rest.is_some(),
+                rest.unwrap_or(value).starts_with(DATE_FINGERPRINT_MARKER),
+            )
         })
 }
 
-fn parse_xmp_with_source_text(content: &str) -> Result<(XmpMetadata, super::model::SourceText, Option<Gps>, Option<i64>), String> {
+fn parse_xmp_with_source_text(
+    content: &str,
+) -> Result<
+    (
+        XmpMetadata,
+        super::model::SourceText,
+        Option<Gps>,
+        Option<i64>,
+    ),
+    String,
+> {
     let root = parse_xml(content)?;
     let mut properties = Vec::new();
     collect_properties(&root, &mut properties);
-    Ok((metadata_from_properties(&properties), source_text_from_properties(&properties),
-        gps_from_properties(&properties), capture_timestamp_from_properties(&properties)))
+    Ok((
+        metadata_from_properties(&properties),
+        source_text_from_properties(&properties),
+        gps_from_properties(&properties),
+        capture_timestamp_from_properties(&properties),
+    ))
 }
 
 fn capture_timestamp_from_properties(properties: &[&XmlNode]) -> Option<i64> {
-    for (uri, name) in [(schema::NS_EXIF, "DateTimeOriginal"), (schema::NS_PHOTOSHOP, "DateCreated")] {
-        if let Some(timestamp) = properties.iter().filter(|node| node.uri == uri && node.name == name)
+    for (uri, name) in [
+        (schema::NS_EXIF, "DateTimeOriginal"),
+        (schema::NS_PHOTOSHOP, "DateCreated"),
+    ] {
+        if let Some(timestamp) = properties
+            .iter()
+            .filter(|node| node.uri == uri && node.name == name)
             .find_map(|node| {
                 let value = node.value();
                 let value = value.trim();
                 crate::t_utils::meta_date_to_timestamp(value).or_else(|| {
-                    let local = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f")
-                        .or_else(|_| chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M"))
-                        .ok()?;
-                    Some(local.and_local_timezone(chrono::Local).single()?.timestamp())
+                    let local =
+                        chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f")
+                            .or_else(|_| {
+                                chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M")
+                            })
+                            .ok()?;
+                    Some(
+                        local
+                            .and_local_timezone(chrono::Local)
+                            .single()?
+                            .timestamp(),
+                    )
                 })
             })
         {
@@ -305,9 +368,12 @@ pub(crate) fn read_sidecar_capture_timestamp(path: &Path) -> Option<i64> {
 }
 
 fn gps_from_properties(properties: &[&XmlNode]) -> Option<Gps> {
-    let value = |name| properties.iter()
-        .find(|node| node.uri == schema::NS_EXIF && node.name == name)
-        .map(|node| node.value());
+    let value = |name| {
+        properties
+            .iter()
+            .find(|node| node.uri == schema::NS_EXIF && node.name == name)
+            .map(|node| node.value())
+    };
     let lat = xmp_coordinate(&value("GPSLatitude")?, 'N', 'S', 90.0)?;
     let lon = xmp_coordinate(&value("GPSLongitude")?, 'E', 'W', 180.0)?;
     let altitude = value("GPSAltitude").and_then(|text| {
@@ -316,8 +382,13 @@ fn gps_from_properties(properties: &[&XmlNode]) -> Option<Gps> {
             Some((num, den)) => num.trim().parse::<f64>().ok()? / den.trim().parse::<f64>().ok()?,
             None => text.parse().ok()?,
         };
-        let below_sea_level = value("GPSAltitudeRef").is_some_and(|reference| reference.trim() == "1");
-        altitude.is_finite().then_some(if below_sea_level { -altitude.abs() } else { altitude })
+        let below_sea_level =
+            value("GPSAltitudeRef").is_some_and(|reference| reference.trim() == "1");
+        altitude.is_finite().then_some(if below_sea_level {
+            -altitude.abs()
+        } else {
+            altitude
+        })
     });
     Some((lat, lon, altitude))
 }
@@ -349,15 +420,28 @@ fn xmp_coordinate(text: &str, positive: char, negative: char, limit: f64) -> Opt
 
 fn source_text_from_properties(properties: &[&XmlNode]) -> super::model::SourceText {
     let property_for = |key| {
-        let property = schema::DETAIL_FIELDS.iter().find(|f| f.key == key).and_then(|f| f.xmp)?;
-        properties.iter().copied().find(|n| n.uri == property.uri && n.name == property.name)
+        let property = schema::DETAIL_FIELDS
+            .iter()
+            .find(|f| f.key == key)
+            .and_then(|f| f.xmp)?;
+        properties
+            .iter()
+            .copied()
+            .find(|n| n.uri == property.uri && n.name == property.name)
     };
     let bounded = |value: String| value.chars().filter(|c| *c != '\0').take(32768).collect();
     let scalar = |key| property_for(key).map(|node| bounded(node.value()));
-    let descriptive = |key| property_for(key).map(|node| {
-        bounded(source_property_values(node).into_iter()
-            .filter(|value| !value.trim().is_empty()).collect::<Vec<_>>().join("\n"))
-    });
+    let descriptive = |key| {
+        property_for(key).map(|node| {
+            bounded(
+                source_property_values(node)
+                    .into_iter()
+                    .filter(|value| !value.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        })
+    };
     super::model::SourceText {
         title: scalar("title"),
         headline: scalar("headline"),
@@ -407,10 +491,21 @@ fn metadata_from_properties(properties: &[&XmlNode]) -> XmpMetadata {
         rejected_value.as_deref(),
         None,
         None,
-    ).or(digikam_flag).or_else(|| culling_from_values(None, None, None,
-        label.as_deref(), if rejected { Some(-1) } else { meta.rating }));
+    )
+    .or(digikam_flag)
+    .or_else(|| {
+        culling_from_values(
+            None,
+            None,
+            None,
+            label.as_deref(),
+            if rejected { Some(-1) } else { meta.rating },
+        )
+    });
     keywords::import_properties(properties, &mut meta);
-    meta.description = schema::DESCRIPTION.iter().find_map(|property| value(property.uri, property.name));
+    meta.description = schema::DESCRIPTION
+        .iter()
+        .find_map(|property| value(property.uri, property.name));
     meta
 }
 
@@ -420,7 +515,10 @@ pub(crate) fn metadata_from_packets(packets: &[String]) -> XmpMetadata {
     metadata_and_source_text_from_packets(packets, None).0
 }
 
-pub(crate) fn metadata_and_source_text_from_packets(packets: &[String], standard_description: Option<String>) -> (XmpMetadata, super::model::SourceText) {
+pub(crate) fn metadata_and_source_text_from_packets(
+    packets: &[String],
+    standard_description: Option<String>,
+) -> (XmpMetadata, super::model::SourceText) {
     let roots: Vec<_> = packets
         .iter()
         .filter_map(|packet| parse_xml(packet).ok())
@@ -433,7 +531,8 @@ pub(crate) fn metadata_and_source_text_from_packets(packets: &[String], standard
     let mut meta = metadata_from_properties(&properties);
     // Embedded IPTC/EXIF descriptions outrank legacy XMP comment aliases.
     // An explicitly empty dc:description still clears lower-priority values.
-    meta.description = properties.iter()
+    meta.description = properties
+        .iter()
         .find(|node| schema::DESCRIPTION[0].matches(&node.uri, &node.name))
         .map(|node| node.value())
         .or(standard_description)
@@ -472,8 +571,16 @@ mod digikam_pick_tests {
             ("k:PickLabel=\"1\" dm:pick=\"1\"", 1),
             ("k:PickLabel=\"3\" dm:pick=\"0\"", 0),
         ] {
-            let xml = format!("<rdf:RDF xmlns:rdf=\"{NS_RDF}\"><rdf:Description xmlns:k=\"{}\" xmlns:dm=\"{}\" {properties}/></rdf:RDF>", schema::NS_DIGIKAM, schema::PICK.uri);
-            assert_eq!(parse_xmp_str(&xml).unwrap().culling_flag, Some(expected), "{properties}");
+            let xml = format!(
+                "<rdf:RDF xmlns:rdf=\"{NS_RDF}\"><rdf:Description xmlns:k=\"{}\" xmlns:dm=\"{}\" {properties}/></rdf:RDF>",
+                schema::NS_DIGIKAM,
+                schema::PICK.uri
+            );
+            assert_eq!(
+                parse_xmp_str(&xml).unwrap().culling_flag,
+                Some(expected),
+                "{properties}"
+            );
         }
     }
 
@@ -481,20 +588,44 @@ mod digikam_pick_tests {
     fn existing_pick_fields_follow_export_and_pending_is_preserved() {
         for source in 0..=3 {
             for attribute in [true, false] {
-                let property = if attribute { format!("k:PickLabel=\"{source}\"") } else { String::new() };
-                let child = if attribute { String::new() } else { format!("<k:PickLabel>{source}</k:PickLabel>") };
-                let xml = format!("<rdf:RDF xmlns:rdf=\"{NS_RDF}\"><rdf:Description xmlns:k=\"{}\" {property}>{child}</rdf:Description></rdf:RDF>", schema::NS_DIGIKAM);
+                let property = if attribute {
+                    format!("k:PickLabel=\"{source}\"")
+                } else {
+                    String::new()
+                };
+                let child = if attribute {
+                    String::new()
+                } else {
+                    format!("<k:PickLabel>{source}</k:PickLabel>")
+                };
+                let xml = format!(
+                    "<rdf:RDF xmlns:rdf=\"{NS_RDF}\"><rdf:Description xmlns:k=\"{}\" {property}>{child}</rdf:Description></rdf:RDF>",
+                    schema::NS_DIGIKAM
+                );
                 for flag in 0..=2 {
                     let output = merge_with_culling(&xml, 0, flag, &[], "", 2).unwrap();
                     assert_eq!(parse_xmp_str(&output).unwrap().culling_flag, Some(flag));
-                    let expected = match flag { 1 => 3, 2 => 1, _ if source == 2 => 2, _ => 0 };
+                    let expected = match flag {
+                        1 => 3,
+                        2 => 1,
+                        _ if source == 2 => 2,
+                        _ => 0,
+                    };
                     assert!(output.contains(&format!(">{expected}</digiKam:PickLabel>")));
-                    assert!(merge_with_culling(&xml, 4, flag, &[], "", 1).unwrap().contains("PickLabel"));
+                    assert!(
+                        merge_with_culling(&xml, 4, flag, &[], "", 1)
+                            .unwrap()
+                            .contains("PickLabel")
+                    );
                 }
             }
         }
         let xml = format!("<rdf:RDF xmlns:rdf=\"{NS_RDF}\"><rdf:Description/></rdf:RDF>");
-        assert!(!merge_with_culling(&xml, 0, 1, &[], "", 2).unwrap().contains("PickLabel"));
+        assert!(
+            !merge_with_culling(&xml, 0, 1, &[], "", 2)
+                .unwrap()
+                .contains("PickLabel")
+        );
     }
 }
 
@@ -560,8 +691,18 @@ pub(crate) fn import_with_system(
     extracted_software: Option<Option<&str>>, // Some(None) means extraction found no value.
     fresh_capture: Option<&crate::t_sqlite::AFile>,
 ) -> Result<bool, String> {
-    let result = import_sources(file_id, file_path, conn, mode, system, extracted_software, fresh_capture);
-    if result.is_err() { super::import_count::record(conn, file_id); }
+    let result = import_sources(
+        file_id,
+        file_path,
+        conn,
+        mode,
+        system,
+        extracted_software,
+        fresh_capture,
+    );
+    if result.is_err() {
+        super::import_count::record(conn, file_id);
+    }
     result
 }
 
@@ -606,7 +747,9 @@ fn import_sources(
             fingerprint: String::new(),
         }
     };
-    let local_media = media_info.as_ref().is_some_and(|info| !crate::t_utils::is_cloud_only(info));
+    let local_media = media_info
+        .as_ref()
+        .is_some_and(|info| !crate::t_utils::is_cloud_only(info));
     let source_version = format!(
         "{}:{:?}:{}:{:?}:{:?}:{}",
         file_path,
@@ -616,16 +759,37 @@ fn import_sources(
         sidecar_info.map(|info| (info.modified().ok(), info.len())),
         snapshot.fingerprint
     );
-    let previous: Option<String> = conn.query_row(
-        "SELECT fingerprint FROM axmp_imports WHERE file_id = ?1",
-        [file_id],
-        |row| row.get(0),
-    ).optional().map_err(|error| error.to_string())?.flatten();
-    let (had_sidecar_gps, had_sidecar_date) = previous.as_deref().map(capture_overrides).unwrap_or_default();
+    let previous: Option<String> = conn
+        .query_row(
+            "SELECT fingerprint FROM axmp_imports WHERE file_id = ?1",
+            [file_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .flatten();
+    let (had_sidecar_gps, had_sidecar_date) = previous
+        .as_deref()
+        .map(capture_overrides)
+        .unwrap_or_default();
     if mode != XmpImportMode::RefreshNonDestructive
-        && previous.as_deref().and_then(|value| value.strip_prefix(schema::IMPORT_PREFIX))
-            .and_then(|value| value.strip_prefix(if had_sidecar_gps { GPS_FINGERPRINT_MARKER } else { "" }))
-            .and_then(|value| value.strip_prefix(if had_sidecar_date { DATE_FINGERPRINT_MARKER } else { "" }))
+        && previous
+            .as_deref()
+            .and_then(|value| value.strip_prefix(schema::IMPORT_PREFIX))
+            .and_then(|value| {
+                value.strip_prefix(if had_sidecar_gps {
+                    GPS_FINGERPRINT_MARKER
+                } else {
+                    ""
+                })
+            })
+            .and_then(|value| {
+                value.strip_prefix(if had_sidecar_date {
+                    DATE_FINGERPRINT_MARKER
+                } else {
+                    ""
+                })
+            })
             == Some(source_version.as_str())
     {
         return Ok(false);
@@ -664,7 +828,9 @@ fn import_sources(
     let restore_date = had_sidecar_date && sidecar_date.is_none() && fresh_capture.is_none();
     let file_type = crate::t_utils::get_file_type(file_path);
     let is_video = file_type == Some(2);
-    let probe = (local_media && is_video && extracted_software.is_none()
+    let probe = (local_media
+        && is_video
+        && extracted_software.is_none()
         && (source.software.is_none() || restore_gps || restore_date))
         .then(|| crate::t_video::get_video_metadata(file_path));
     let probe_failed = probe.as_ref().is_some_and(Result::is_err);
@@ -681,7 +847,9 @@ fn import_sources(
         let native = if let Some(video) = video {
             (video.gps_latitude, video.gps_longitude, video.gps_altitude)
         } else {
-            crate::t_sqlite::AFile::extract_gps_data(&crate::t_image::read_exif_permissive(file_path))
+            crate::t_sqlite::AFile::extract_gps_data(&crate::t_image::read_exif_permissive(
+                file_path,
+            ))
         };
         let (lat, lon) = if native.0.is_none() && native.1.is_none() {
             (embedded_gps.0, embedded_gps.1)
@@ -693,32 +861,53 @@ fn import_sources(
     // Store the local display form, while keeping the exact instant in taken_date.
     let mut date = sidecar_date.and_then(|taken| {
         let local = chrono::DateTime::from_timestamp(taken, 0)?.with_timezone(&chrono::Local);
-        Some((Some(local.format("%Y:%m:%d %H:%M:%S").to_string()), Some(taken)))
+        Some((
+            Some(local.format("%Y:%m:%d %H:%M:%S").to_string()),
+            Some(taken),
+        ))
     });
     if restore_date && local_media && !embedded_failed && !probe_failed {
         date = if let Some(video) = video {
             let value = video.e_date_time.as_ref().or(embedded.date.as_ref());
-            let taken = value.and_then(|date| crate::t_utils::meta_date_to_timestamp(date))
-                .or_else(|| crate::t_utils::systemtime_to_timestamp(fs::metadata(file_path).ok()?.modified().ok()));
+            let taken = value
+                .and_then(|date| crate::t_utils::meta_date_to_timestamp(date))
+                .or_else(|| {
+                    crate::t_utils::systemtime_to_timestamp(
+                        fs::metadata(file_path).ok()?.modified().ok(),
+                    )
+                });
             Some((value.cloned(), taken))
         } else {
-            file_type.and_then(|file_type| crate::t_sqlite::AFile::native_capture_date(file_path, file_type).ok())
+            file_type.and_then(|file_type| {
+                crate::t_sqlite::AFile::native_capture_date(file_path, file_type).ok()
+            })
         };
     }
     if let Some(fresh) = fresh_capture {
-        gps = gps.or(Some((fresh.gps_latitude, fresh.gps_longitude, fresh.gps_altitude)));
+        gps = gps.or(Some((
+            fresh.gps_latitude,
+            fresh.gps_longitude,
+            fresh.gps_altitude,
+        )));
         date = date.or_else(|| Some((fresh.e_date_time.clone(), fresh.taken_date)));
     }
     let preserve_source = !local_media || embedded_failed;
     if preserve_source || probe_failed {
-        let previous = conn.query_row(
-            "SELECT e_title,e_headline,e_artist,e_copyright,e_software FROM afiles WHERE id=?1",
-            [file_id],
-            |row| Ok(super::model::SourceText {
-                title: row.get(0)?, headline: row.get(1)?, creator: row.get(2)?,
-                copyright: row.get(3)?, software: row.get(4)?,
-            }),
-        ).map_err(|e| e.to_string())?;
+        let previous = conn
+            .query_row(
+                "SELECT e_title,e_headline,e_artist,e_copyright,e_software FROM afiles WHERE id=?1",
+                [file_id],
+                |row| {
+                    Ok(super::model::SourceText {
+                        title: row.get(0)?,
+                        headline: row.get(1)?,
+                        creator: row.get(2)?,
+                        copyright: row.get(3)?,
+                        software: row.get(4)?,
+                    })
+                },
+            )
+            .map_err(|e| e.to_string())?;
         if preserve_source {
             source.title = source.title.or(previous.title);
             source.headline = source.headline.or(previous.headline);
@@ -728,8 +917,13 @@ fn import_sources(
         source.software = source.software.or(previous.software);
     }
     // Explicit empty sidecar properties clear the corresponding catalog value.
-    for value in [&mut source.title, &mut source.headline, &mut source.creator,
-                  &mut source.copyright, &mut source.software] {
+    for value in [
+        &mut source.title,
+        &mut source.headline,
+        &mut source.creator,
+        &mut source.copyright,
+        &mut source.software,
+    ] {
         if value.as_ref().is_some_and(|value| value.trim().is_empty()) {
             *value = None;
         }
@@ -737,17 +931,38 @@ fn import_sources(
     // Leave the fingerprint invalid so the next scan can retry a partial read.
     let retry_gps = restore_gps && gps.is_none();
     let retry_date = restore_date && date.is_none();
-    let gps_marker = if sidecar_gps.is_some() || retry_gps { GPS_FINGERPRINT_MARKER } else { "" };
-    let date_marker = if sidecar_date.is_some() || retry_date { DATE_FINGERPRINT_MARKER } else { "" };
+    let gps_marker = if sidecar_gps.is_some() || retry_gps {
+        GPS_FINGERPRINT_MARKER
+    } else {
+        ""
+    };
+    let date_marker = if sidecar_date.is_some() || retry_date {
+        DATE_FINGERPRINT_MARKER
+    } else {
+        ""
+    };
     let fingerprint = if embedded_failed || probe_failed || retry_gps || retry_date {
-        if gps_marker.is_empty() && date_marker.is_empty() { String::new() } else {
+        if gps_marker.is_empty() && date_marker.is_empty() {
+            String::new()
+        } else {
             format!("{}{gps_marker}{date_marker}retry", schema::IMPORT_PREFIX)
         }
     } else {
-        format!("{}{gps_marker}{date_marker}{source_version}", schema::IMPORT_PREFIX)
+        format!(
+            "{}{gps_marker}{date_marker}{source_version}",
+            schema::IMPORT_PREFIX
+        )
     };
     let capture = super::model::SourceCapture { gps, date };
-    super::merge::apply_with_source_text(file_id, &meta, conn, mode, Some(&fingerprint), Some(&source), Some(capture))
+    super::merge::apply_with_source_text(
+        file_id,
+        &meta,
+        conn,
+        mode,
+        Some(&fingerprint),
+        Some(&source),
+        Some(capture),
+    )
 }
 
 /// Scanner-derived descriptions preserve local edits and explicit clears.
@@ -780,7 +995,9 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| e.to_string())?;
     for field in schema::CATALOG_FIELDS {
-        let Some(column) = field.column() else { continue };
+        let Some(column) = field.column() else {
+            continue;
+        };
         let bit = field.mask();
         conn.execute_batch(&format!(
             "CREATE TRIGGER IF NOT EXISTS axmp_local_{column}
@@ -1001,8 +1218,11 @@ pub(crate) fn parse_xml(content: &str) -> Result<XmlNode, String> {
 
 static SERIAL: AtomicU64 = AtomicU64::new(0);
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
-const ALL: i32 = CatalogField::Rating.mask() | CatalogField::Culling.mask()
-    | CatalogField::Description.mask() | CatalogField::Tags.mask() | CatalogField::Favorite.mask();
+const ALL: i32 = CatalogField::Rating.mask()
+    | CatalogField::Culling.mask()
+    | CatalogField::Description.mask()
+    | CatalogField::Tags.mask()
+    | CatalogField::Favorite.mask();
 
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1072,7 +1292,9 @@ fn culling_property(uri: &str, name: &[u8], value: &str) -> bool {
 fn property_text(xml: &str, node: &Node) -> Result<String, String> {
     // Text/CDATA scalar properties only. Other managed properties do not need
     // this value, and their nested XML must not be interpreted as a flag.
-    if !schema::LABEL.matches(&node.uri, &node.name) && !schema::DIGIKAM_PICK.matches(&node.uri, &node.name) {
+    if !schema::LABEL.matches(&node.uri, &node.name)
+        && !schema::DIGIKAM_PICK.matches(&node.uri, &node.name)
+    {
         return Ok(String::new());
     }
     let mut reader = quick_xml::Reader::from_str(&xml[node.start..node.end]);
@@ -1110,13 +1332,28 @@ fn merge_with_favorite(
     description: &str,
     mask: i32,
 ) -> Result<String, String> {
-    merge_with_paths(xml,rating,culling,favorite,tags,None,description,mask)
+    merge_with_paths(
+        xml,
+        rating,
+        culling,
+        favorite,
+        tags,
+        None,
+        description,
+        mask,
+    )
 }
 
 fn merge_with_paths(
-    xml: &str, rating: i32, culling: i32, favorite: bool,
-    tags: &[String], paths: Option<&[String]>, description: &str, mask: i32,
-) -> Result<String,String> {
+    xml: &str,
+    rating: i32,
+    culling: i32,
+    favorite: bool,
+    tags: &[String],
+    paths: Option<&[String]>,
+    description: &str,
+    mask: i32,
+) -> Result<String, String> {
     parse_xmp_str(xml)?; // reuse bounded, DTD-free validation
     // Rating and culling are one export unit: normalize legacy Rating=-1
     // while preserving the independent Lap star rating and current flag.
@@ -1182,11 +1419,17 @@ fn merge_with_paths(
                         let a = a.map_err(|e| e.to_string())?;
                         let (ns, local) = reader.resolve_attribute(a.key);
                         let uri = namespace(ns)?;
-                        let own = (schema::FAVORITE.matches(&uri, &String::from_utf8_lossy(local.as_ref()))
+                        let own = (schema::FAVORITE
+                            .matches(&uri, &String::from_utf8_lossy(local.as_ref()))
                             && mask & CatalogField::Favorite.mask() != 0)
-                            || (schema::RATING.matches(&uri, &String::from_utf8_lossy(local.as_ref())) && mask & CatalogField::Rating.mask() != 0)
-                            || (keywords::writable_property(&uri, local.as_ref()) && mask & CatalogField::Tags.mask() != 0)
-                            || (schema::DESCRIPTION[0].matches(&uri, &String::from_utf8_lossy(local.as_ref())) && mask & CatalogField::Description.mask() != 0)
+                            || (schema::RATING
+                                .matches(&uri, &String::from_utf8_lossy(local.as_ref()))
+                                && mask & CatalogField::Rating.mask() != 0)
+                            || (keywords::writable_property(&uri, local.as_ref())
+                                && mask & CatalogField::Tags.mask() != 0)
+                            || (schema::DESCRIPTION[0]
+                                .matches(&uri, &String::from_utf8_lossy(local.as_ref()))
+                                && mask & CatalogField::Description.mask() != 0)
                             || (mask & CatalogField::Culling.mask() != 0
                                 && culling_property(
                                     &uri,
@@ -1196,10 +1439,17 @@ fn merge_with_paths(
                                 ));
                         if own {
                             tag_writer.observe(&uri, &String::from_utf8_lossy(local.as_ref()));
-                            had_darktable_rejected |=
-                                schema::REJECTED.matches(&uri, &String::from_utf8_lossy(local.as_ref()));
-                            if schema::DIGIKAM_PICK.matches(&uri, &String::from_utf8_lossy(local.as_ref())) {
-                                digikam_pick = Some(a.decode_and_unescape_value(reader.decoder()).map_err(|e| e.to_string())?.trim() == "2");
+                            had_darktable_rejected |= schema::REJECTED
+                                .matches(&uri, &String::from_utf8_lossy(local.as_ref()));
+                            if schema::DIGIKAM_PICK
+                                .matches(&uri, &String::from_utf8_lossy(local.as_ref()))
+                            {
+                                digikam_pick = Some(
+                                    a.decode_and_unescape_value(reader.decoder())
+                                        .map_err(|e| e.to_string())?
+                                        .trim()
+                                        == "2",
+                                );
                             }
                             changed = true;
                         } else {
@@ -1291,7 +1541,8 @@ fn merge_with_paths(
         }
         if (mask & CatalogField::Favorite.mask() != 0 && schema::FAVORITE.matches(&n.uri, &n.name))
             || (mask & CatalogField::Rating.mask() != 0 && schema::RATING.matches(&n.uri, &n.name))
-            || (mask & CatalogField::Tags.mask() != 0 && keywords::writable_property(&n.uri, n.name.as_bytes()))
+            || (mask & CatalogField::Tags.mask() != 0
+                && keywords::writable_property(&n.uri, n.name.as_bytes()))
             || (mask & CatalogField::Culling.mask() != 0
                 && culling_property(&n.uri, n.name.as_bytes(), &property_text(xml, n)?))
         {
@@ -1302,7 +1553,9 @@ fn merge_with_paths(
             tag_writer.observe(&n.uri, &n.name);
             patches.push((n.start, n.end, String::new()));
         }
-        if mask & CatalogField::Description.mask() != 0 && schema::DESCRIPTION[0].matches(&n.uri, &n.name) {
+        if mask & CatalogField::Description.mask() != 0
+            && schema::DESCRIPTION[0].matches(&n.uri, &n.name)
+        {
             if found_description {
                 return Err("Multiple description properties require manual resolution".into());
             }
@@ -1352,8 +1605,12 @@ fn merge_with_paths(
     if mask & CatalogField::Favorite.mask() != 0 {
         let property = schema::FAVORITE;
         let name = property.qualified_name();
-        properties += &format!("<{name} xmlns:{}=\"{}\">{}</{name}>",
-            property.prefix, property.uri, if favorite { "True" } else { "False" });
+        properties += &format!(
+            "<{name} xmlns:{}=\"{}\">{}</{name}>",
+            property.prefix,
+            property.uri,
+            if favorite { "True" } else { "False" }
+        );
     }
     if mask & CatalogField::Rating.mask() != 0 {
         properties += &schema::RATING.text_xml(&rating.clamp(0, 5).to_string());
@@ -1372,8 +1629,16 @@ fn merge_with_paths(
             properties += &schema::REJECTED.text_xml(if culling == 2 { "1" } else { "0" });
         }
         if let Some(pending) = digikam_pick {
-            let value = match culling { 1 => 3, 2 => 1, _ if pending => 2, _ => 0 };
-            properties += &format!("<digiKam:PickLabel xmlns:digiKam=\"{}\">{value}</digiKam:PickLabel>", schema::NS_DIGIKAM);
+            let value = match culling {
+                1 => 3,
+                2 => 1,
+                _ if pending => 2,
+                _ => 0,
+            };
+            properties += &format!(
+                "<digiKam:PickLabel xmlns:digiKam=\"{}\">{value}</digiKam:PickLabel>",
+                schema::NS_DIGIKAM
+            );
         }
     }
     if mask & CatalogField::Tags.mask() != 0 {
@@ -1422,7 +1687,9 @@ fn description_xml(value: &str) -> String {
     let name = property.qualified_name();
     format!(
         "<{name} xmlns:{}=\"{}\" xmlns:rdf=\"{NS_RDF}\"><rdf:Alt><rdf:li xml:lang=\"x-default\">{}</rdf:li></rdf:Alt></{name}>",
-        property.prefix, property.uri, escape(value)
+        property.prefix,
+        property.uri,
+        escape(value)
     )
 }
 
@@ -1493,7 +1760,10 @@ struct ExportIndex(HashMap<PathBuf, Result<ExportDirectory, String>>, u64);
 impl ExportIndex {
     fn directory(&mut self, parent: &Path) -> Result<&mut ExportDirectory, String> {
         let revision = SIDECAR_REVISION.load(Ordering::Acquire);
-        if self.1 != revision { self.0.clear(); self.1 = revision; }
+        if self.1 != revision {
+            self.0.clear();
+            self.1 = revision;
+        }
         self.0
             .entry(parent.to_path_buf())
             .or_insert_with(|| ExportDirectory::read(parent))
@@ -1581,7 +1851,7 @@ fn write_one(conn: &Connection, file_id: i64, cache: &mut ExportIndex) -> Result
         .query_row("SELECT f.path,a.name,COALESCE(a.rating,0),COALESCE(a.culling_flag,0),COALESCE(a.comments,''),COALESCE(a.is_favorite,0) FROM afiles a JOIN afolders f ON f.id=a.folder_id WHERE a.id=?1",
             [file_id], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))
         .map_err(|e|e.to_string())?;
-    let (tags, paths) = crate::t_tags::keywords_for_file(&tx,file_id)?;
+    let (tags, paths) = crate::t_tags::keywords_for_file(&tx, file_id)?;
     tx.commit().map_err(|e| e.to_string())?;
     let mut components = Path::new(&name).components();
     if !matches!(components.next(), Some(std::path::Component::Normal(_)))
@@ -1608,7 +1878,16 @@ fn write_one(conn: &Connection, file_id: i64, cache: &mut ExportIndex) -> Result
             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"{NS_RDF}\"></rdf:RDF></x:xmpmeta>"
         ),
     };
-    let output = merge_with_paths(&xml, rating, culling, favorite, &tags, Some(&paths), &description, ALL)?;
+    let output = merge_with_paths(
+        &xml,
+        rating,
+        culling,
+        favorite,
+        &tags,
+        Some(&paths),
+        &description,
+        ALL,
+    )?;
     let temp = dest.with_file_name(format!(
         ".lap-xmp-{}-{}.tmp",
         std::process::id(),
@@ -1949,17 +2228,26 @@ mod import_tests {
     #[test]
     fn digikam_pending_rescan_preserves_local_culling() {
         let conn = setup_in_memory_db();
-        conn.execute("INSERT INTO afiles(id,name) VALUES(1,'photo.jpg')", []).unwrap();
-        let parse = |value| parse_xmp_str(&format!(
+        conn.execute("INSERT INTO afiles(id,name) VALUES(1,'photo.jpg')", [])
+            .unwrap();
+        let parse = |value| {
+            parse_xmp_str(&format!(
             "<rdf:RDF xmlns:rdf=\"{NS_RDF}\"><rdf:Description xmlns:k=\"{}\" k:PickLabel=\"{value}\"/></rdf:RDF>",
             schema::NS_DIGIKAM,
-        )).unwrap();
+        )).unwrap()
+        };
         apply_xmp_metadata_to_db(1, &parse(3), &conn, XmpImportMode::InitialScan).unwrap();
-        conn.execute("UPDATE afiles SET culling_flag=2 WHERE id=1", []).unwrap();
+        conn.execute("UPDATE afiles SET culling_flag=2 WHERE id=1", [])
+            .unwrap();
         let pending = parse(2);
         assert_eq!(pending.culling_flag, Some(0));
         apply_xmp_metadata_to_db(1, &pending, &conn, XmpImportMode::RescanNonDestructive).unwrap();
-        assert_eq!(conn.query_row("SELECT culling_flag FROM afiles WHERE id=1", [], |r| r.get::<_, i32>(0)).unwrap(), 2);
+        assert_eq!(
+            conn.query_row("SELECT culling_flag FROM afiles WHERE id=1", [], |r| r
+                .get::<_, i32>(0))
+                .unwrap(),
+            2
+        );
     }
 
     #[test]
@@ -1999,11 +2287,8 @@ mod import_tests {
             [],
         )
         .unwrap();
-        conn.execute(
-            "INSERT INTO atags (id, name) VALUES (10, 'Favorite')",
-            [],
-        )
-        .unwrap();
+        conn.execute("INSERT INTO atags (id, name) VALUES (10, 'Favorite')", [])
+            .unwrap();
         conn.execute(
             "INSERT INTO afile_tags (file_id, tag_id) VALUES (1, 10)",
             [],
@@ -2377,18 +2662,38 @@ mod export_tests {
              ALTER TABLE afiles ADD COLUMN geo_admin1 TEXT;
              ALTER TABLE afiles ADD COLUMN geo_admin2 TEXT;
              ALTER TABLE afiles ADD COLUMN geo_cc TEXT;",
-        ).unwrap();
-        let coordinate = |degrees| exif::Value::Rational(
-            [degrees, 0, 0].into_iter().map(|num| exif::Rational { num, denom: 1 }).collect(),
-        );
+        )
+        .unwrap();
+        let coordinate = |degrees| {
+            exif::Value::Rational(
+                [degrees, 0, 0]
+                    .into_iter()
+                    .map(|num| exif::Rational { num, denom: 1 })
+                    .collect(),
+            )
+        };
         let fields = [
             (exif::Tag::GPSLatitude, coordinate(48)),
-            (exif::Tag::GPSLatitudeRef, exif::Value::Ascii(vec![b"N".to_vec()])),
+            (
+                exif::Tag::GPSLatitudeRef,
+                exif::Value::Ascii(vec![b"N".to_vec()]),
+            ),
             (exif::Tag::GPSLongitude, coordinate(2)),
-            (exif::Tag::GPSLongitudeRef, exif::Value::Ascii(vec![b"E".to_vec()])),
-            (exif::Tag::GPSAltitude, exif::Value::Rational(vec![exif::Rational { num: 120, denom: 1 }])),
+            (
+                exif::Tag::GPSLongitudeRef,
+                exif::Value::Ascii(vec![b"E".to_vec()]),
+            ),
+            (
+                exif::Tag::GPSAltitude,
+                exif::Value::Rational(vec![exif::Rational { num: 120, denom: 1 }]),
+            ),
             (exif::Tag::GPSAltitudeRef, exif::Value::Byte(vec![0])),
-        ].map(|(tag, value)| exif::Field { tag, ifd_num: exif::In::PRIMARY, value });
+        ]
+        .map(|(tag, value)| exif::Field {
+            tag,
+            ifd_num: exif::In::PRIMARY,
+            value,
+        });
         let mut writer = exif::experimental::Writer::new();
         for field in &fields {
             writer.push_field(field);
@@ -2407,25 +2712,46 @@ mod export_tests {
         let write_gps = |lat, lon, altitude| {
             let ns = schema::NS_EXIF;
             let altitude_tags = if altitude {
-                format!("<e:GPSAltitude xmlns:e=\"{ns}\">25/2</e:GPSAltitude>
-                         <e:GPSAltitudeRef xmlns:e=\"{ns}\">1</e:GPSAltitudeRef>")
+                format!(
+                    "<e:GPSAltitude xmlns:e=\"{ns}\">25/2</e:GPSAltitude>
+                         <e:GPSAltitudeRef xmlns:e=\"{ns}\">1</e:GPSAltitudeRef>"
+                )
             } else {
                 String::new()
             };
-            fs::write(&sidecar, packet(&format!(
-                "<e:GPSLatitude xmlns:e=\"{ns}\">{lat}</e:GPSLatitude>
+            fs::write(
+                &sidecar,
+                packet(&format!(
+                    "<e:GPSLatitude xmlns:e=\"{ns}\">{lat}</e:GPSLatitude>
                  <e:GPSLongitude xmlns:e=\"{ns}\">{lon}</e:GPSLongitude>{altitude_tags}",
-            ))).unwrap();
+                )),
+            )
+            .unwrap();
         };
-        let import = || import_xmp_for_file_with_conn(
-            1, media.to_str().unwrap(), &conn, XmpImportMode::RescanNonDestructive,
-        ).unwrap();
-        let gps = || conn.query_row(
-            "SELECT gps_latitude,gps_longitude,gps_altitude,geo_cc FROM afiles WHERE id=1",
-            [],
-            |row| Ok((row.get::<_, f64>(0)?, row.get::<_, f64>(1)?,
-                      row.get::<_, Option<f64>>(2)?, row.get::<_, String>(3)?)),
-        ).unwrap();
+        let import = || {
+            import_xmp_for_file_with_conn(
+                1,
+                media.to_str().unwrap(),
+                &conn,
+                XmpImportMode::RescanNonDestructive,
+            )
+            .unwrap()
+        };
+        let gps = || {
+            conn.query_row(
+                "SELECT gps_latitude,gps_longitude,gps_altitude,geo_cc FROM afiles WHERE id=1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, f64>(0)?,
+                        row.get::<_, f64>(1)?,
+                        row.get::<_, Option<f64>>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                },
+            )
+            .unwrap()
+        };
 
         write_gps("33,30S", "151,15,0E", true);
         assert!(import());
@@ -2458,24 +2784,41 @@ mod export_tests {
              ALTER TABLE afiles ADD COLUMN geo_admin1 TEXT;
              ALTER TABLE afiles ADD COLUMN geo_admin2 TEXT;
              ALTER TABLE afiles ADD COLUMN geo_cc TEXT;",
-        ).unwrap();
+        )
+        .unwrap();
         image::RgbImage::new(8, 8).save(&media).unwrap();
         let path = media.to_str().unwrap();
         let native = crate::t_sqlite::AFile::native_capture_date(path, 1).unwrap();
         let sidecar = media.with_extension("xmp");
         let write_date = |original, created| {
-            fs::write(&sidecar, packet(&format!(
-                "<e:DateTimeOriginal xmlns:e=\"{exif}\">{original}</e:DateTimeOriginal>
+            fs::write(
+                &sidecar,
+                packet(&format!(
+                    "<e:DateTimeOriginal xmlns:e=\"{exif}\">{original}</e:DateTimeOriginal>
                  <p:DateCreated xmlns:p=\"{photoshop}\">{created}</p:DateCreated>",
-                exif = schema::NS_EXIF, photoshop = schema::NS_PHOTOSHOP,
-            ))).unwrap();
+                    exif = schema::NS_EXIF,
+                    photoshop = schema::NS_PHOTOSHOP,
+                )),
+            )
+            .unwrap();
         };
-        let import = || import_xmp_for_file_with_conn(
-            1, path, &conn, XmpImportMode::RescanNonDestructive,
-        ).unwrap();
-        let date = || conn.query_row("SELECT e_date_time,taken_date FROM afiles WHERE id=1", [], |row| {
-            Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<i64>>(1)?))
-        }).unwrap();
+        let import = || {
+            import_xmp_for_file_with_conn(1, path, &conn, XmpImportMode::RescanNonDestructive)
+                .unwrap()
+        };
+        let date = || {
+            conn.query_row(
+                "SELECT e_date_time,taken_date FROM afiles WHERE id=1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<i64>>(1)?,
+                    ))
+                },
+            )
+            .unwrap()
+        };
 
         let original = "2010-03-04T10:00:00+02:00";
         let created = "2015-06-07T10:00:00Z";
@@ -2492,11 +2835,22 @@ mod export_tests {
             taken_date: native.1,
             ..Default::default()
         };
-        let refresh = || import_with_system(
-            1, path, &conn, XmpImportMode::RefreshNonDestructive, None, Some(None), Some(&fresh),
-        );
+        let refresh = || {
+            import_with_system(
+                1,
+                path,
+                &conn,
+                XmpImportMode::RefreshNonDestructive,
+                None,
+                Some(None),
+                Some(&fresh),
+            )
+        };
         fs::write(&sidecar, "<broken>").unwrap();
-        assert!(import_xmp_for_file_with_conn(1, path, &conn, XmpImportMode::RescanNonDestructive).is_err());
+        assert!(
+            import_xmp_for_file_with_conn(1, path, &conn, XmpImportMode::RescanNonDestructive)
+                .is_err()
+        );
         assert_eq!(date(), imported);
         assert!(refresh().is_err());
         assert_eq!(date(), imported);
@@ -2510,7 +2864,10 @@ mod export_tests {
 
         write_date("2017-03-04T10:00", "");
         assert!(import());
-        assert_eq!(date().1, crate::t_utils::meta_date_to_timestamp("2017:03:04 10:00:00"));
+        assert_eq!(
+            date().1,
+            crate::t_utils::meta_date_to_timestamp("2017:03:04 10:00:00")
+        );
         fs::remove_file(sidecar).unwrap();
         assert!(refresh().unwrap());
         assert_eq!(date(), native);
@@ -2541,23 +2898,68 @@ mod export_tests {
     #[test]
     fn titles_import_sidecar_overrides_embedded_and_clears_without_editing_description() {
         let (conn, dir, media) = fixture();
-        let xml = packet("<d:title><rdf:Alt><rdf:li xml:lang=\"fr\">Titre</rdf:li><rdf:li xml:lang=\"x-default\">Embedded title</rdf:li></rdf:Alt></d:title><p:Headline xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\">Embedded headline</p:Headline>");
-        fs::write(&media, crate::metadata::embedded::tests::jpeg_with_xmp_packet(xml.as_bytes())).unwrap();
-        let fields = || conn.query_row("SELECT e_title,e_headline,comments FROM afiles WHERE id=1", [],
-            |r| Ok((r.get::<_,Option<String>>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,String>(2)?))).unwrap();
-        let import = || import_xmp_for_file_with_conn(1, media.to_str().unwrap(), &conn, XmpImportMode::RefreshNonDestructive).unwrap();
+        let xml = packet(
+            "<d:title><rdf:Alt><rdf:li xml:lang=\"fr\">Titre</rdf:li><rdf:li xml:lang=\"x-default\">Embedded title</rdf:li></rdf:Alt></d:title><p:Headline xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\">Embedded headline</p:Headline>",
+        );
+        fs::write(
+            &media,
+            crate::metadata::embedded::tests::jpeg_with_xmp_packet(xml.as_bytes()),
+        )
+        .unwrap();
+        let fields = || {
+            conn.query_row(
+                "SELECT e_title,e_headline,comments FROM afiles WHERE id=1",
+                [],
+                |r| {
+                    Ok((
+                        r.get::<_, Option<String>>(0)?,
+                        r.get::<_, Option<String>>(1)?,
+                        r.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .unwrap()
+        };
+        let import = || {
+            import_xmp_for_file_with_conn(
+                1,
+                media.to_str().unwrap(),
+                &conn,
+                XmpImportMode::RefreshNonDestructive,
+            )
+            .unwrap()
+        };
         assert!(import());
-        assert_eq!(fields(), (Some("Embedded title".into()),Some("Embedded headline".into()),"local caption".into()));
+        assert_eq!(
+            fields(),
+            (
+                Some("Embedded title".into()),
+                Some("Embedded headline".into()),
+                "local caption".into()
+            )
+        );
         let sidecar = media.with_extension("xmp");
         fs::write(&sidecar, packet("<d:title>Sidecar title</d:title>")).unwrap();
         assert!(import());
         assert_eq!(fields().0.as_deref(), Some("Sidecar title"));
         assert_eq!(fields().1.as_deref(), Some("Embedded headline"));
-        fs::write(&sidecar, packet("<d:title/><p:Headline xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\"/>")).unwrap();
+        fs::write(
+            &sidecar,
+            packet("<d:title/><p:Headline xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\"/>"),
+        )
+        .unwrap();
         assert!(import());
-        assert_eq!(fields(), (None,None,"local caption".into()));
+        assert_eq!(fields(), (None, None, "local caption".into()));
         fs::write(&sidecar, "<broken>").unwrap();
-        assert!(import_xmp_for_file_with_conn(1, media.to_str().unwrap(), &conn, XmpImportMode::RefreshNonDestructive).is_err());
+        assert!(
+            import_xmp_for_file_with_conn(
+                1,
+                media.to_str().unwrap(),
+                &conn,
+                XmpImportMode::RefreshNonDestructive
+            )
+            .is_err()
+        );
         assert_eq!(fields().0, None);
         fs::remove_file(sidecar).unwrap();
         assert!(import());
@@ -2573,33 +2975,75 @@ mod export_tests {
             "<d:rights>Embedded copyright</d:rights>",
             "<r:CreatorTool>Embedded software</r:CreatorTool>",
         ));
-        fs::write(&media, crate::metadata::embedded::tests::jpeg_with_xmp_packet(embedded.as_bytes())).unwrap();
+        fs::write(
+            &media,
+            crate::metadata::embedded::tests::jpeg_with_xmp_packet(embedded.as_bytes()),
+        )
+        .unwrap();
         let sidecar = media.with_extension("xmp");
         let import = || {
-            import_xmp_for_file_with_conn(1, media.to_str().unwrap(), &conn, XmpImportMode::RescanNonDestructive).unwrap()
+            import_xmp_for_file_with_conn(
+                1,
+                media.to_str().unwrap(),
+                &conn,
+                XmpImportMode::RescanNonDestructive,
+            )
+            .unwrap()
         };
         let fields = || {
             conn.query_row(
                 "SELECT e_artist,e_copyright,e_software FROM afiles WHERE id=1",
                 [],
-                |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?, row.get::<_, Option<String>>(2)?)),
-            ).unwrap()
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .unwrap()
         };
         assert!(import());
         let embedded_fields = fields();
-        assert_eq!(embedded_fields, (Some("Embedded creator".into()), Some("Embedded copyright".into()), Some("Embedded software".into())));
+        assert_eq!(
+            embedded_fields,
+            (
+                Some("Embedded creator".into()),
+                Some("Embedded copyright".into()),
+                Some("Embedded software".into())
+            )
+        );
 
         fs::write(&sidecar, packet(concat!(
             "<d:creator><rdf:Seq><rdf:li>Sidecar Alice</rdf:li><rdf:li>Sidecar Bob</rdf:li></rdf:Seq></d:creator>",
             "<r:CreatorTool>Sidecar software</r:CreatorTool>",
         ))).unwrap();
         assert!(import());
-        assert_eq!(fields(), (Some("Sidecar Alice\nSidecar Bob".into()), Some("Embedded copyright".into()), Some("Sidecar software".into())));
+        assert_eq!(
+            fields(),
+            (
+                Some("Sidecar Alice\nSidecar Bob".into()),
+                Some("Embedded copyright".into()),
+                Some("Sidecar software".into())
+            )
+        );
         assert!(!import());
 
-        fs::write(&sidecar, packet("<d:creator/><d:rights>Sidecar copyright</d:rights>")).unwrap();
+        fs::write(
+            &sidecar,
+            packet("<d:creator/><d:rights>Sidecar copyright</d:rights>"),
+        )
+        .unwrap();
         assert!(import());
-        assert_eq!(fields(), (None, Some("Sidecar copyright".into()), Some("Embedded software".into())));
+        assert_eq!(
+            fields(),
+            (
+                None,
+                Some("Sidecar copyright".into()),
+                Some("Embedded software".into())
+            )
+        );
 
         fs::remove_file(sidecar).unwrap();
         assert!(import());
@@ -2613,8 +3057,16 @@ mod export_tests {
         let media = dir.join("video.mp4");
         let output = match std::process::Command::new("ffmpeg")
             .args([
-                "-v", "error", "-f", "lavfi", "-i", "color=s=16x16",
-                "-frames:v", "1", "-c:v", "mpeg4",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=s=16x16",
+                "-frames:v",
+                "1",
+                "-c:v",
+                "mpeg4",
             ])
             .arg(&media)
             .output()
@@ -2626,22 +3078,35 @@ mod export_tests {
             }
             Err(error) => panic!("Could not run ffmpeg: {error}"),
         };
-        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         let native = crate::t_video::get_video_metadata(media.to_str().unwrap())
             .unwrap()
             .e_software
             .unwrap();
         let import = || {
             import_xmp_for_file_with_conn(
-                1, media.to_str().unwrap(), &conn, XmpImportMode::RescanNonDestructive,
-            ).unwrap();
+                1,
+                media.to_str().unwrap(),
+                &conn,
+                XmpImportMode::RescanNonDestructive,
+            )
+            .unwrap();
             conn.query_row("SELECT e_software FROM afiles WHERE id=1", [], |row| {
                 row.get::<_, Option<String>>(0)
-            }).unwrap()
+            })
+            .unwrap()
         };
         assert_eq!(import().as_deref(), Some(native.as_str()));
         let sidecar = media.with_extension("xmp");
-        fs::write(&sidecar, packet("<r:CreatorTool>Sidecar software</r:CreatorTool>")).unwrap();
+        fs::write(
+            &sidecar,
+            packet("<r:CreatorTool>Sidecar software</r:CreatorTool>"),
+        )
+        .unwrap();
         assert_eq!(import().as_deref(), Some("Sidecar software"));
         fs::write(&sidecar, packet("<r:CreatorTool/>")).unwrap();
         assert_eq!(import(), None);
@@ -2655,7 +3120,11 @@ mod export_tests {
         let (conn, dir, _) = fixture();
         let media = dir.join("unprobeable.mp4");
         fs::write(&media, b"").unwrap();
-        fs::write(media.with_extension("xmp"), packet("<d:title>Sidecar title</d:title>")).unwrap();
+        fs::write(
+            media.with_extension("xmp"),
+            packet("<d:title>Sidecar title</d:title>"),
+        )
+        .unwrap();
         let import = |extracted_software| {
             import_with_system(
                 1,
@@ -2665,20 +3134,29 @@ mod export_tests {
                 None,
                 extracted_software,
                 None,
-            ).unwrap();
-            conn.query_row("SELECT e_software,e_title FROM afiles WHERE id=1", [], |row| {
-                Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?))
-            }).unwrap()
+            )
+            .unwrap();
+            conn.query_row(
+                "SELECT e_software,e_title FROM afiles WHERE id=1",
+                [],
+                |row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, String>(1)?)),
+            )
+            .unwrap()
         };
         let (software, title) = import(Some(Some("Already extracted")));
         assert_eq!(software.as_deref(), Some("Already extracted"));
         assert_eq!(title, "Sidecar title");
-        assert_eq!(import(None), (Some("Already extracted".into()), "Sidecar title".into()));
-        let fingerprint: String = conn.query_row(
-            "SELECT fingerprint FROM axmp_imports WHERE file_id=1",
-            [],
-            |row| row.get(0),
-        ).unwrap();
+        assert_eq!(
+            import(None),
+            (Some("Already extracted".into()), "Sidecar title".into())
+        );
+        let fingerprint: String = conn
+            .query_row(
+                "SELECT fingerprint FROM axmp_imports WHERE file_id=1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert!(fingerprint.is_empty());
         assert_eq!(import(Some(None)), (None, "Sidecar title".into()));
         fs::remove_dir_all(dir).unwrap();
@@ -2691,22 +3169,46 @@ mod export_tests {
             "UPDATE afiles SET e_artist='Previous creator', e_copyright='Previous copyright',
              e_software='Previous software' WHERE id=1",
             [],
-        ).unwrap();
+        )
+        .unwrap();
         fs::remove_file(&media).unwrap();
         fs::create_dir(&media).unwrap();
         fs::write(media.join("child"), b"").unwrap();
         assert!(super::super::embedded::try_read(&media).is_err());
-        fs::write(media.with_extension("xmp"), packet("<d:creator>Sidecar creator</d:creator><d:rights/>")).unwrap();
+        fs::write(
+            media.with_extension("xmp"),
+            packet("<d:creator>Sidecar creator</d:creator><d:rights/>"),
+        )
+        .unwrap();
         let import = || {
             import_xmp_for_file_with_conn(
-                1, media.to_str().unwrap(), &conn, XmpImportMode::RescanNonDestructive,
-            ).unwrap();
-            conn.query_row("SELECT e_artist,e_copyright,e_software FROM afiles WHERE id=1", [], |row| {
-                Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<String>>(1)?,
-                    row.get::<_, Option<String>>(2)?))
-            }).unwrap()
+                1,
+                media.to_str().unwrap(),
+                &conn,
+                XmpImportMode::RescanNonDestructive,
+            )
+            .unwrap();
+            conn.query_row(
+                "SELECT e_artist,e_copyright,e_software FROM afiles WHERE id=1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .unwrap()
         };
-        assert_eq!(import(), (Some("Sidecar creator".into()), None, Some("Previous software".into())));
+        assert_eq!(
+            import(),
+            (
+                Some("Sidecar creator".into()),
+                None,
+                Some("Previous software".into())
+            )
+        );
         fs::remove_dir_all(&media).unwrap();
         fs::write(&media, b"").unwrap();
         assert_eq!(import(), (Some("Sidecar creator".into()), None, None));
@@ -2861,8 +3363,10 @@ mod export_tests {
     #[test]
     fn system_comments_import_on_attribute_changes_and_protect_local_edits() {
         let (conn, dir, media) = fixture();
-        conn.execute("UPDATE afiles SET comments=NULL WHERE id=1", []).unwrap();
-        conn.execute("UPDATE axmp_imports SET dirty=0 WHERE file_id=1", []).unwrap();
+        conn.execute("UPDATE afiles SET comments=NULL WHERE id=1", [])
+            .unwrap();
+        conn.execute("UPDATE axmp_imports SET dirty=0 WHERE file_id=1", [])
+            .unwrap();
         let attribute = if cfg!(target_os = "macos") {
             "com.apple.metadata:kMDItemFinderComment"
         } else {
@@ -2871,24 +3375,37 @@ mod export_tests {
         let set_comment = |text: &str| {
             let bytes = if cfg!(target_os = "macos") {
                 let mut bytes = Vec::new();
-                plist::Value::String(text.into()).to_writer_binary(&mut bytes).unwrap();
+                plist::Value::String(text.into())
+                    .to_writer_binary(&mut bytes)
+                    .unwrap();
                 bytes
             } else {
                 text.as_bytes().to_vec()
             };
             xattr::set_deref(&media, attribute, &bytes).unwrap();
         };
-        let import = |mode| import_xmp_for_file_with_conn(1, media.to_str().unwrap(), &conn, mode).unwrap();
-        let comment = || conn.query_row("SELECT comments FROM afiles WHERE id=1", [], |row| row.get::<_, String>(0)).unwrap();
+        let import =
+            |mode| import_xmp_for_file_with_conn(1, media.to_str().unwrap(), &conn, mode).unwrap();
+        let comment = || {
+            conn.query_row("SELECT comments FROM afiles WHERE id=1", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .unwrap()
+        };
         set_comment("System comment");
         assert!(import(XmpImportMode::RescanNonDestructive));
         assert_eq!(comment(), "System comment");
         assert!(!import(XmpImportMode::RescanNonDestructive));
-        conn.execute("UPDATE afiles SET comments='Local edit' WHERE id=1", []).unwrap();
+        conn.execute("UPDATE afiles SET comments='Local edit' WHERE id=1", [])
+            .unwrap();
         set_comment("Changed system comment");
         assert!(import(XmpImportMode::RescanNonDestructive));
         assert_eq!(comment(), "Local edit");
-        fs::write(media.with_extension("xmp"), packet("<d:description>Sidecar comment</d:description>")).unwrap();
+        fs::write(
+            media.with_extension("xmp"),
+            packet("<d:description>Sidecar comment</d:description>"),
+        )
+        .unwrap();
         assert!(import(XmpImportMode::ManualOverwrite));
         assert_eq!(comment(), "Sidecar comment");
         fs::remove_dir_all(dir).unwrap();
@@ -3226,7 +3743,8 @@ mod export_tests {
                 assert_eq!(parsed.culling_flag, Some(flag));
                 assert!(!output.contains("<r:Label>Pick</r:Label>"));
                 assert!(!output.contains("r:Label=\"Reject\""));
-                let bytes = crate::metadata::embedded::tests::jpeg_with_xmp_packet(output.as_bytes());
+                let bytes =
+                    crate::metadata::embedded::tests::jpeg_with_xmp_packet(output.as_bytes());
                 let path = std::env::temp_dir().join(format!(
                     "lap-culling-roundtrip-{}-{}.jpg",
                     std::process::id(),
@@ -3435,17 +3953,25 @@ mod export_tests {
     }
     #[test]
     fn existing_acdsee_attributes_and_elements_follow_replacements_and_clears() {
-        let categories = escape(r#"<Categories><Category Assigned="0">Places<Category Assigned="1">Paris</Category></Category></Categories>"#);
+        let categories = escape(
+            r#"<Categories><Category Assigned="0">Places<Category Assigned="1">Paris</Category></Category></Categories>"#,
+        );
         for description in [
             format!("<rdf:Description xmlns:a=\"{NS_ACDSEE}\" a:categories=\"{categories}\"/>"),
-            format!("<rdf:Description xmlns:a=\"{NS_ACDSEE}\"><a:categories>{categories}</a:categories></rdf:Description>"),
+            format!(
+                "<rdf:Description xmlns:a=\"{NS_ACDSEE}\"><a:categories>{categories}</a:categories></rdf:Description>"
+            ),
         ] {
             let xml = format!("<rdf:RDF xmlns:rdf=\"{NS_RDF}\">{description}</rdf:RDF>");
             let cleared = merge_with_paths(&xml, 0, 0, false, &[], Some(&[]), "", 8).unwrap();
             assert_eq!(parse_xmp_str(&cleared).unwrap().tags, Some(vec![]));
             let paths = vec!["Places|Rome".into()];
-            let replaced = merge_with_paths(&xml, 0, 0, false, &["Rome".into()], Some(&paths), "", 8).unwrap();
-            assert_eq!(parse_xmp_str(&replaced).unwrap().hierarchical_tags, Some(paths));
+            let replaced =
+                merge_with_paths(&xml, 0, 0, false, &["Rome".into()], Some(&paths), "", 8).unwrap();
+            assert_eq!(
+                parse_xmp_str(&replaced).unwrap().hierarchical_tags,
+                Some(paths)
+            );
             assert!(!replaced.contains("Paris"));
         }
     }
@@ -3621,32 +4147,67 @@ mod export_tests {
     }
     #[test]
     fn hierarchical_catalog_export_roundtrips_without_flat_duplicates_or_group_names() {
-        let (conn,dir,media)=fixture();
-        conn.execute("DELETE FROM afile_tags",[]).unwrap();
-        let xml=packet("<d:subject><rdf:Bag><rdf:li>Paris</rdf:li></rdf:Bag></d:subject><lr:hierarchicalSubject xmlns:lr=\"http://ns.adobe.com/lightroom/1.0/\"><rdf:Bag><rdf:li>Places|France|Paris</rdf:li><rdf:li>Clients|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject><digiKam:TagsList xmlns:digiKam=\"http://www.digikam.org/ns/1.0/\"><rdf:Seq><rdf:li>Places/France/Paris</rdf:li><rdf:li>Clients/Paris</rdf:li></rdf:Seq></digiKam:TagsList>");
-        let meta=parse_xmp_str(&xml).unwrap();
-        apply_xmp_metadata_to_db(1,&meta,&conn,XmpImportMode::InitialScan).unwrap();
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM afile_tags WHERE file_id=1",[],|r|r.get::<_,i64>(0)).unwrap(),2);
-        assert_eq!(crate::t_tags::find(&conn,"Paris",None).unwrap(),None);
+        let (conn, dir, media) = fixture();
+        conn.execute("DELETE FROM afile_tags", []).unwrap();
+        let xml = packet(
+            "<d:subject><rdf:Bag><rdf:li>Paris</rdf:li></rdf:Bag></d:subject><lr:hierarchicalSubject xmlns:lr=\"http://ns.adobe.com/lightroom/1.0/\"><rdf:Bag><rdf:li>Places|France|Paris</rdf:li><rdf:li>Clients|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject><digiKam:TagsList xmlns:digiKam=\"http://www.digikam.org/ns/1.0/\"><rdf:Seq><rdf:li>Places/France/Paris</rdf:li><rdf:li>Clients/Paris</rdf:li></rdf:Seq></digiKam:TagsList>",
+        );
+        let meta = parse_xmp_str(&xml).unwrap();
+        apply_xmp_metadata_to_db(1, &meta, &conn, XmpImportMode::InitialScan).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM afile_tags WHERE file_id=1", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(crate::t_tags::find(&conn, "Paris", None).unwrap(), None);
         fs::write(media.with_extension("xmp"), &xml).unwrap();
-        let result=save_batch(&conn,&[1]);
-        assert_eq!(result.saved_ids,vec![1]);
+        let result = save_batch(&conn, &[1]);
+        assert_eq!(result.saved_ids, vec![1]);
         assert!(result.failures.is_empty());
-        let output=fs::read_to_string(find_xmp_sidecar(&media).unwrap()).unwrap();
+        let output = fs::read_to_string(find_xmp_sidecar(&media).unwrap()).unwrap();
         assert!(output.contains("<rdf:li>Places/France/Paris</rdf:li>"));
         assert!(output.contains("<rdf:li>Places|France|Paris</rdf:li>"));
-        let reread=parse_xmp_str(&output).unwrap();
-        assert_eq!(reread.hierarchical_tags,Some(vec!["Clients|Paris".into(),"Places|France|Paris".into()]));
-        conn.execute("INSERT INTO afiles(id) VALUES(2)",[]).unwrap();
-        apply_xmp_metadata_to_db(2,&reread,&conn,XmpImportMode::InitialScan).unwrap();
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM afile_tags WHERE file_id=2",[],|r|r.get::<_,i64>(0)).unwrap(),2);
-        let country=crate::t_tags::find(&conn,"France",crate::t_tags::find(&conn,"Places",None).unwrap()).unwrap().unwrap();
-        conn.execute("UPDATE atags SET name='French places' WHERE id=?1",[country]).unwrap();
-        conn.execute("INSERT INTO afiles(id) VALUES(3)",[]).unwrap();
-        apply_xmp_metadata_to_db(3,&meta,&conn,XmpImportMode::InitialScan).unwrap();
-        let (_,paths)=crate::t_tags::keywords_for_file(&conn,3).unwrap();
+        let reread = parse_xmp_str(&output).unwrap();
+        assert_eq!(
+            reread.hierarchical_tags,
+            Some(vec!["Clients|Paris".into(), "Places|France|Paris".into()])
+        );
+        conn.execute("INSERT INTO afiles(id) VALUES(2)", [])
+            .unwrap();
+        apply_xmp_metadata_to_db(2, &reread, &conn, XmpImportMode::InitialScan).unwrap();
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM afile_tags WHERE file_id=2", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        let country = crate::t_tags::find(
+            &conn,
+            "France",
+            crate::t_tags::find(&conn, "Places", None).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+        conn.execute(
+            "UPDATE atags SET name='French places' WHERE id=?1",
+            [country],
+        )
+        .unwrap();
+        conn.execute("INSERT INTO afiles(id) VALUES(3)", [])
+            .unwrap();
+        apply_xmp_metadata_to_db(3, &meta, &conn, XmpImportMode::InitialScan).unwrap();
+        let (_, paths) = crate::t_tags::keywords_for_file(&conn, 3).unwrap();
         assert!(paths.contains(&"Places|French places|Paris".to_string()));
-        assert!(crate::t_tags::find(&conn,"France",crate::t_tags::find(&conn,"Places",None).unwrap()).unwrap().is_none());
+        assert!(
+            crate::t_tags::find(
+                &conn,
+                "France",
+                crate::t_tags::find(&conn, "Places", None).unwrap()
+            )
+            .unwrap()
+            .is_none()
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -3665,10 +4226,14 @@ mod export_tests {
             crate::t_tags::keywords_for_file(&conn, 1).unwrap(),
             (vec!["Paris".into()], vec!["Places|Paris".into()])
         );
-        assert!(crate::t_tags::find(&conn, "Unused", None)
-            .unwrap()
-            .is_none());
-        let combined = packet(&format!("{property}<lr:hierarchicalSubject xmlns:lr=\"{NS_LR}\"><rdf:Bag><rdf:li>Places|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject><k:TagsList xmlns:k=\"{NS_DIGIKAM}\"><rdf:Seq><rdf:li>Places/Paris</rdf:li></rdf:Seq></k:TagsList>"));
+        assert!(
+            crate::t_tags::find(&conn, "Unused", None)
+                .unwrap()
+                .is_none()
+        );
+        let combined = packet(&format!(
+            "{property}<lr:hierarchicalSubject xmlns:lr=\"{NS_LR}\"><rdf:Bag><rdf:li>Places|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject><k:TagsList xmlns:k=\"{NS_DIGIKAM}\"><rdf:Seq><rdf:li>Places/Paris</rdf:li></rdf:Seq></k:TagsList>"
+        ));
         let combined = parse_xmp_str(&combined).unwrap();
         conn.execute("INSERT INTO afiles(id) VALUES(2)", [])
             .unwrap();
@@ -3685,7 +4250,9 @@ mod export_tests {
                 1
             );
         }
-        let broken = packet(&format!("<a:categories xmlns:a=\"{NS_ACDSEE}\">&lt;Categories&gt;</a:categories><d:subject><rdf:Bag><rdf:li>Keep</rdf:li></rdf:Bag></d:subject>"));
+        let broken = packet(&format!(
+            "<a:categories xmlns:a=\"{NS_ACDSEE}\">&lt;Categories&gt;</a:categories><d:subject><rdf:Bag><rdf:li>Keep</rdf:li></rdf:Bag></d:subject>"
+        ));
         let parsed = parse_xmp_str(&broken).unwrap();
         assert_eq!(parsed.tags, Some(vec!["Keep".into()]));
         assert!(parsed.hierarchical_tags.is_none());
@@ -3793,21 +4360,34 @@ mod export_tests {
     fn tag_tree_upgrade_reimports_unchanged_sources_once_and_preserves_local_edits() {
         for dirty in [0, 8] {
             let (conn, dir, media) = fixture();
-            let categories = escape(r#"<Categories><Category Assigned="1">Vendor</Category></Categories>"#);
-            let xml = packet(&format!("<lr:hierarchicalSubject xmlns:lr=\"{NS_LR}\"><rdf:Bag><rdf:li>Places|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject><a:categories xmlns:a=\"{NS_ACDSEE}\">{categories}</a:categories>"));
+            let categories =
+                escape(r#"<Categories><Category Assigned="1">Vendor</Category></Categories>"#);
+            let xml = packet(&format!(
+                "<lr:hierarchicalSubject xmlns:lr=\"{NS_LR}\"><rdf:Bag><rdf:li>Places|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject><a:categories xmlns:a=\"{NS_ACDSEE}\">{categories}</a:categories>"
+            ));
             fs::write(media.with_extension("xmp"), &xml).unwrap();
-            let import = || import_xmp_for_file_with_conn(
-                1, media.to_str().unwrap(), &conn, XmpImportMode::RescanNonDestructive,
-            ).unwrap();
+            let import = || {
+                import_xmp_for_file_with_conn(
+                    1,
+                    media.to_str().unwrap(),
+                    &conn,
+                    XmpImportMode::RescanNonDestructive,
+                )
+                .unwrap()
+            };
             assert!(import());
             // Simulate the migrated catalog and unchanged v3 source fingerprint.
-            conn.execute_batch("DELETE FROM afile_tags; DELETE FROM axmp_tag_paths; DELETE FROM atags;
+            conn.execute_batch(
+                "DELETE FROM afile_tags; DELETE FROM axmp_tag_paths; DELETE FROM atags;
                 INSERT INTO atags(id,name) VALUES(1,'Places|Paris');
                 INSERT INTO afile_tags VALUES(1,1);
                 UPDATE afiles SET has_tags=1 WHERE id=1;
-                ").unwrap();
+                ",
+            )
+            .unwrap();
             conn.execute("UPDATE axmp_imports SET fingerprint=REPLACE(fingerprint,?1,'embedded-v3:') WHERE file_id=1", [schema::IMPORT_PREFIX]).unwrap();
-            conn.execute("UPDATE axmp_imports SET dirty=?1 WHERE file_id=1", [dirty]).unwrap();
+            conn.execute("UPDATE axmp_imports SET dirty=?1 WHERE file_id=1", [dirty])
+                .unwrap();
 
             assert!(import());
             assert!(!import());
@@ -3821,9 +4401,18 @@ mod export_tests {
             } else {
                 assert_eq!(flat, vec!["Places|Paris"]);
                 assert!(paths.is_empty());
-                assert_eq!(fs::read_to_string(media.with_extension("xmp")).unwrap(), xml);
+                assert_eq!(
+                    fs::read_to_string(media.with_extension("xmp")).unwrap(),
+                    xml
+                );
             }
-            assert_eq!(conn.query_row("SELECT dirty FROM axmp_imports WHERE file_id=1", [], |r| r.get::<_, i32>(0)).unwrap(), dirty);
+            assert_eq!(
+                conn.query_row("SELECT dirty FROM axmp_imports WHERE file_id=1", [], |r| {
+                    r.get::<_, i32>(0)
+                })
+                .unwrap(),
+                dirty
+            );
             assert_eq!(fs::read(&media).unwrap(), b"unchanged-original");
             fs::remove_dir_all(dir).unwrap();
         }
@@ -3946,11 +4535,12 @@ fn source_property_values(node: &XmlNode) -> Vec<String> {
             })
             .collect()
     } else {
-        vec![node
-            .attributes
-            .iter()
-            .find(|a| a.uri == NS_RDF && a.name == "resource")
-            .map(|a| a.text.clone())
-            .unwrap_or_else(|| node.value())]
+        vec![
+            node.attributes
+                .iter()
+                .find(|a| a.uri == NS_RDF && a.name == "resource")
+                .map(|a| a.text.clone())
+                .unwrap_or_else(|| node.value()),
+        ]
     }
 }

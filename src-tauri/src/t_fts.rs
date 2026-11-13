@@ -5,7 +5,7 @@
 //! is cut into bigrams before it is written: a Chinese run of two or more
 //! characters becomes every adjacent pair, a run of one character stays whole.
 //! Latin words are lowercased and kept as one token.
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -282,11 +282,7 @@ pub fn search(conn: &Connection, query: &str, limit: i64) -> Result<Vec<FtsHit>,
 const MIN_CJK_FOR_CHAR_TOKENS: usize = 3;
 
 /// Rank the documents that match any query token by BM25.
-fn search_ranked(
-    conn: &Connection,
-    tokens: &[String],
-    limit: i64,
-) -> Result<Vec<FtsHit>, String> {
+fn search_ranked(conn: &Connection, tokens: &[String], limit: i64) -> Result<Vec<FtsHit>, String> {
     let quoted: Vec<String> = tokens
         .iter()
         .filter_map(|token| quote_token(token))
@@ -305,13 +301,33 @@ fn search_ranked(
     // Weighting the caption matches human intent best: measured on a 40-photo
     // annotation set (113 queries, 2026-11-12), caption×5 lifted Recall@1
     // from 0.909 to 0.936; heavier name weights changed nothing.
-    const BM25: &str = "bm25(files_fts, 1.0, 1.0, 1.0, 1.0, 5.0)";
+    //
+    // Folders excluded from search leave the index together with everything
+    // they contain — before the Top-N cut, so a hidden match can never spend
+    // a slot of the limit. Partial schemas without afolders keep the plain
+    // index scan. With the join the index carries the alias `f`, and the
+    // auxiliary bm25() must name that alias.
+    // Folders excluded from search leave the index together with everything
+    // they contain — before the Top-N cut, so a hidden match can never spend
+    // a slot of the limit. The exclusion runs as a rowid NOT IN subquery so
+    // the FTS5 table stays unaliased and its auxiliary bm25() keeps working.
+    // Schemas without the exclusion column keep the plain index scan.
+    let exclusion = if search_exclusion_available(conn)? {
+        format!(
+            " AND rowid NOT IN (SELECT a.id FROM afiles a
+                 JOIN afolders b ON b.id = a.folder_id
+                 WHERE NOT ({}))",
+            crate::t_sqlite::AFile::search_exclusion_condition("b")
+        )
+    } else {
+        String::new()
+    };
 
     // FTS5's bm25() returns a negative score; ascending order is best first.
     let mut stmt = conn
         .prepare(&format!(
-            "SELECT rowid FROM files_fts WHERE files_fts MATCH ?1
-             ORDER BY {BM25} LIMIT ?2"
+            "SELECT rowid FROM files_fts WHERE files_fts MATCH ?1{exclusion}
+             ORDER BY bm25(files_fts, 1.0, 1.0, 1.0, 1.0, 5.0) LIMIT ?2"
         ))
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -333,7 +349,9 @@ fn search_ranked(
             .prepare("SELECT rowid FROM files_fts WHERE files_fts MATCH ?1 LIMIT ?2")
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(params![column_query, FTS_MAX_LIMIT], |row| row.get::<_, i64>(0))
+            .query_map(params![column_query, FTS_MAX_LIMIT], |row| {
+                row.get::<_, i64>(0)
+            })
             .map_err(|e| e.to_string())?;
         for row in rows {
             let file_id = row.map_err(|e| e.to_string())?;
@@ -408,8 +426,24 @@ fn like_search(conn: &Connection, needle: &str, limit: i64) -> Result<Vec<FtsHit
         return Ok(Vec::new());
     }
 
+    // The same search-exclusion rule as the ranked pass: folders marked
+    // excluded hide everything inside them.
+    let (from_join, exclusion) = if search_exclusion_available(conn)? {
+        (
+            " JOIN afolders b ON b.id = a.folder_id".to_string(),
+            format!(
+                " AND {}",
+                crate::t_sqlite::AFile::search_exclusion_condition("b")
+            ),
+        )
+    } else {
+        (String::new(), String::new())
+    };
+
     let sql = format!(
-        "SELECT DISTINCT a.id FROM afiles a WHERE {} ORDER BY a.id LIMIT ?2",
+        // The OR group is parenthesized: the exclusion must filter the whole
+        // group, not only its last clause (AND binds tighter than OR).
+        "SELECT DISTINCT a.id FROM afiles a{from_join} WHERE ({}){exclusion} ORDER BY a.id LIMIT ?2",
         clauses.join(" OR ")
     );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -570,7 +604,7 @@ fn tags_of(conn: &Connection, file_id: i64) -> Result<Vec<String>, String> {
 }
 
 /// The annotation texts of a file.
-fn caption_of(conn: &Connection, file_id: i64) -> Result<Vec<String>, String> {
+pub(crate) fn caption_of(conn: &Connection, file_id: i64) -> Result<Vec<String>, String> {
     if existing_columns(conn, "vl_annotations", &["file_id"])?.is_empty() {
         return Ok(Vec::new());
     }
@@ -696,6 +730,13 @@ pub fn reindex_all_with_conn(conn: &Connection) -> Result<usize, String> {
     Ok(ids.len())
 }
 
+/// True when the schema can answer the search-exclusion question: the
+/// afolders table exists and carries the exclusion column.
+fn search_exclusion_available(conn: &Connection) -> Result<bool, String> {
+    Ok(table_exists(conn, "afolders")?
+        && !existing_columns(conn, "afolders", &["is_excluded_from_search"])?.is_empty())
+}
+
 /// Search the index from the command layer.
 #[tauri::command]
 pub fn search_fts(query: String, limit: Option<i64>) -> Result<Vec<FtsHit>, String> {
@@ -745,7 +786,7 @@ mod tests {
     use super::*;
 
     /// A library with the tables the index reads from.
-    fn fixture() -> Connection {
+    pub(crate) fn fixture() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "PRAGMA foreign_keys=ON;
@@ -904,10 +945,7 @@ mod tests {
         seed_file(&conn, 1, "过年回家.jpg");
         upsert_doc(&conn, 1).unwrap();
 
-        assert_eq!(
-            column(&conn, "name", 1),
-            "过年 年回 回家 jpg 过 年 回 家"
-        );
+        assert_eq!(column(&conn, "name", 1), "过年 年回 回家 jpg 过 年 回 家");
         assert_eq!(column(&conn, "people", 1), "小明 小 明");
         assert_eq!(column(&conn, "tags", 1), "春节 旅行 春 节 旅 行");
         assert_eq!(column(&conn, "caption", 1), "a cat");
@@ -1094,12 +1132,16 @@ mod tests {
     #[test]
     fn a_table_that_is_not_there_has_no_columns() {
         let conn = fixture();
-        assert!(existing_columns(&conn, "afiles", &["name"])
-            .unwrap()
-            .contains(&"name".to_string()));
-        assert!(existing_columns(&conn, "no_such_table", &["name"])
-            .unwrap()
-            .is_empty());
+        assert!(
+            existing_columns(&conn, "afiles", &["name"])
+                .unwrap()
+                .contains(&"name".to_string())
+        );
+        assert!(
+            existing_columns(&conn, "no_such_table", &["name"])
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1232,5 +1274,53 @@ mod tests {
                 "main.rs registers an unknown fts command: {command}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod search_exclusion_tests {
+    use super::tests::fixture;
+    use super::*;
+
+    /// An index over files in two folders, one of them excluded from search.
+    fn fixture_with_folders() -> Connection {
+        let conn = fixture();
+        conn.execute_batch(
+            "CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT, is_excluded_from_search INTEGER);
+             CREATE TABLE albums(id INTEGER PRIMARY KEY, path TEXT, file_types INTEGER, small_image_filter INTEGER, excluded_folders TEXT);
+             INSERT INTO albums VALUES(1, '/', 7, NULL, '[]');
+             INSERT INTO afolders VALUES(1, 1, '/photos', 0), (2, 1, '/private', 1);
+             ALTER TABLE afiles ADD COLUMN folder_id INTEGER;
+             INSERT INTO afiles(id, folder_id, name) VALUES
+                (1, 1, 'cat-one.jpg'), (2, 1, 'cat-two.jpg'), (3, 2, 'cat-hidden.jpg');",
+        )
+        .unwrap();
+        for id in [1, 2, 3] {
+            upsert_doc(&conn, id).unwrap();
+        }
+        conn
+    }
+
+    #[test]
+    fn ranked_search_hides_excluded_folders_before_the_limit() {
+        let conn = fixture_with_folders();
+        // The hidden file would rank; it must not appear even when the limit
+        // would otherwise carry it.
+        let hits = search(&conn, "cat", 10).unwrap();
+        let ids: Vec<i64> = hits.iter().map(|hit| hit.file_id).collect();
+        assert!(!ids.contains(&3), "the excluded folder must stay hidden");
+        assert!(ids.contains(&1) && ids.contains(&2));
+    }
+
+    #[test]
+    fn like_search_hides_excluded_folders_too() {
+        let conn = fixture_with_folders();
+        let hits = search(&conn, "cat", 10).unwrap();
+        // The single CJK pass goes through like_search; exercise it directly
+        // as well so both passes are covered.
+        let like_hits = like_search(&conn, "cat", 10).unwrap();
+        let ids: Vec<i64> = like_hits.iter().map(|hit| hit.file_id).collect();
+        assert_eq!(ids, vec![1, 2]);
+        assert!(hits.iter().all(|hit| hit.file_id != 3));
     }
 }

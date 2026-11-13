@@ -11,6 +11,7 @@ import {
   applyRerankSelection,
   buildLabQueryParams,
   buildLabRunArgs,
+  captionHitsFrom,
   collectMatchedColumns,
   deriveFileOutcome,
   ftsReindex,
@@ -327,4 +328,17 @@ test('the rerank invoke sends the command and numeric ids', async () => {
   assert.deepEqual(calls, [
     { command: 'rerank_search_with_llm', args: { query: '摘葡萄', fileIds: [7, 9] } },
   ]);
+});
+
+test('captionHitsFrom maps search_captions rows into ranked hits with scores', () => {
+  const hits = captionHitsFrom([
+    { fileId: 9, score: 0.8123 },
+    { fileId: '11', score: '0.55' },
+  ]);
+  assert.deepEqual(hits, [
+    { fileId: 9, score: 0.8123, matchedColumns: [], rank: 1 },
+    { fileId: 11, score: 0.55, matchedColumns: [], rank: 2 },
+  ]);
+  assert.deepEqual(captionHitsFrom(null), []);
+  assert.deepEqual(captionHitsFrom([]), []);
 });

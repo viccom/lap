@@ -42,7 +42,9 @@ pub fn read(path: &Path) -> Metadata {
 pub(super) fn try_read(path: &Path) -> std::io::Result<Metadata> {
     let info = std::fs::metadata(path)?;
     if !info.is_file() {
-        return Err(std::io::Error::other("Metadata source is not a regular file"));
+        return Err(std::io::Error::other(
+            "Metadata source is not a regular file",
+        ));
     }
     if crate::t_utils::is_cloud_only(&info) {
         return Ok(Metadata::default());
@@ -74,7 +76,8 @@ fn read_uncached(path: &Path) -> std::io::Result<Metadata> {
     if file.metadata()?.len() == 0 {
         return Ok(Metadata::default());
     }
-    let tags = READER.with(|reader| reader.extract_info(path))
+    let tags = READER
+        .with(|reader| reader.extract_info(path))
         .map_err(std::io::Error::other)?;
     // SAFETY: this is a read-only mapping, used synchronously and dropped before
     // returning. The source must not be truncated by another process while parsing.
@@ -110,7 +113,10 @@ fn from_embedded(bytes: &[u8], tags: &[Tag]) -> Metadata {
     let mut metadata = map_tags(tags, packets.is_empty());
     if !packets.is_empty() {
         // One bounded packet extraction and URI-aware parse for every schema.
-        let (xmp, source) = crate::metadata::xmp::metadata_and_source_text_from_packets(&packets, embedded_description(tags, schema::EMBEDDED_DESCRIPTION));
+        let (xmp, source) = crate::metadata::xmp::metadata_and_source_text_from_packets(
+            &packets,
+            embedded_description(tags, schema::EMBEDDED_DESCRIPTION),
+        );
         metadata.title = source.title.or(metadata.title);
         metadata.headline = source.headline.or(metadata.headline);
         metadata.artist = source.creator.or(metadata.artist);
@@ -257,27 +263,35 @@ fn text(tag: &Tag) -> Option<String> {
 }
 
 fn source_rank(tag: &Tag) -> u8 {
-    schema::SOURCE_PRIORITY.iter().position(|source| *source == tag.group.family0)
+    schema::SOURCE_PRIORITY
+        .iter()
+        .position(|source| *source == tag.group.family0)
         .unwrap_or(schema::SOURCE_PRIORITY.len()) as u8
 }
 
 fn embedded_description(tags: &[Tag], names: &[&str]) -> Option<String> {
-    names.iter().find_map(|name| tags.iter()
-        .filter(|tag| tag.name == *name)
-        .filter_map(|tag| text(tag).map(|value| (source_rank(tag), value)))
-        .min_by_key(|(rank, _)| *rank)
-        .map(|(_, value)| value))
+    names.iter().find_map(|name| {
+        tags.iter()
+            .filter(|tag| tag.name == *name)
+            .filter_map(|tag| text(tag).map(|value| (source_rank(tag), value)))
+            .min_by_key(|(rank, _)| *rank)
+            .map(|(_, value)| value)
+    })
 }
 
 fn resolved_lens_id(tags: &[Tag]) -> Option<String> {
-    tags.iter().filter(|tag| tag.name == schema::LENS_ID.1 && tag.group.family0 == schema::LENS_ID.0)
+    tags.iter()
+        .filter(|tag| tag.name == schema::LENS_ID.1 && tag.group.family0 == schema::LENS_ID.0)
         .find_map(|tag| {
             // Nikon's raw LensID is a byte signature; only use a resolved name.
             let name = tag.print_value.trim();
             let lower = name.to_ascii_lowercase();
-            (!name.is_empty() && !name.contains('\0') && !lower.starts_with("unknown")
+            (!name.is_empty()
+                && !name.contains('\0')
+                && !lower.starts_with("unknown")
                 && !matches!(lower.as_str(), "n/a" | "none")
-                && name != tag.raw_value.to_display_string().trim()).then(|| name.to_owned())
+                && name != tag.raw_value.to_display_string().trim())
+            .then(|| name.to_owned())
         })
 }
 
@@ -296,11 +310,14 @@ fn map_tags(tags: &[Tag], fallback_xmp_keywords: bool) -> Metadata {
     };
     // Only accept complete coordinate pairs from the same metadata directory.
     let mut gps = None;
-    for lat in tags.iter().filter(|t| t.name == CaptureField::GPSLatitude.backend_name()) {
-        let Some(lon) = tags
-            .iter()
-            .find(|t| t.name == CaptureField::GPSLongitude.backend_name() && t.group.family1 == lat.group.family1)
-        else {
+    for lat in tags
+        .iter()
+        .filter(|t| t.name == CaptureField::GPSLatitude.backend_name())
+    {
+        let Some(lon) = tags.iter().find(|t| {
+            t.name == CaptureField::GPSLongitude.backend_name()
+                && t.group.family1 == lat.group.family1
+        }) else {
             continue;
         };
         let reference = |name: &str| {
@@ -309,7 +326,11 @@ fn map_tags(tags: &[Tag], fallback_xmp_keywords: bool) -> Metadata {
                 .and_then(text)
         };
         if let (Some(a), Some(b)) = (
-            coordinate(&lat.raw_value, reference(CaptureField::GPSLatitudeRef.backend_name()).as_deref(), 90.0),
+            coordinate(
+                &lat.raw_value,
+                reference(CaptureField::GPSLatitudeRef.backend_name()).as_deref(),
+                90.0,
+            ),
             coordinate(
                 &lon.raw_value,
                 reference(CaptureField::GPSLongitudeRef.backend_name()).as_deref(),
@@ -342,7 +363,10 @@ fn map_tags(tags: &[Tag], fallback_xmp_keywords: bool) -> Metadata {
         crate::metadata::keywords::import_backend(tags, &mut organization);
     }
     let mut keywords = organization.tags.take().unwrap_or_default();
-    for tag in tags.iter().filter(|t| t.group.family0 == schema::IPTC_KEYWORDS.0 && t.name == schema::IPTC_KEYWORDS.1) {
+    for tag in tags
+        .iter()
+        .filter(|t| t.group.family0 == schema::IPTC_KEYWORDS.0 && t.name == schema::IPTC_KEYWORDS.1)
+    {
         collect_strings(&tag.raw_value, &mut keywords);
     }
     if !keywords.is_empty() {
@@ -366,7 +390,8 @@ fn map_tags(tags: &[Tag], fallback_xmp_keywords: bool) -> Metadata {
         make: string(CaptureField::Make.backend_name()),
         model: string(CaptureField::Model.backend_name()),
         lens_make: string(CaptureField::LensMake.backend_name()),
-        lens_model: string(CaptureField::LensModel.backend_name()).or_else(|| resolved_lens_id(tags)),
+        lens_model: string(CaptureField::LensModel.backend_name())
+            .or_else(|| resolved_lens_id(tags)),
         date: string(CaptureField::DateTimeOriginal.backend_name()),
         latitude: gps.map(|(a, _)| a),
         longitude: gps.map(|(_, b)| b),
@@ -457,10 +482,18 @@ pub(crate) mod tests {
     #[test]
     fn description_prefers_standard_fields_then_legacy_aliases() {
         let tag = |name: &str, group: &str, value: &str| Tag {
-            id: exiftool_rs::TagId::Numeric(0), name: name.into(), description: String::new(),
-            group: exiftool_rs::TagGroup { family0: group.into(), family1: group.into(),
-                family2: "Other".into(), family3: "Main".into() },
-            raw_value: Value::String(value.into()), print_value: value.into(), priority: 1,
+            id: exiftool_rs::TagId::Numeric(0),
+            name: name.into(),
+            description: String::new(),
+            group: exiftool_rs::TagGroup {
+                family0: group.into(),
+                family1: group.into(),
+                family2: "Other".into(),
+                family3: "Main".into(),
+            },
+            raw_value: Value::String(value.into()),
+            print_value: value.into(),
+            priority: 1,
         };
         let mut tags = vec![tag("UserComment", "EXIF", "comment")];
         for (name, group, expected) in [
@@ -470,24 +503,46 @@ pub(crate) mod tests {
             ("Description", "XMP", "XMP description"),
         ] {
             tags.push(tag(name, group, expected));
-            assert_eq!(from_tags(&tags).organization.description.as_deref(), Some(expected));
+            assert_eq!(
+                from_tags(&tags).organization.description.as_deref(),
+                Some(expected)
+            );
         }
         // URI-aware embedded XMP must not let a legacy alias override IPTC/EXIF.
         tags.retain(|tag| tag.group.family0 != "XMP");
         for (body, expected) in [
-            ("<e:UserComment>XMP comment</e:UserComment>", "IPTC description"),
+            (
+                "<e:UserComment>XMP comment</e:UserComment>",
+                "IPTC description",
+            ),
             ("<p:Caption>XMP caption</p:Caption>", "IPTC description"),
-            ("<d:description>XMP description</d:description>", "XMP description"),
+            (
+                "<d:description>XMP description</d:description>",
+                "XMP description",
+            ),
             ("<d:description/>", ""),
         ] {
-            let xml = format!("<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:d=\"http://purl.org/dc/elements/1.1/\" xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\" xmlns:e=\"http://ns.adobe.com/exif/1.0/\">{body}</rdf:Description></rdf:RDF>");
+            let xml = format!(
+                "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:d=\"http://purl.org/dc/elements/1.1/\" xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\" xmlns:e=\"http://ns.adobe.com/exif/1.0/\">{body}</rdf:Description></rdf:RDF>"
+            );
             let jpeg = jpeg_with_xmp_packet(xml.as_bytes());
-            assert_eq!(from_embedded(&jpeg, &tags).organization.description.as_deref(), Some(expected));
+            assert_eq!(
+                from_embedded(&jpeg, &tags)
+                    .organization
+                    .description
+                    .as_deref(),
+                Some(expected)
+            );
             let sidecar = crate::metadata::xmp::parse_xmp_str(&xml).unwrap();
             let mut embedded = from_tags(&tags).organization;
             crate::metadata::merge::merge_sidecar(&mut embedded, sidecar);
-            let expected = if body.contains("UserComment") { "XMP comment" }
-                else if body.contains("p:Caption") { "XMP caption" } else { expected };
+            let expected = if body.contains("UserComment") {
+                "XMP comment"
+            } else if body.contains("p:Caption") {
+                "XMP caption"
+            } else {
+                expected
+            };
             assert_eq!(embedded.description.as_deref(), Some(expected));
         }
         // Empty higher-priority IPTC must not suppress a valid EXIF description.
@@ -496,22 +551,45 @@ pub(crate) mod tests {
             tags.push(tag("Caption-Abstract", "IPTC", empty));
             let xml = "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:e=\"http://ns.adobe.com/exif/1.0/\"><e:UserComment>XMP comment</e:UserComment></rdf:Description></rdf:RDF>";
             let jpeg = jpeg_with_xmp_packet(xml.as_bytes());
-            assert_eq!(from_embedded(&jpeg, &tags).organization.description.as_deref(), Some("EXIF description"));
+            assert_eq!(
+                from_embedded(&jpeg, &tags)
+                    .organization
+                    .description
+                    .as_deref(),
+                Some("EXIF description")
+            );
         }
         let xml = "<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\" xmlns:e=\"http://ns.adobe.com/exif/1.0/\"><e:UserComment>comment</e:UserComment><p:Caption>caption</p:Caption></rdf:Description></rdf:RDF>";
         let jpeg = jpeg_with_xmp_packet(xml.as_bytes());
-        assert_eq!(from_embedded(&jpeg, &[]).organization.description.as_deref(), Some("caption"));
+        assert_eq!(
+            from_embedded(&jpeg, &[])
+                .organization
+                .description
+                .as_deref(),
+            Some("caption")
+        );
     }
 
     #[test]
     fn iptc_title_and_headline_are_separate_and_xmp_takes_precedence() {
         let tag = |name: &str, group: &str, value: &str| Tag {
-            id: exiftool_rs::TagId::Numeric(0), name: name.into(), description: String::new(),
-            group: exiftool_rs::TagGroup { family0: group.into(), family1: group.into(),
-                family2: "Other".into(), family3: "Main".into() },
-            raw_value: Value::String(value.into()), print_value: value.into(), priority: 1,
+            id: exiftool_rs::TagId::Numeric(0),
+            name: name.into(),
+            description: String::new(),
+            group: exiftool_rs::TagGroup {
+                family0: group.into(),
+                family1: group.into(),
+                family2: "Other".into(),
+                family3: "Main".into(),
+            },
+            raw_value: Value::String(value.into()),
+            print_value: value.into(),
+            priority: 1,
         };
-        let mut tags = vec![tag("ObjectName", "IPTC", "IPTC title"), tag("Headline", "IPTC", "IPTC headline")];
+        let mut tags = vec![
+            tag("ObjectName", "IPTC", "IPTC title"),
+            tag("Headline", "IPTC", "IPTC headline"),
+        ];
         let meta = from_tags(&tags);
         assert_eq!(meta.title.as_deref(), Some("IPTC title"));
         assert_eq!(meta.headline.as_deref(), Some("IPTC headline"));
@@ -525,25 +603,63 @@ pub(crate) mod tests {
     #[test]
     fn resolved_lens_id_fills_missing_model_without_overriding_existing_model() {
         let tag = |name: &str, group: &str, raw_value, print: &str| Tag {
-            id: exiftool_rs::TagId::Numeric(0), name: name.into(), description: String::new(),
-            group: exiftool_rs::TagGroup { family0: group.into(), family1: group.into(),
-                family2: "Camera".into(), family3: "Main".into() },
-            raw_value, print_value: print.into(), priority: 1,
+            id: exiftool_rs::TagId::Numeric(0),
+            name: name.into(),
+            description: String::new(),
+            group: exiftool_rs::TagGroup {
+                family0: group.into(),
+                family1: group.into(),
+                family2: "Camera".into(),
+                family3: "Main".into(),
+            },
+            raw_value,
+            print_value: print.into(),
+            priority: 1,
         };
-        for (id, name) in [("01 58 50 50 14 14 02 00", "AF Nikkor 50mm f/1.8"),
-            ("91 54 44 44 0C 0C 4B 06", "Sigma 35mm F1.4 DG HSM")] {
+        for (id, name) in [
+            ("01 58 50 50 14 14 02 00", "AF Nikkor 50mm f/1.8"),
+            ("91 54 44 44 0C 0C 4B 06", "Sigma 35mm F1.4 DG HSM"),
+        ] {
             let lens_id = tag("LensID", "Composite", Value::String(id.into()), name);
-            assert_eq!(from_tags(&[lens_id.clone()]).lens_model.as_deref(), Some(name));
-            let model = tag("LensModel", "EXIF", Value::String("Existing lens".into()), "Existing lens");
-            assert_eq!(from_tags(&[lens_id, model]).lens_model.as_deref(), Some("Existing lens"));
+            assert_eq!(
+                from_tags(&[lens_id.clone()]).lens_model.as_deref(),
+                Some(name)
+            );
+            let model = tag(
+                "LensModel",
+                "EXIF",
+                Value::String("Existing lens".into()),
+                "Existing lens",
+            );
+            assert_eq!(
+                from_tags(&[lens_id, model]).lens_model.as_deref(),
+                Some("Existing lens")
+            );
         }
-        for printed in ["", "01 58 50 50 14 14 02 00", "Unknown (01 58)", "n/a", "None", "bad\0name"] {
-            let lens_id = tag("LensID", "Composite", Value::String("01 58 50 50 14 14 02 00".into()), printed);
+        for printed in [
+            "",
+            "01 58 50 50 14 14 02 00",
+            "Unknown (01 58)",
+            "n/a",
+            "None",
+            "bad\0name",
+        ] {
+            let lens_id = tag(
+                "LensID",
+                "Composite",
+                Value::String("01 58 50 50 14 14 02 00".into()),
+                printed,
+            );
             assert!(from_tags(&[lens_id]).lens_model.is_none());
         }
         let numeric = tag("LensID", "Composite", Value::U16(145), "145");
         assert!(from_tags(&[numeric]).lens_model.is_none());
-        let untrusted = tag("LensID", "MakerNotes", Value::U16(145), "Sigma 35mm F1.4 DG HSM");
+        let untrusted = tag(
+            "LensID",
+            "MakerNotes",
+            Value::U16(145),
+            "Sigma 35mm F1.4 DG HSM",
+        );
         assert!(from_tags(&[untrusted]).lens_model.is_none());
     }
 
@@ -580,16 +696,24 @@ pub(crate) mod tests {
 
     #[test]
     fn digikam_and_lightroom_paths_merge_without_splitting_flat_keywords() {
-        for lightroom in ["", "<lr:hierarchicalSubject><rdf:Bag><rdf:li>Places|France|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject>"] {
-            let xml = format!(r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:lr="http://ns.adobe.com/lightroom/1.0/" xmlns:digiKam="http://www.digikam.org/ns/1.0/">
+        for lightroom in [
+            "",
+            "<lr:hierarchicalSubject><rdf:Bag><rdf:li>Places|France|Paris</rdf:li></rdf:Bag></lr:hierarchicalSubject>",
+        ] {
+            let xml = format!(
+                r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:lr="http://ns.adobe.com/lightroom/1.0/" xmlns:digiKam="http://www.digikam.org/ns/1.0/">
                 <dc:subject><rdf:Bag><rdf:li>Paris</rdf:li><rdf:li>literal/slash</rdf:li></rdf:Bag></dc:subject>
                 <digiKam:TagsList><rdf:Seq><rdf:li>Places/France/Paris</rdf:li></rdf:Seq></digiKam:TagsList>{lightroom}
-                </rdf:Description></rdf:RDF>"#);
+                </rdf:Description></rdf:RDF>"#
+            );
             let bytes = jpeg_with_xmp_packet(xml.as_bytes());
             let meta = from_bytes(&bytes, Path::new("paths.jpg")).organization;
             let parsed = crate::metadata::xmp::parse_xmp_str(&xml).unwrap();
             for metadata in [meta, parsed] {
-                assert_eq!(metadata.hierarchical_tags, Some(vec!["Places|France|Paris".into()]));
+                assert_eq!(
+                    metadata.hierarchical_tags,
+                    Some(vec!["Places|France|Paris".into()])
+                );
                 let tags = metadata.tags.unwrap();
                 assert_eq!(tags.len(), 3);
                 assert!(tags.contains(&"literal/slash".to_string()));
@@ -626,8 +750,13 @@ pub(crate) mod tests {
                 assert_eq!(metadata.tags, metadata.hierarchical_tags);
             }
         }
-        assert!(crate::metadata::keywords::acdsee_category_paths("<Categories><Category>").is_err());
-        assert!(crate::metadata::keywords::acdsee_category_paths("<!DOCTYPE Categories><Categories/>").is_err());
+        assert!(
+            crate::metadata::keywords::acdsee_category_paths("<Categories><Category>").is_err()
+        );
+        assert!(
+            crate::metadata::keywords::acdsee_category_paths("<!DOCTYPE Categories><Categories/>")
+                .is_err()
+        );
     }
 
     pub(crate) fn jpeg_with_xmp() -> Vec<u8> {
@@ -794,7 +923,9 @@ pub(crate) mod tests {
                 "{properties}; tags={tags:?}"
             );
             assert_eq!(
-                crate::metadata::xmp::parse_xmp_str(&xml).unwrap().culling_flag,
+                crate::metadata::xmp::parse_xmp_str(&xml)
+                    .unwrap()
+                    .culling_flag,
                 expected,
                 "{properties}"
             );
@@ -1233,7 +1364,8 @@ fn extract_detail_values(path: &Path, info: &std::fs::Metadata) -> Result<Detail
         }
     };
     // Extract once and keep only our small mapped values in the detail cache.
-    let tags = READER.with(|reader| reader.extract_info(path))
+    let tags = READER
+        .with(|reader| reader.extract_info(path))
         .map_err(|e| e.to_string())?;
     let mut details = detail_values(&tags);
     for packet in embedded_packets(bytes, &tags) {
@@ -1331,9 +1463,11 @@ pub fn read_details(
                 }
             }
         }
-        details.retain(|key, _| schema::DETAIL_FIELDS.iter().any(|field|
-            field.key == key && field.section == Some(section)
-        ));
+        details.retain(|key, _| {
+            schema::DETAIL_FIELDS
+                .iter()
+                .any(|field| field.key == key && field.section == Some(section))
+        });
         Ok(details)
     })();
     drop(shared);
@@ -1350,8 +1484,7 @@ fn detail_values_for(tags: &[Tag], stored_only: bool) -> Details {
     for field in schema::DETAIL_FIELDS {
         let key = field.key;
         let names = field.backend_names;
-        if (!stored_only && field.section.is_none())
-            || (stored_only && !field.stored) {
+        if (!stored_only && field.section.is_none()) || (stored_only && !field.stored) {
             continue;
         }
         let descriptive = field.descriptive;

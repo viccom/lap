@@ -9,6 +9,7 @@ export const SIDEBAR = {
   PERSON: 6,
   LOCATION: 7,
   CAMERA: 8,
+  AI_SEARCH: 9,
 } as const;
 
 export type Sidebar = (typeof SIDEBAR)[keyof typeof SIDEBAR];
@@ -21,6 +22,8 @@ export const LIB_ITEM = {
   RATINGS: 'ratings',
   CULLING: 'culling',
   SUBJECTS: 'subjects',
+  VL_ANNOTATED: 'vl-annotated',
+  VL_UNANNOTATED: 'vl-unannotated',
 } as const;
 
 export type LibItem = (typeof LIB_ITEM)[keyof typeof LIB_ITEM];

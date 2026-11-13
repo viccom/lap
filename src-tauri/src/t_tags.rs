@@ -1,5 +1,5 @@
 //! Tag-tree storage shared by catalog operations and XMP import/export.
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 pub const DESCENDANTS: &str = "WITH RECURSIVE descendants(id) AS (
     SELECT id FROM atags WHERE id=?1 UNION ALL
@@ -34,7 +34,9 @@ pub fn validate_name(name: &str) -> Result<&str, String> {
         || name.contains([',', ';', '|'])
         || name.contains('\0')
     {
-        return Err("Invalid tag name: use 1–255 characters, without commas, semicolons or pipes".into());
+        return Err(
+            "Invalid tag name: use 1–255 characters, without commas, semicolons or pipes".into(),
+        );
     }
     Ok(name)
 }
@@ -229,7 +231,9 @@ pub fn import_path(
 }
 
 pub fn keywords_for_file(conn: &Connection, id: i64) -> Result<(Vec<String>, Vec<String>), String> {
-    let sql = format!("{FILE_PATHS} SELECT name,path,valid FROM paths WHERE ancestor_id IS NULL ORDER BY path COLLATE NOCASE,id");
+    let sql = format!(
+        "{FILE_PATHS} SELECT name,path,valid FROM paths WHERE ancestor_id IS NULL ORDER BY path COLLATE NOCASE,id"
+    );
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([id], |r| {
@@ -264,7 +268,16 @@ mod tests {
         for name in ["", " ", "\t ", "a,b", "a;b", "a|b", "bad\0name"] {
             assert!(validate_name(name).is_err(), "{name:?}");
         }
-        for name in ["a/b", r"a\b", "two words", "a*b", "*tag", "tag*", "*", "旅行"] {
+        for name in [
+            "a/b",
+            r"a\b",
+            "two words",
+            "a*b",
+            "*tag",
+            "tag*",
+            "*",
+            "旅行",
+        ] {
             assert_eq!(validate_name(name).unwrap(), name);
         }
         assert_eq!(validate_name(" \ttwo words\t ").unwrap(), "two words");
@@ -286,13 +299,26 @@ mod tests {
     #[test]
     fn initialization_removes_legacy_index_and_import_rejects_nul_paths() {
         let conn = fixture();
-        conn.execute("CREATE INDEX idx_atags_name ON atags(name)", []).unwrap();
+        conn.execute("CREATE INDEX idx_atags_name ON atags(name)", [])
+            .unwrap();
         initialize(&conn).unwrap();
         initialize(&conn).unwrap();
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM sqlite_master WHERE name='idx_atags_name'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name='idx_atags_name'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
         assert_eq!(import_path(&conn, "bad\0name", false).unwrap(), None);
         assert_eq!(import_path(&conn, "Places|bad\0child", true).unwrap(), None);
-        assert_eq!(conn.query_row("SELECT COUNT(*) FROM atags", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM atags", [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -307,9 +333,10 @@ mod tests {
             import_path(&conn, "places|france|PARIS", true).unwrap(),
             Some(paris)
         );
-        assert!(conn
-            .execute("INSERT INTO atags(name) VALUES('places')", [])
-            .is_err());
+        assert!(
+            conn.execute("INSERT INTO atags(name) VALUES('places')", [])
+                .is_err()
+        );
         let root = find(&conn, "Places", None).unwrap().unwrap();
         assert!(move_on(&conn, root, Some(paris)).is_err());
         let clients = find(&conn, "Clients", None).unwrap().unwrap();

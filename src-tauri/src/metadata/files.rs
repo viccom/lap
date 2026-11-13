@@ -1207,7 +1207,8 @@ mod tests {
         }
         let batch = crate::metadata::xmp::begin_refresh_batch("lifecycle-test".into()).unwrap();
         {
-            let _scope = crate::metadata::xmp::refresh_index_scope(Some(batch), "lifecycle-test").unwrap();
+            let _scope =
+                crate::metadata::xmp::refresh_index_scope(Some(batch), "lifecycle-test").unwrap();
             assert!(crate::metadata::xmp::find_xmp_sidecar(&new).is_none());
             let guard = Guard::new([(&*old, &*new)], Operation::Copy).unwrap();
             assert_eq!(

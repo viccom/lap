@@ -158,8 +158,8 @@ fn find_xmp_video_offset(data: &[u8], file_size: usize) -> Option<usize> {
         let Some(tag) = enclosing_tag(data, pos) else {
             continue;
         };
-        if let Some(length) = xmp_attribute_u64(tag, "ItemLength")
-            .or_else(|| xmp_attribute_u64(tag, "Item:Length"))
+        if let Some(length) =
+            xmp_attribute_u64(tag, "ItemLength").or_else(|| xmp_attribute_u64(tag, "Item:Length"))
         {
             return file_size.checked_sub(length as usize);
         }
@@ -221,11 +221,16 @@ fn quoted_u64_at(data: &[u8], start: usize) -> Option<u64> {
     if i == value_start {
         return None;
     }
-    std::str::from_utf8(&data[value_start..i]).ok()?.parse().ok()
+    std::str::from_utf8(&data[value_start..i])
+        .ok()?
+        .parse()
+        .ok()
 }
 
 fn is_mp4_at(data: &[u8], offset: usize) -> bool {
-    offset.checked_add(4).is_some_and(|ftyp_pos| is_valid_ftyp_box(data, ftyp_pos))
+    offset
+        .checked_add(4)
+        .is_some_and(|ftyp_pos| is_valid_ftyp_box(data, ftyp_pos))
 }
 
 fn has_jpeg_eoi_before(data: &[u8], offset: usize) -> bool {
@@ -286,7 +291,10 @@ fn is_valid_ftyp_box(data: &[u8], ftyp_pos: usize) -> bool {
     }
     let box_start = ftyp_pos - 4;
     let box_size = u32::from_be_bytes(data[box_start..ftyp_pos].try_into().unwrap()) as usize;
-    box_size >= 16 && box_start.checked_add(box_size).is_some_and(|end| end <= data.len())
+    box_size >= 16
+        && box_start
+            .checked_add(box_size)
+            .is_some_and(|end| end <= data.len())
         && is_mp4_brand(&data[ftyp_pos + 4..ftyp_pos + 8])
 }
 
@@ -352,8 +360,7 @@ mod tests {
     #[test]
     fn uses_xmp_motion_photo_item_length() {
         let video = [
-            0, 0, 0, 20, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm', 0, 0, 0, 0, 0, 0,
-            0, 0,
+            0, 0, 0, 20, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm', 0, 0, 0, 0, 0, 0, 0, 0,
         ];
         let mut data = format!(
             "<rdf:li GContainer:ItemSemantic=\"MotionPhoto\" GContainer:ItemLength=\"{}\"/>",
@@ -365,21 +372,26 @@ mod tests {
         data.extend_from_slice(&video);
         // Assert on the XMP path directly: the data also contains a valid
         // ftyp-after-EOI pattern the fallback could match.
-        assert_eq!(find_xmp_video_offset(&data, data.len()), Some(offset as usize));
+        assert_eq!(
+            find_xmp_video_offset(&data, data.len()),
+            Some(offset as usize)
+        );
         assert_eq!(find_video_offset(&data), Some(offset));
     }
 
     #[test]
     fn uses_legacy_micro_video_offset() {
         let video = [
-            0, 0, 0, 20, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm', 0, 0, 0, 0, 0, 0,
-            0, 0,
+            0, 0, 0, 20, b'f', b't', b'y', b'p', b'i', b's', b'o', b'm', 0, 0, 0, 0, 0, 0, 0, 0,
         ];
         let mut data = format!("GCamera:MicroVideoOffset=\"{}\"", video.len()).into_bytes();
         data.extend_from_slice(&[0xFF, 0xD9]);
         let offset = data.len() as u64;
         data.extend_from_slice(&video);
-        assert_eq!(find_xmp_video_offset(&data, data.len()), Some(offset as usize));
+        assert_eq!(
+            find_xmp_video_offset(&data, data.len()),
+            Some(offset as usize)
+        );
     }
 
     #[test]

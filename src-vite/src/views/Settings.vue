@@ -506,6 +506,14 @@
               />
             </div>
             <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.protocol') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.protocol_hint') }}</div>
+              <select v-model="vlProtocol" class="select select-sm w-full">
+                <option value="anthropic">Anthropic Messages</option>
+                <option value="openai">OpenAI Chat Completions</option>
+              </select>
+            </div>
+            <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
               <div class="text-sm leading-5">{{ $t('settings.vl.api_key') }}</div>
               <div class="text-xs text-base-content/30">{{ $t('settings.vl.api_key_hint') }}</div>
               <div class="flex items-center gap-2">
@@ -525,20 +533,120 @@
               </div>
             </div>
             <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.max_concurrency') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.max_concurrency_hint') }}</div>
+              <input
+                v-model.number="vlMaxConcurrency"
+                type="number"
+                min="1"
+                max="16"
+                step="1"
+                class="input input-sm w-full"
+              />
+            </div>
+            <div class="flex justify-end">
+              <button class="t-button-primary" :disabled="savingVlConfig" @click="saveVlConfig">
+                {{ savingVlConfig ? $t('settings.vl.saving') : $t('settings.vl.save') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- cloud models -->
+          <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+            <div class="flex items-center gap-2 text-base-content/30">
+              <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.vl.models_title') }}</span>
+              <button
+                v-if="vlModels.length > 0"
+                class="ml-auto btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content"
+                @click="vlModelsExpanded = !vlModelsExpanded"
+              >{{ vlModelsExpanded ? $t('settings.vl.models_collapse', { count: vlModels.length }) : $t('settings.vl.models_expand', { count: vlModels.length }) }}</button>
+              <button
+                class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content"
+                :class="vlModels.length > 0 ? '' : 'ml-auto'"
+                :disabled="vlModelsLoading"
+                :title="$t('settings.vl.refresh_models')"
+                @click="refreshVlModels"
+              >{{ vlModelsLoading ? $t('tooltip.loading') : $t('settings.vl.refresh_models') }}</button>
+            </div>
+            <div v-if="vlModelsAuthRequired" class="text-xs text-warning">{{ $t('settings.vl.models_auth_required') }}</div>
+            <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
               <div class="text-sm leading-5">{{ $t('settings.vl.model') }}</div>
               <div class="text-xs text-base-content/30">{{ $t('settings.vl.model_hint') }}</div>
+              <!-- The gateway list selects; a manual value stays even when the
+                   gateway does not list it. -->
               <input
                 v-model="vlModel"
                 type="text"
-                class="input input-sm w-full"
+                class="input input-sm w-full mb-1"
                 spellcheck="false"
+                list="vl-model-options"
               />
+              <datalist id="vl-model-options">
+                <option v-for="option in vlModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </datalist>
+              <div v-if="vlModels.length > 0 && vlModelsExpanded" class="flex flex-wrap gap-1 max-h-40 overflow-y-auto pr-1">
+                <button
+                  v-for="option in vlModelOptions"
+                  :key="option.value"
+                  type="button"
+                  :class="[
+                    'px-1.5 h-6 rounded-box text-xs border transition-colors truncate max-w-48',
+                    option.value === vlModel
+                      ? 'border-primary text-primary bg-primary/10'
+                      : option.group === 'supported'
+                        ? 'border-base-content/20 text-base-content/70 hover:text-base-content'
+                        : option.group === 'unknown'
+                          ? 'border-warning/40 text-warning/80 hover:text-warning'
+                          : 'border-base-content/10 text-base-content/40 hover:text-base-content/70',
+                  ]"
+                  :title="`${option.label}${option.group === 'unsupported' ? ' · ' + $t('settings.vl.model_unsupported') : option.group === 'unknown' ? ' · ' + $t('settings.vl.model_unknown') : ''}`"
+                  @click="vlModel = option.value"
+                >{{ option.label }}</button>
+              </div>
+              <div v-if="selectedVlModelInfo?.contextLength" class="text-xs text-base-content/30">
+                {{ $t('settings.vl.model_context') }}: {{ Number(selectedVlModelInfo.contextLength).toLocaleString() }}
+              </div>
             </div>
             <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
               <div class="text-sm leading-5">{{ $t('settings.vl.rerank_model') }}</div>
               <div class="text-xs text-base-content/30">{{ $t('settings.vl.rerank_model_hint') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.rerank_model_pick_hint') }}</div>
               <input
                 v-model="vlRerankModel"
+                type="text"
+                class="input input-sm w-full"
+                spellcheck="false"
+                list="vl-rerank-model-options"
+              />
+              <datalist id="vl-rerank-model-options">
+                <option v-for="option in vlRerankModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+              </datalist>
+            </div>
+            <div class="flex justify-end">
+              <button class="t-button-primary" :disabled="savingVlConfig" @click="saveVlConfig">
+                {{ savingVlConfig ? $t('settings.vl.saving') : $t('settings.vl.save') }}
+              </button>
+            </div>
+          </div>
+
+          <!-- embedding models -->
+          <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+            <div class="flex items-center gap-2 text-base-content/30">
+              <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.vl.embed_title') }}</span>
+            </div>
+            <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.embed_source') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.embed_source_hint') }}</div>
+              <select v-model="vlEmbedSource" class="select select-sm w-full">
+                <option value="local">{{ $t('settings.vl.embed_source_local') }}</option>
+                <option value="cloud">{{ $t('settings.vl.embed_source_cloud') }}</option>
+              </select>
+            </div>
+            <div v-if="vlEmbedSource === 'cloud'" class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="text-sm leading-5">{{ $t('settings.vl.embed_model') }}</div>
+              <div class="text-xs text-base-content/30">{{ $t('settings.vl.embed_model_hint') }}</div>
+              <input
+                v-model="vlEmbedModel"
                 type="text"
                 class="input input-sm w-full"
                 spellcheck="false"
@@ -553,6 +661,108 @@
 
           <!-- templates -->
           <VlTemplateManager />
+        </div>
+
+        <!-- VL Tasks Tab (persisted run monitor) -->
+        <div v-else-if="config.settings.tabIndex === VL_TASKS_TAB" class="flex flex-col space-y-2">
+          <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+            <div class="flex items-center gap-2 text-base-content/30">
+              <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.vl.tasks_tab') }}</span>
+              <span class="text-xs">{{ vlRunsLoading ? $t('tooltip.loading') : `${vlRuns.length.toLocaleString()}` }}</span>
+              <button
+                class="ml-auto btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content"
+                :disabled="vlRunsLoading"
+                @click="loadVlRuns()"
+              >{{ $t('settings.vl.tasks_refresh') }}</button>
+            </div>
+            <div v-if="vlRuns.length === 0" class="text-xs text-base-content/30 px-1">{{ $t('settings.vl.runs_empty') }}</div>
+            <div v-else class="max-h-[60vh] overflow-y-auto flex flex-col gap-1 px-1">
+              <div
+                v-for="run in vlRuns"
+                :key="run.runId"
+                class="flex flex-col gap-1 rounded-box border border-base-content/5 bg-base-100/40 px-2 py-1 text-xs"
+              >
+                <div class="flex items-center gap-2">
+                  <span
+                    :class="[
+                      'px-1.5 h-5 inline-flex items-center rounded-box text-[10px] font-semibold tracking-[0.08em] border cursor-default shrink-0',
+                      runStateChipClass(run.state),
+                    ]"
+                  >{{ $t(runStateLabelKey(run.state)) }}</span>
+                  <div class="min-w-0 flex-1 flex flex-col">
+                    <div class="truncate">
+                      <span class="text-base-content/70">{{ run.libraryName || run.libraryId }}</span>
+                      · {{ run.templateName || `#${run.templateId} v${run.templateVersion}` }}
+                      <span v-if="run.force" class="text-base-content/40"> · {{ $t('vl.force_rerun') }}</span>
+                    </div>
+                    <div class="text-base-content/40 truncate">
+                      {{ $t('settings.vl.run_progress_label') }} {{ run.processed }}/{{ run.total }}
+                      · {{ $t('settings.vl.run_call_success') }} {{ run.succeeded }}
+                      <template v-if="run.failed"><span class="text-error"> · {{ $t('vl.failed') }} {{ run.failed }}</span></template>
+                      <template v-if="run.skipped"> · {{ $t('vl.skipped') }} {{ run.skipped }}</template>
+                    </div>
+                  </div>
+                  <button
+                    v-if="run.state === 'queued' || run.state === 'running'"
+                    class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content shrink-0"
+                    @click="cancelVlRunById(String(run.runId))"
+                  >{{ $t('vl.cancel_run') }}</button>
+                  <button
+                    class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content shrink-0"
+                    @click="toggleVlRunDetails(run)"
+                  >{{ isVlRunDetailsOpen(run.runId) ? $t('settings.vl.run_detail_hide') : $t('settings.vl.run_detail_show') }}</button>
+                </div>
+                <progress
+                  v-if="run.total > 0"
+                  class="progress progress-primary w-full h-1"
+                  :value="run.processed"
+                  :max="Math.max(1, run.total)"
+                ></progress>
+                <div class="flex flex-wrap gap-x-3 text-base-content/40">
+                  <span>{{ $t('settings.vl.run_started_at') }}: {{ formatRunTime(run.startedAt) }}</span>
+                  <span v-if="run.finishedAt">{{ $t('settings.vl.run_finished_at') }}: {{ formatRunTime(run.finishedAt) }}</span>
+                </div>
+                <div v-if="run.error" class="text-error">{{ run.error }}</div>
+                <div v-if="isVlRunDetailsOpen(run.runId)" class="flex flex-col gap-1 border-t border-base-content/5 pt-1">
+                  <div v-if="vlRunCallsLoading.has(run.runId)" class="text-base-content/30">{{ $t('tooltip.loading') }}</div>
+                  <div v-else-if="vlRunCallsErrors.get(run.runId)" class="text-error">{{ vlRunCallsErrors.get(run.runId) }}</div>
+                  <div v-else-if="!(vlRunCalls.get(run.runId) || []).length" class="text-base-content/30">{{ $t('settings.vl.run_calls_empty') }}</div>
+                  <template v-else>
+                    <div
+                      v-for="call in visibleVlRunCalls(run.runId)"
+                      :key="call.id"
+                      class="flex flex-col gap-0.5 rounded-box border border-base-content/5 px-2 py-1"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span class="text-base-content/70 truncate">{{ $t('settings.vl.run_call_file') }}: {{ call.fileName || '#' + call.fileId }}</span>
+                        <span
+                          :class="[
+                            'px-1.5 h-5 inline-flex items-center rounded-box text-[10px] font-semibold tracking-[0.08em] border cursor-default shrink-0',
+                            callSucceeded(call) ? 'border-success/40 text-success' : 'border-error/40 text-error',
+                          ]"
+                        >{{ callSucceeded(call) ? $t('settings.vl.run_call_success') : $t('settings.vl.run_call_failed') }}</span>
+                      </div>
+                      <div class="flex flex-wrap gap-x-3 text-base-content/40">
+                        <span v-if="call.model">{{ $t('settings.vl.run_call_model') }}: {{ call.model }}</span>
+                        <span v-if="call.durationMs != null">{{ $t('settings.vl.run_call_duration') }}: {{ formatDuration(call.durationMs) }}</span>
+                        <span v-if="call.inputTokens != null || call.outputTokens != null">{{ $t('settings.vl.run_call_tokens') }}: {{ call.inputTokens ?? 0 }}/{{ call.outputTokens ?? 0 }}</span>
+                      </div>
+                      <div v-if="!callSucceeded(call) && call.error" class="text-error">{{ $t('settings.vl.run_call_error') }}: {{ call.error }}</div>
+                      <details v-if="call.rawResponse">
+                        <summary class="text-base-content/40 cursor-pointer">{{ $t('settings.vl.run_call_response') }}</summary>
+                        <pre class="max-h-40 overflow-auto text-[10px] whitespace-pre-wrap">{{ call.rawResponse }}</pre>
+                      </details>
+                    </div>
+                    <button
+                      v-if="(vlRunCalls.get(run.runId) || []).length > (vlRunCallsVisible.get(run.runId) || 100)"
+                      class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content self-start"
+                      @click="showMoreVlRunCalls(run.runId)"
+                    >{{ $t('settings.vl.run_calls_more', { count: (vlRunCalls.get(run.runId) || []).length - (vlRunCallsVisible.get(run.runId) || 100) }) }}</button>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- Advanced Tab -->
@@ -826,7 +1036,7 @@
 
 <script setup lang="ts">
 
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted, onBeforeUnmount } from 'vue';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { emit } from '@tauri-apps/api/event';
@@ -852,8 +1062,8 @@ import {
   listenImageSearchModelDownloadProgress,
 } from '@/common/api';
 import { formatFileSize, isLinux, isMac, SCALE_VALUES } from '@/common/utils';
-import { VL_SETTINGS_TAB, resolveApiKeyInput } from '@/common/vlLogic';
-import { getVlConfig, setVlConfig } from '@/common/vlApi';
+import { VL_SETTINGS_TAB, VL_TASKS_TAB, resolveApiKeyInput, modelLabel, normalizeProtocol, partitionModels, normalizeMaxConcurrency, runStateLabelKey, formatDuration, callSucceeded } from '@/common/vlLogic';
+import { getVlConfig, setVlConfig, listVlModels, listVlRuns, listVlRunCalls, cancelVlRun } from '@/common/vlApi';
 import { useAppearance } from '@/composables/useAppearance';
 import { getShortcutLabels, ShortcutActionId, ShortcutPlatform } from '@/common/shortcuts';
 import { useToast } from '@/common/toast';
@@ -882,6 +1092,7 @@ const settingsTabs = [
   { id: SETTINGS_TAB.METADATA, label: 'settings.metadata.title' },
   { id: SETTINGS_TAB.IMAGE_SEARCH, label: 'settings.image_search.title' },
   { id: VL_SETTINGS_TAB, label: 'settings.vl.title' },
+  { id: VL_TASKS_TAB, label: 'settings.vl.tasks_tab' },
   { id: SETTINGS_TAB.ADVANCED, label: 'settings.advanced.title' },
   { id: SETTINGS_TAB.SHORTCUTS, label: 'settings.shortcuts.title' },
   { id: SETTINGS_TAB.ABOUT, label: 'settings.about.title' },
@@ -891,8 +1102,19 @@ const settingsTabs = [
 const vlConfig = ref<any>(null);
 const vlConfigured = ref(false);
 const vlGatewayUrl = ref('');
+const vlProtocol = ref('anthropic');
 const vlModel = ref('');
 const vlRerankModel = ref('');
+const vlEmbedSource = ref('local');
+const vlEmbedModel = ref('');
+const vlMaxConcurrency = ref(2);
+// The online model list of the gateway. `vlModelsAuthRequired` marks the 401
+// answer: the list is unusable but the chat surface may still work.
+const vlModels = ref<any[]>([]);
+const vlModelsLoading = ref(false);
+const vlModelsAuthRequired = ref(false);
+// The chip wall stays collapsed by default: ~50 models flood the pane otherwise.
+const vlModelsExpanded = ref(false);
 /// Write only: the key is never read back and never kept in the app config.
 const vlApiKey = ref('');
 const vlApiKeyClearPending = ref(false);
@@ -951,12 +1173,220 @@ async function loadVlConfig() {
     vlConfig.value = view;
     vlConfigured.value = Boolean(view?.configured);
     vlGatewayUrl.value = String(view?.gatewayUrl ?? '');
+    vlProtocol.value = normalizeProtocol(view?.protocol);
     vlModel.value = String(view?.model ?? '');
     vlRerankModel.value = String(view?.rerankModel ?? '');
+    vlEmbedSource.value = String(view?.embedSource ?? '') === 'cloud' ? 'cloud' : 'local';
+    vlEmbedModel.value = String(view?.embedModel ?? '');
+    vlMaxConcurrency.value = Number(view?.maxConcurrency ?? 2) || 2;
   } catch (error) {
     console.error('Failed to read the image understanding configuration:', error);
   }
 }
+
+/// The select options of the vision model: the gateway list by capability,
+/// with the current value kept even when the list does not carry it.
+const vlModelOptions = computed(() => {
+  const groups = partitionModels(vlModels.value);
+  const known = new Set(vlModels.value.map(model => String(model?.id ?? '')));
+  const options: Array<{ value: string; label: string; group: string }> = [];
+  for (const model of groups.supported) {
+    options.push({ value: String(model.id), label: modelLabel(model), group: 'supported' });
+  }
+  for (const model of groups.unknown) {
+    options.push({ value: String(model.id), label: modelLabel(model), group: 'unknown' });
+  }
+  for (const model of groups.unsupported) {
+    options.push({ value: String(model.id), label: modelLabel(model), group: 'unsupported' });
+  }
+  const current = vlModel.value.trim();
+  if (current && !known.has(current)) {
+    // A manual or no-longer-listed entry stays selectable.
+    options.unshift({ value: current, label: current, group: 'manual' });
+  }
+  return options;
+});
+
+const selectedVlModelInfo = computed(() =>
+  vlModels.value.find(model => String(model?.id) === vlModel.value.trim()) ?? null
+);
+
+/// Text models from the refreshed gateway list; the current manual value
+/// stays selectable even when the gateway does not list it.
+const vlRerankModelOptions = computed(() => {
+  const groups = partitionModels(vlModels.value);
+  const options = groups.unsupported.map(model => ({ value: String(model.id), label: modelLabel(model) }));
+  const current = vlRerankModel.value.trim();
+  if (current && !options.some(option => option.value === current)) {
+    options.unshift({ value: current, label: current });
+  }
+  return options;
+});
+
+async function refreshVlModels() {
+  if (vlModelsLoading.value) return;
+  vlModelsLoading.value = true;
+  vlModelsAuthRequired.value = false;
+  try {
+    const answer = await listVlModels();
+    vlModels.value = answer.models;
+    vlModelsAuthRequired.value = answer.authRequired;
+    // Fresh results are what the user asked for: show them right away.
+    if (answer.models.length > 0) vlModelsExpanded.value = true;
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    vlModelsLoading.value = false;
+  }
+}
+
+// --- persisted run history (read-only monitor) ---
+const vlRuns = ref<any[]>([]);
+const vlRunsLoading = ref(false);
+let vlRunsRequest = 0;
+let unlistenVlRunEvents: Array<() => void> = [];
+/// Per-run evidence of a run, fetched lazily when its details are expanded.
+const vlRunCalls = ref<Map<string, any[]>>(new Map());
+const vlRunCallsLoading = ref<Set<string>>(new Set());
+const vlRunCallsErrors = ref<Map<string, string>>(new Map());
+const vlRunCallsVisible = ref<Map<string, number>>(new Map());
+const vlRunDetailsOpen = ref<Set<string>>(new Set());
+
+async function loadVlRuns() {
+  const request = ++vlRunsRequest;
+  vlRunsLoading.value = true;
+  try {
+    const runs = await listVlRuns();
+    if (request === vlRunsRequest) vlRuns.value = runs;
+  } catch (error) {
+    console.error('Failed to list the image understanding runs:', error);
+    if (request === vlRunsRequest) vlRuns.value = [];
+  } finally {
+    if (request === vlRunsRequest) vlRunsLoading.value = false;
+  }
+}
+
+function cancelVlRunById(runId: string) {
+  void cancelVlRun(runId).then(loadVlRuns).catch(error => {
+    toast.error(error instanceof Error ? error.message : String(error));
+  });
+}
+
+/// The chip color of a persisted run state.
+function runStateChipClass(state: string) {
+  switch (String(state ?? '').trim().toLowerCase()) {
+    case 'queued': return 'border-warning/40 text-warning';
+    case 'running': return 'border-primary/40 text-primary';
+    case 'finished': return 'border-success/40 text-success';
+    case 'failed': return 'border-error/40 text-error';
+    default: return 'border-base-content/20 text-base-content/60';
+  }
+}
+
+function formatRunTime(timestamp: any) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  return new Date(value * 1000).toLocaleString(locale.value);
+}
+
+function isVlRunDetailsOpen(runId: any) {
+  return vlRunDetailsOpen.value.has(String(runId));
+}
+
+/// Fetch the calls of a run once and cache them.
+async function loadVlRunCalls(runId: string) {
+  vlRunCallsLoading.value = new Set(vlRunCallsLoading.value).add(runId);
+  const errors = new Map(vlRunCallsErrors.value);
+  errors.delete(runId);
+  vlRunCallsErrors.value = errors;
+  try {
+    const calls = await listVlRunCalls(runId);
+    const next = new Map(vlRunCalls.value);
+    next.set(runId, calls);
+    vlRunCalls.value = next;
+  } catch (error) {
+    const next = new Map(vlRunCallsErrors.value);
+    next.set(runId, error instanceof Error ? error.message : String(error));
+    vlRunCallsErrors.value = next;
+  } finally {
+    const loading = new Set(vlRunCallsLoading.value);
+    loading.delete(runId);
+    vlRunCallsLoading.value = loading;
+  }
+}
+
+function toggleVlRunDetails(run: any) {
+  const runId = String(run?.runId ?? '');
+  if (!runId) return;
+  const open = new Set(vlRunDetailsOpen.value);
+  if (open.has(runId)) {
+    open.delete(runId);
+    vlRunDetailsOpen.value = open;
+    return;
+  }
+  open.add(runId);
+  vlRunDetailsOpen.value = open;
+  if (!vlRunCalls.value.has(runId)) void loadVlRunCalls(runId);
+}
+
+function visibleVlRunCalls(runId: string) {
+  const calls = vlRunCalls.value.get(runId) ?? [];
+  return calls.slice(0, vlRunCallsVisible.value.get(runId) ?? 100);
+}
+
+function showMoreVlRunCalls(runId: string) {
+  const next = new Map(vlRunCallsVisible.value);
+  next.set(runId, (next.get(runId) ?? 100) + 100);
+  vlRunCallsVisible.value = next;
+}
+
+// Poll the run list while something on the tasks page is moving. The interval
+// is cleared as soon as the tab changes or the page unmounts.
+let vlRunsPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function syncVlRunsPolling() {
+  const active = config.settings.tabIndex === VL_TASKS_TAB;
+  const busy = vlRuns.value.some(run => run.state === 'queued' || run.state === 'running');
+  const wanted = active && busy;
+  if (wanted && !vlRunsPollTimer) {
+    vlRunsPollTimer = setInterval(() => { void loadVlRuns(); }, 4000);
+  } else if (!wanted && vlRunsPollTimer) {
+    clearInterval(vlRunsPollTimer);
+    vlRunsPollTimer = null;
+  }
+}
+
+watch(vlRuns, syncVlRunsPolling);
+
+onMounted(async () => {
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    unlistenVlRunEvents = [
+      await listen('vl-analysis-progress', () => {
+        if (config.settings.tabIndex === VL_TASKS_TAB) void loadVlRuns();
+      }),
+      await listen('vl-analysis-finished', (event: any) => {
+        if (config.settings.tabIndex !== VL_TASKS_TAB) return;
+        void loadVlRuns();
+        const runId = String(event?.payload?.runId ?? '');
+        // The evidence of a finished run is stale: reload it when its details
+        // are expanded.
+        if (runId && vlRunDetailsOpen.value.has(runId)) void loadVlRunCalls(runId);
+      }),
+    ];
+    syncVlRunsPolling();
+  } catch {
+    // Without the events the monitor shows the state of its last load.
+  }
+});
+onBeforeUnmount(() => {
+  for (const unlisten of unlistenVlRunEvents) unlisten();
+  unlistenVlRunEvents = [];
+  if (vlRunsPollTimer) {
+    clearInterval(vlRunsPollTimer);
+    vlRunsPollTimer = null;
+  }
+});
 
 function clearVlApiKey() {
   vlApiKeyClearPending.value = true;
@@ -973,12 +1403,18 @@ async function saveVlConfig() {
     const view = await setVlConfig({
       gatewayUrl: vlGatewayUrl.value,
       apiKey,
+      protocol: vlProtocol.value,
       model: vlModel.value,
       rerankModel: vlRerankModel.value,
+      embedSource: vlEmbedSource.value,
+      embedModel: vlEmbedModel.value,
+      maxConcurrency: normalizeMaxConcurrency(vlMaxConcurrency.value),
     });
     vlConfig.value = view;
     vlConfigured.value = Boolean(view?.configured);
     vlApiKey.value = '';
+    // Selecting a model and saving is the end of the task: hide the chip wall.
+    vlModelsExpanded.value = false;
     toast.success(t('settings.vl.saved'));
   } catch (error) {
     toast.error(error instanceof Error ? error.message : String(error));
@@ -991,7 +1427,12 @@ async function saveVlConfig() {
 }
 
 watch(() => config.settings.tabIndex, (tabIndex) => {
-  if (tabIndex === VL_SETTINGS_TAB) void loadVlConfig();
+  if (tabIndex === VL_SETTINGS_TAB) {
+    void loadVlConfig();
+  } else if (tabIndex === VL_TASKS_TAB) {
+    void loadVlRuns();
+  }
+  syncVlRunsPolling();
 });
 const rawPreviewFields = [
   { key: 'rawPreviewSource', hint: 'preview_source_hint', options: ['embedded', 'rendered'] },
@@ -1671,7 +2112,8 @@ onMounted(async () => {
     multilingualModelTotalBytes.value = Math.max(0, Number(event?.payload?.totalBytes ?? 0));
   });
   await syncImageSearchModelStatus();
-  await loadVlConfig();
+  if (config.settings.tabIndex === VL_SETTINGS_TAB) await loadVlConfig();
+  if (config.settings.tabIndex === VL_TASKS_TAB) await loadVlRuns();
   applyWindowScale(Number(config.settings.scale || 1));
   dbStorageDir.value = (await getDbStorageDir()) || '';
   hasCustomDbStorage.value = await isUsingCustomDbStorage();

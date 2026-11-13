@@ -361,7 +361,11 @@ impl RawHandle {
         thumbs
     }
 
-    fn render_preview(&mut self, options: RawDisplayOptions, half_size: bool) -> Result<RawImageBlob, String> {
+    fn render_preview(
+        &mut self,
+        options: RawDisplayOptions,
+        half_size: bool,
+    ) -> Result<RawImageBlob, String> {
         let mut out = LapLibRawImage {
             data: std::ptr::null_mut(),
             len: 0,
@@ -373,7 +377,15 @@ impl RawHandle {
             flip: 0,
         };
 
-        let ret = unsafe { lap_libraw_render_preview(self.raw, half_size as c_int, 0, options.auto_bright as c_int, &mut out) };
+        let ret = unsafe {
+            lap_libraw_render_preview(
+                self.raw,
+                half_size as c_int,
+                0,
+                options.auto_bright as c_int,
+                &mut out,
+            )
+        };
         if ret != 0 {
             return Err(libraw_error(ret, "Failed to process RAW preview"));
         }
@@ -438,12 +450,25 @@ fn format_shutter_speed(shutter: f32) -> String {
     }
 }
 
-fn render_processed_preview(file_path: &str, max_edge: u32, options: RawDisplayOptions, half_size: bool) -> Result<Vec<u8>, String> {
+fn render_processed_preview(
+    file_path: &str,
+    max_edge: u32,
+    options: RawDisplayOptions,
+    half_size: bool,
+) -> Result<Vec<u8>, String> {
     let mut raw = RawHandle::open(file_path)?;
     let rendered = raw.render_preview(options, half_size)?;
     let image = decode_processed_image(&rendered)?;
     let image = if max_edge > 0 && image.width().max(image.height()) > max_edge {
-        image.resize(max_edge, max_edge, if half_size { image::imageops::FilterType::Triangle } else { image::imageops::FilterType::Lanczos3 })
+        image.resize(
+            max_edge,
+            max_edge,
+            if half_size {
+                image::imageops::FilterType::Triangle
+            } else {
+                image::imageops::FilterType::Lanczos3
+            },
+        )
     } else {
         image
     };
@@ -467,7 +492,10 @@ pub struct RawInfo {
 
 pub fn get_raw_info(file_path: &str) -> Result<RawInfo, String> {
     let raw = RawHandle::open(file_path)?;
-    Ok(RawInfo { dimensions: raw.dimensions().ok(), meta: raw.meta()? })
+    Ok(RawInfo {
+        dimensions: raw.dimensions().ok(),
+        meta: raw.meta()?,
+    })
 }
 
 pub fn get_raw_meta(file_path: &str) -> Result<RawMeta, String> {
@@ -499,33 +527,52 @@ fn raw_flip_to_exif_orientation(flip: i32) -> Option<i32> {
 
 // Embedded pixels may already be oriented independently of the RAW data.
 fn embedded_jpeg_orientation(
-    jpeg_orientation: Option<i32>, thumbnail_flip: i32,
-    jpeg_size: (u32, u32), raw_size: (u32, u32, i32),
+    jpeg_orientation: Option<i32>,
+    thumbnail_flip: i32,
+    jpeg_size: (u32, u32),
+    raw_size: (u32, u32, i32),
 ) -> i32 {
-    if let Some(orientation) = jpeg_orientation { return orientation; }
+    if let Some(orientation) = jpeg_orientation {
+        return orientation;
+    }
     let raw_orientation = raw_flip_to_exif_orientation(raw_size.2).unwrap_or(1);
     let orientation = raw_flip_to_exif_orientation(thumbnail_flip).unwrap_or(raw_orientation);
     // TIFF thumbnail flips can be default zero or stale after the JPEG was
     // rotated. Resolve quarter-turn conflicts against LibRaw's oriented size,
     // allowing small crop/border differences without decoding RAW pixels.
-    if matches!(raw_orientation, 6 | 8) && jpeg_size.0 > 0 && jpeg_size.1 > 0
-        && raw_size.0 > 0 && raw_size.1 > 0 {
+    if matches!(raw_orientation, 6 | 8)
+        && jpeg_size.0 > 0
+        && jpeg_size.1 > 0
+        && raw_size.0 > 0
+        && raw_size.1 > 0
+    {
         let target_ratio = raw_size.0 as f64 / raw_size.1 as f64;
         let matches_size = |orientation| {
             let ratio = if matches!(orientation, 5..=8) {
                 jpeg_size.1 as f64 / jpeg_size.0 as f64
-            } else { jpeg_size.0 as f64 / jpeg_size.1 as f64 };
+            } else {
+                jpeg_size.0 as f64 / jpeg_size.1 as f64
+            };
             (ratio / target_ratio - 1.0).abs() <= 0.10
         };
         if !matches_size(orientation) {
-            if matches_size(raw_orientation) { return raw_orientation; }
-            if matches_size(1) { return 1; }
+            if matches_size(raw_orientation) {
+                return raw_orientation;
+            }
+            if matches_size(1) {
+                return 1;
+            }
         }
     }
     orientation
 }
 
-pub(crate) fn embedded_preview_is_large_enough(width: u32, height: u32, raw_width: u32, raw_height: u32) -> bool {
+pub(crate) fn embedded_preview_is_large_enough(
+    width: u32,
+    height: u32,
+    raw_width: u32,
+    raw_height: u32,
+) -> bool {
     width.max(height) >= raw_width.max(raw_height).min(1024)
         && width.min(height) >= raw_width.min(raw_height).min(512)
 }
@@ -542,9 +589,20 @@ pub(crate) fn get_embedded_raw_preview_image(file_path: &str) -> Result<Option<V
             // Prefer the JPEG's own orientation, then its thumbnail flip;
             // RAW orientation is only a fallback for unknown thumbnail flips.
             if let Ok(image) = image::load_from_memory(&thumb.data) {
-                let orient = embedded_jpeg_orientation(jpeg_exif_orientation(&thumb.data), thumb.flip,
-                    (image.width(), image.height()), (raw_width, raw_height, raw_flip));
-                if !embedded_preview_is_large_enough(image.width(), image.height(), raw_width, raw_height) { continue; }
+                let orient = embedded_jpeg_orientation(
+                    jpeg_exif_orientation(&thumb.data),
+                    thumb.flip,
+                    (image.width(), image.height()),
+                    (raw_width, raw_height, raw_flip),
+                );
+                if !embedded_preview_is_large_enough(
+                    image.width(),
+                    image.height(),
+                    raw_width,
+                    raw_height,
+                ) {
+                    continue;
+                }
                 let image = orient_image(image, orient);
                 return encode_as_jpeg(&image).map(Some);
             }
@@ -568,21 +626,47 @@ pub fn get_raw_preview_with_source(
     resolve_raw_preview(file_path, options, 4096, false)
 }
 
-pub fn get_raw_preview_with_size(file_path: &str, options: RawDisplayOptions, full_size: bool) -> Result<(Vec<u8>, &'static str, bool), String> {
-    resolve_raw_preview(file_path, options, if full_size { 0 } else { 4096 }, !full_size)
+pub fn get_raw_preview_with_size(
+    file_path: &str,
+    options: RawDisplayOptions,
+    full_size: bool,
+) -> Result<(Vec<u8>, &'static str, bool), String> {
+    resolve_raw_preview(
+        file_path,
+        options,
+        if full_size { 0 } else { 4096 },
+        !full_size,
+    )
 }
 
-fn resolve_raw_preview(file_path: &str, options: RawDisplayOptions, max_edge: u32, half_size: bool) -> Result<(Vec<u8>, &'static str, bool), String> {
+fn resolve_raw_preview(
+    file_path: &str,
+    options: RawDisplayOptions,
+    max_edge: u32,
+    half_size: bool,
+) -> Result<(Vec<u8>, &'static str, bool), String> {
     if options.embedded() {
         if let Ok(Some(preview)) = get_embedded_raw_preview_image(file_path) {
             return Ok((preview, "embedded", false));
         }
     }
     let preview = render_processed_preview(file_path, max_edge, options, half_size)?;
-    Ok((preview, if options.auto_bright { "brightened" } else { "rendered" }, options.embedded()))
+    Ok((
+        preview,
+        if options.auto_bright {
+            "brightened"
+        } else {
+            "rendered"
+        },
+        options.embedded(),
+    ))
 }
 
-fn get_processed_raw_thumbnail(file_path: &str, thumbnail_size: u32, options: RawDisplayOptions) -> Result<Option<Vec<u8>>, String> {
+fn get_processed_raw_thumbnail(
+    file_path: &str,
+    thumbnail_size: u32,
+    options: RawDisplayOptions,
+) -> Result<Option<Vec<u8>>, String> {
     let raw = RawHandle::open(file_path)?;
     let mut out = LapLibRawImage {
         data: std::ptr::null_mut(),
@@ -595,7 +679,8 @@ fn get_processed_raw_thumbnail(file_path: &str, thumbnail_size: u32, options: Ra
         flip: 0,
     };
 
-    let ret = unsafe { lap_libraw_render_preview(raw.raw, 1, 1, options.auto_bright as c_int, &mut out) };
+    let ret =
+        unsafe { lap_libraw_render_preview(raw.raw, 1, 1, options.auto_bright as c_int, &mut out) };
     if ret == 0 && !out.data.is_null() && out.len > 0 {
         // Copy C buffer into Rust Vec, then free the C allocation immediately.
         let data = unsafe { std::slice::from_raw_parts(out.data, out.len as usize).to_vec() };
@@ -623,13 +708,19 @@ fn get_processed_raw_thumbnail(file_path: &str, thumbnail_size: u32, options: Ra
         if !out.data.is_null() {
             unsafe { lap_libraw_free_buffer(out.data) };
         }
-        eprintln!("LibRaw dcraw_process failed for {} (likely HE/HE* NEF)", file_path);
+        eprintln!(
+            "LibRaw dcraw_process failed for {} (likely HE/HE* NEF)",
+            file_path
+        );
     }
 
     Ok(None)
 }
 
-fn get_embedded_jpeg_thumbnail(file_path: &str, thumbnail_size: u32) -> Result<Option<Vec<u8>>, String> {
+fn get_embedded_jpeg_thumbnail(
+    file_path: &str,
+    thumbnail_size: u32,
+) -> Result<Option<Vec<u8>>, String> {
     let mut raw = RawHandle::open(file_path)?;
     let raw_size = raw.dimensions_with_flip().unwrap_or((0, 0, -1));
     let thumbs = raw.extract_thumbnails();
@@ -643,8 +734,12 @@ fn get_embedded_jpeg_thumbnail(file_path: &str, thumbnail_size: u32) -> Result<O
 
     if let Some(thumb) = best {
         if let Ok(image) = image::load_from_memory(&thumb.data) {
-            let orient = embedded_jpeg_orientation(jpeg_exif_orientation(&thumb.data), thumb.flip,
-                (image.width(), image.height()), raw_size);
+            let orient = embedded_jpeg_orientation(
+                jpeg_exif_orientation(&thumb.data),
+                thumb.flip,
+                (image.width(), image.height()),
+                raw_size,
+            );
             let image = orient_image(image, orient);
             let thumbnail = image.thumbnail(u32::MAX, thumbnail_size);
             return encode_as_jpeg(&thumbnail).map(Some);
@@ -665,7 +760,9 @@ pub fn get_raw_thumbnail(
         }
     }
 
-    if let Ok(Some(thumbnail)) = get_processed_raw_thumbnail(file_path, thumbnail_size, prefer_embedded_jpeg) {
+    if let Ok(Some(thumbnail)) =
+        get_processed_raw_thumbnail(file_path, thumbnail_size, prefer_embedded_jpeg)
+    {
         return Ok(Some(thumbnail));
     }
 
@@ -685,12 +782,22 @@ pub fn is_tiff_path(file_path: &str) -> bool {
 
 #[cfg(test)]
 pub(crate) fn inspect_raw_fixture_orientation(path: &str) {
-    let Ok(mut raw) = RawHandle::open(path) else { return; };
+    let Ok(mut raw) = RawHandle::open(path) else {
+        return;
+    };
     eprintln!("RAW dimensions {:?}", raw.dimensions_with_flip());
     for thumb in raw.extract_thumbnails() {
-        let pixels = image::load_from_memory(&thumb.data).ok().map(|img| (img.width(), img.height()));
-        eprintln!("  embedded format={} metadata={}x{} flip={} jpeg_exif={:?} pixels={pixels:?}",
-            thumb.format, thumb.width, thumb.height, thumb.flip, jpeg_exif_orientation(&thumb.data));
+        let pixels = image::load_from_memory(&thumb.data)
+            .ok()
+            .map(|img| (img.width(), img.height()));
+        eprintln!(
+            "  embedded format={} metadata={}x{} flip={} jpeg_exif={:?} pixels={pixels:?}",
+            thumb.format,
+            thumb.width,
+            thumb.height,
+            thumb.flip,
+            jpeg_exif_orientation(&thumb.data)
+        );
     }
 }
 
@@ -701,15 +808,42 @@ mod raw_display_render_tests {
 
     #[test]
     fn embedded_thumbnail_orientation_resolves_default_and_stale_flips() {
-        assert_eq!(embedded_jpeg_orientation(None, 0, (480, 640), (1924, 2576, 5)), 1); // E5700
-        assert_eq!(embedded_jpeg_orientation(None, 0, (3008, 2000), (2014, 3039, 5)), 8); // D70
-        assert_eq!(embedded_jpeg_orientation(None, 0, (4928, 3264), (3284, 4950, 6)), 6); // K5IIS
-        assert_eq!(embedded_jpeg_orientation(None, 6, (332, 244), (5344, 4008, 6)), 1); // Leaf
-        assert_eq!(embedded_jpeg_orientation(Some(6), 0, (480, 640), (1924, 2576, 5)), 6); // JPEG wins
-        assert_eq!(embedded_jpeg_orientation(None, -1, (300, 200), (200, 300, 5)), 8);
-        assert_eq!(embedded_jpeg_orientation(None, 3, (300, 200), (300, 200, 3)), 3);
-        assert_eq!(embedded_jpeg_orientation(None, 0, (300, 200), (0, 0, -1)), 1);
-        assert_eq!(embedded_jpeg_orientation(None, 0, (100, 100), (200, 300, 5)), 1); // ambiguous
+        assert_eq!(
+            embedded_jpeg_orientation(None, 0, (480, 640), (1924, 2576, 5)),
+            1
+        ); // E5700
+        assert_eq!(
+            embedded_jpeg_orientation(None, 0, (3008, 2000), (2014, 3039, 5)),
+            8
+        ); // D70
+        assert_eq!(
+            embedded_jpeg_orientation(None, 0, (4928, 3264), (3284, 4950, 6)),
+            6
+        ); // K5IIS
+        assert_eq!(
+            embedded_jpeg_orientation(None, 6, (332, 244), (5344, 4008, 6)),
+            1
+        ); // Leaf
+        assert_eq!(
+            embedded_jpeg_orientation(Some(6), 0, (480, 640), (1924, 2576, 5)),
+            6
+        ); // JPEG wins
+        assert_eq!(
+            embedded_jpeg_orientation(None, -1, (300, 200), (200, 300, 5)),
+            8
+        );
+        assert_eq!(
+            embedded_jpeg_orientation(None, 3, (300, 200), (300, 200, 3)),
+            3
+        );
+        assert_eq!(
+            embedded_jpeg_orientation(None, 0, (300, 200), (0, 0, -1)),
+            1
+        );
+        assert_eq!(
+            embedded_jpeg_orientation(None, 0, (100, 100), (200, 300, 5)),
+            1
+        ); // ambiguous
     }
 
     // Small uncompressed CFA DNG, generated in memory so the test does not
@@ -719,19 +853,41 @@ mod raw_display_render_tests {
         let long = |v: u32| v.to_le_bytes().to_vec();
         let rational = |v: i32| [v.to_le_bytes(), 1i32.to_le_bytes()].concat();
         let mut tags: Vec<(u16, u16, u32, Vec<u8>)> = vec![
-            (256, 4, 1, long(128)), (257, 4, 1, long(128)),
-            (258, 3, 1, short(16)), (259, 3, 1, short(1)),
-            (262, 3, 1, short(32803)), (271, 2, 4, b"Lap\0".to_vec()),
-            (272, 2, 5, b"Test\0".to_vec()), (273, 4, 1, long(0)),
-            (274, 3, 1, short(1)), (277, 3, 1, short(1)),
-            (278, 4, 1, long(128)), (279, 4, 1, long(128 * 128 * 2)),
-            (284, 3, 1, short(1)), (33421, 3, 2, [short(2), short(2)].concat()),
+            (256, 4, 1, long(128)),
+            (257, 4, 1, long(128)),
+            (258, 3, 1, short(16)),
+            (259, 3, 1, short(1)),
+            (262, 3, 1, short(32803)),
+            (271, 2, 4, b"Lap\0".to_vec()),
+            (272, 2, 5, b"Test\0".to_vec()),
+            (273, 4, 1, long(0)),
+            (274, 3, 1, short(1)),
+            (277, 3, 1, short(1)),
+            (278, 4, 1, long(128)),
+            (279, 4, 1, long(128 * 128 * 2)),
+            (284, 3, 1, short(1)),
+            (33421, 3, 2, [short(2), short(2)].concat()),
             (33422, 1, 4, vec![0, 1, 1, 2]),
-            (50706, 1, 4, vec![1, 4, 0, 0]), (50707, 1, 4, vec![1, 1, 0, 0]),
+            (50706, 1, 4, vec![1, 4, 0, 0]),
+            (50707, 1, 4, vec![1, 1, 0, 0]),
             (50708, 2, 9, b"Lap Test\0".to_vec()),
-            (50714, 5, 1, rational(0)), (50717, 4, 1, long(4095)),
-            (50721, 10, 9, [1,0,0,0,1,0,0,0,1].into_iter().flat_map(rational).collect()),
-            (50728, 5, 3, [1,1,1].into_iter().flat_map(rational).collect()),
+            (50714, 5, 1, rational(0)),
+            (50717, 4, 1, long(4095)),
+            (
+                50721,
+                10,
+                9,
+                [1, 0, 0, 0, 1, 0, 0, 0, 1]
+                    .into_iter()
+                    .flat_map(rational)
+                    .collect(),
+            ),
+            (
+                50728,
+                5,
+                3,
+                [1, 1, 1].into_iter().flat_map(rational).collect(),
+            ),
             (50778, 3, 1, short(21)),
         ];
         tags.sort_by_key(|tag| tag.0);
@@ -744,21 +900,27 @@ mod raw_display_render_tests {
             bytes.extend_from_slice(&tag.to_le_bytes());
             bytes.extend_from_slice(&kind.to_le_bytes());
             bytes.extend_from_slice(&count.to_le_bytes());
-            if tag == 273 { strip_offset_position = bytes.len(); }
+            if tag == 273 {
+                strip_offset_position = bytes.len();
+            }
             if data.len() <= 4 {
                 bytes.extend_from_slice(&data);
                 bytes.resize(bytes.len() + 4 - data.len(), 0);
             } else {
                 bytes.extend_from_slice(&((base + extras.len()) as u32).to_le_bytes());
                 extras.extend_from_slice(&data);
-                if extras.len() % 2 != 0 { extras.push(0); }
+                if extras.len() % 2 != 0 {
+                    extras.push(0);
+                }
             }
         }
         bytes.extend_from_slice(&0u32.to_le_bytes());
         bytes.extend_from_slice(&extras);
         let offset = (bytes.len() as u32).to_le_bytes();
         bytes[strip_offset_position..strip_offset_position + 4].copy_from_slice(&offset);
-        for i in 0..128 * 128 { bytes.extend_from_slice(&(32 + (i % 96) as u16).to_le_bytes()); }
+        for i in 0..128 * 128 {
+            bytes.extend_from_slice(&(32 + (i % 96) as u16).to_le_bytes());
+        }
         bytes
     }
 
@@ -767,16 +929,40 @@ mod raw_display_render_tests {
         let path = std::env::temp_dir().join(format!("lap-raw-display-{}.dng", std::process::id()));
         std::fs::write(&path, dark_dng()).unwrap();
         let path_str = path.to_str().unwrap();
-        let options = |mode| RawDisplayOptions { mode, prefer_pair: false, auto_bright: false };
-        let render = |mode| get_raw_preview_image(path_str, options(mode)).unwrap().unwrap();
+        let options = |mode| RawDisplayOptions {
+            mode,
+            prefer_pair: false,
+            auto_bright: false,
+        };
+        let render = |mode| {
+            get_raw_preview_image(path_str, options(mode))
+                .unwrap()
+                .unwrap()
+        };
         let normal = render(RawPreviewMode::Rendered);
-        let fit = get_raw_preview_with_size(path_str, options(RawPreviewMode::Rendered), false).unwrap().0;
-        let full = get_raw_preview_with_size(path_str, options(RawPreviewMode::Rendered), true).unwrap().0;
+        let fit = get_raw_preview_with_size(path_str, options(RawPreviewMode::Rendered), false)
+            .unwrap()
+            .0;
+        let full = get_raw_preview_with_size(path_str, options(RawPreviewMode::Rendered), true)
+            .unwrap()
+            .0;
         assert_eq!(image::load_from_memory(&fit).unwrap().width(), 64);
         assert_eq!(image::load_from_memory(&full).unwrap().width(), 128);
-        let bright_options = RawDisplayOptions { auto_bright: true, ..options(RawPreviewMode::Rendered) };
-        let bright = get_raw_preview_image(path_str, bright_options).unwrap().unwrap();
-        let (fallback_bright, source, unavailable) = get_raw_preview_with_source(path_str, RawDisplayOptions { mode: RawPreviewMode::Embedded, ..bright_options }).unwrap();
+        let bright_options = RawDisplayOptions {
+            auto_bright: true,
+            ..options(RawPreviewMode::Rendered)
+        };
+        let bright = get_raw_preview_image(path_str, bright_options)
+            .unwrap()
+            .unwrap();
+        let (fallback_bright, source, unavailable) = get_raw_preview_with_source(
+            path_str,
+            RawDisplayOptions {
+                mode: RawPreviewMode::Embedded,
+                ..bright_options
+            },
+        )
+        .unwrap();
         assert_eq!(fallback_bright, bright);
         assert_eq!(source, "brightened");
         assert!(unavailable);
@@ -788,7 +974,11 @@ mod raw_display_render_tests {
         assert!(mean(&bright) > mean(&normal) + 20.0);
         assert_eq!(normal, embedded_fallback);
         for mode in [RawPreviewMode::Rendered, RawPreviewMode::Embedded] {
-            assert!(get_raw_thumbnail(path_str, 64, options(mode)).unwrap().is_some());
+            assert!(
+                get_raw_thumbnail(path_str, 64, options(mode))
+                    .unwrap()
+                    .is_some()
+            );
         }
         std::fs::remove_file(path).unwrap();
     }

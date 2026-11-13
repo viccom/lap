@@ -18,6 +18,7 @@ export const createEmptyLibraryCounts = () => ({
   today: 0,
   rated: 0,
   unrated: 0,
+  vlAnnotated: 0,
   ratings: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
   culling: { [CULLING.PICK]: 0, [CULLING.REJECT]: 0, [CULLING.UNREVIEWED]: 0 },
 });
@@ -33,12 +34,13 @@ export const useLibraryStore = defineStore('libraryStore', {
     /** @type {'main' | 'collection'} */
     activePane: 'main',
 
-    /** @type {{ item: 'all-files' | 'favorites' | 'ratings' | 'culling' | 'subjects' | 'on-this-day', smartId: string | null, ratingsExpanded: boolean, cullingExpanded: boolean, subjectsExpanded: boolean, subjectCounts: Record<string, number>, counts: { all: number, favorite: number, today: number, rated: number, unrated: number, ratings: Record<number, number>, culling: Record<string, number> } }} */
+    /** @type {{ item: 'all-files' | 'favorites' | 'ratings' | 'culling' | 'subjects' | 'on-this-day' | 'vl-annotated' | 'vl-unannotated', smartId: string | null, ratingsExpanded: boolean, cullingExpanded: boolean, vlExpanded: boolean, subjectsExpanded: boolean, subjectCounts: Record<string, number>, counts: { all: number, favorite: number, today: number, rated: number, unrated: number, vlAnnotated: number, ratings: Record<number, number>, culling: Record<string, number> } }} */
     library: {
       item: LIB_ITEM.ALL,
       smartId: null,
       ratingsExpanded: true,
       cullingExpanded: true,
+      vlExpanded: false,
       subjectsExpanded: true,
       activateTick: 0,
       subjectCounts: {},
@@ -117,11 +119,14 @@ export const useLibraryStore = defineStore('libraryStore', {
       name: null,             // selected person name
     },
 
-    /** @type {{ searchText: string, searchHistory: (string | { text: string, count: number | null })[], searchHistoryIndex: number }} */
+    /** @type {{ searchText: string, searchHistory: (string | { text: string, count: number | null })[], searchHistoryIndex: number, aiSearchText: string, aiSearchHistory: (string | { text: string, count: number | null })[], aiSearchHistoryIndex: number }} */
     search: {
-      searchText: '',         // AI search text
-      searchHistory: [],      // AI search history
-      searchHistoryIndex: -1, // current AI search history index
+      searchText: '',         // official search text
+      searchHistory: [],      // official search history
+      searchHistoryIndex: -1, // current official search history index
+      aiSearchText: '',          // AI search text
+      aiSearchHistory: [],       // AI search history
+      aiSearchHistoryIndex: -1,  // current AI search history index
     },
 
     /** @type {{ albumId: number | null, folderId: number | null, folderPath: string | null, selected: boolean }} */
@@ -223,6 +228,12 @@ export const useLibraryStore = defineStore('libraryStore', {
       const history = this.search.searchHistory;
       if (Array.isArray(history) && history.some((item) => typeof item !== 'string' && item?.count != null)) {
         this.search.searchHistory = history.map((item) =>
+          typeof item === 'string' ? item : { ...item, count: null },
+        );
+      }
+      const aiHistory = this.search.aiSearchHistory;
+      if (Array.isArray(aiHistory) && aiHistory.some((item) => typeof item !== 'string' && item?.count != null)) {
+        this.search.aiSearchHistory = aiHistory.map((item) =>
           typeof item === 'string' ? item : { ...item, count: null },
         );
       }

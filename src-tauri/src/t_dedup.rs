@@ -1,5 +1,5 @@
 use crate::t_sqlite::{AFile, QueryParams};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -193,13 +193,20 @@ fn scan_and_hash_files(
     };
 
     if group_raw_pairs && has_scope {
-        let companion_ids = files_to_check.iter().filter_map(|file| {
-            (file.media_subtype.as_deref() == Some("raw_jpeg_pair"))
-                .then_some(file.live_photo_video_id).flatten()
-        }).collect::<Vec<_>>();
+        let companion_ids = files_to_check
+            .iter()
+            .filter_map(|file| {
+                (file.media_subtype.as_deref() == Some("raw_jpeg_pair"))
+                    .then_some(file.live_photo_video_id)
+                    .flatten()
+            })
+            .collect::<Vec<_>>();
         let mut seen_ids: HashSet<_> = files_to_check.iter().filter_map(|file| file.id).collect();
-        files_to_check.extend(AFile::get_files_by_ids(&companion_ids)?
-            .into_iter().filter(|file| file.id.is_some_and(|id| seen_ids.insert(id))));
+        files_to_check.extend(
+            AFile::get_files_by_ids(&companion_ids)?
+                .into_iter()
+                .filter(|file| file.id.is_some_and(|id| seen_ids.insert(id))),
+        );
     }
     let files_to_check = filter_suspicious_files(files_to_check);
     let scoped_file_ids = if has_scope || group_raw_pairs {
@@ -245,31 +252,37 @@ fn scan_and_hash_files(
                 if crate::t_utils::is_cloud_only_path(path) {
                     // Hashing reads the whole file; Lap must not trigger a download.
                     // A hash from before a remote change would still group the file as a duplicate.
-                    tx.execute("DELETE FROM file_hashes WHERE file_id = ?1", params![file.id.unwrap()])
-                        .map_err(|e| e.to_string())?;
+                    tx.execute(
+                        "DELETE FROM file_hashes WHERE file_id = ?1",
+                        params![file.id.unwrap()],
+                    )
+                    .map_err(|e| e.to_string())?;
                     skipped += 1;
                 } else {
-                match compute_blake3_hash(path) {
-                    Ok(hash) => {
-                        let now = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs() as i64;
-                        let mtime = file.modified_at.unwrap_or(0);
+                    match compute_blake3_hash(path) {
+                        Ok(hash) => {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs() as i64;
+                            let mtime = file.modified_at.unwrap_or(0);
 
-                        tx.execute(
+                            tx.execute(
                             "INSERT OR REPLACE INTO file_hashes (file_id, hash, file_size, mtime, computed_at)
                              VALUES (?1, ?2, ?3, ?4, ?5)",
                             params![file.id.unwrap(), hash, file.size, mtime, now],
                         ).map_err(|e| e.to_string())?;
-                    }
-                    Err(e) => {
-                        tx.execute("DELETE FROM file_hashes WHERE file_id = ?1", params![file.id.unwrap()])
+                        }
+                        Err(e) => {
+                            tx.execute(
+                                "DELETE FROM file_hashes WHERE file_id = ?1",
+                                params![file.id.unwrap()],
+                            )
                             .map_err(|e| e.to_string())?;
-                        skipped += 1;
-                        eprintln!("Failed to hash file {}: {}", path, e);
+                            skipped += 1;
+                            eprintln!("Failed to hash file {}: {}", path, e);
+                        }
                     }
-                }
                 }
             }
         }
@@ -289,7 +302,12 @@ fn scan_and_hash_files(
 
     // Step 4: Rebuild duplicate groups
     if !cancel_flag.load(Ordering::SeqCst) {
-        rebuild_duplicate_groups(&mut conn, scoped_file_ids.as_deref(), keep_rules, group_raw_pairs)?;
+        rebuild_duplicate_groups(
+            &mut conn,
+            scoped_file_ids.as_deref(),
+            keep_rules,
+            group_raw_pairs,
+        )?;
 
         // Count total groups
         let groups_count: i64 = conn
@@ -422,6 +440,7 @@ fn get_files_by_sizes(conn: &Connection, group_raw_pairs: bool) -> Result<Vec<AF
                 motion_photo_offset: None,
                 cloud_only: false,
                 metadata_pending: false,
+                vl_annotated: false,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -610,7 +629,11 @@ fn rebuild_duplicate_groups(
     } else {
         ""
     };
-    let pair_sql = if group_raw_pairs { RAW_PAIR_MEMBER_SQL } else { "0" };
+    let pair_sql = if group_raw_pairs {
+        RAW_PAIR_MEMBER_SQL
+    } else {
+        "0"
+    };
     let item_query = format!(
         "SELECT a.id, a.taken_date, a.created_at, {pair_sql}
          FROM file_hashes fh
@@ -689,8 +712,9 @@ fn rebuild_duplicate_groups(
 /// RAW matches with different (or unverified) companion content are separate
 /// sets. A standalone RAW can be removed through any of those sets.
 fn split_raw_pair_groups(conn: &Connection) -> Result<(), String> {
-    let mut stmt = conn.prepare(
-        "SELECT i.group_id, i.file_id, companion.id, h.hash
+    let mut stmt = conn
+        .prepare(
+            "SELECT i.group_id, i.file_id, companion.id, h.hash
          FROM duplicate_group_items i
          JOIN afiles a ON a.id = i.file_id
          LEFT JOIN afiles companion ON a.media_subtype = 'raw_jpeg_pair'
@@ -702,15 +726,25 @@ fn split_raw_pair_groups(conn: &Connection) -> Result<(), String> {
              WHERE p.group_id = i.group_id AND raw.media_subtype = 'raw_jpeg_pair'
          )
          ORDER BY i.group_id, i.score DESC",
-    ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     let mut groups = std::collections::BTreeMap::<i64, Vec<_>>::new();
-    let rows = stmt.query_map([], |row| Ok((
-        row.get::<_, i64>(0)?, row.get::<_, i64>(1)?,
-        row.get::<_, Option<i64>>(2)?, row.get::<_, Option<String>>(3)?,
-    ))).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
     for row in rows {
         let (group, file, companion, hash) = row.map_err(|e| e.to_string())?;
-        groups.entry(group).or_default().push((file, companion, hash));
+        groups
+            .entry(group)
+            .or_default()
+            .push((file, companion, hash));
     }
     for (group, members) in groups {
         let mut partitions = Vec::<Vec<i64>>::new();
@@ -1008,9 +1042,10 @@ impl PreferredSize {
     fn sort_key(&self, candidate: &RuleCandidate) -> (bool, i64) {
         let amount = match self {
             Self::Ignore => return (false, 0),
-            Self::LargestDimensions | Self::SmallestDimensions => {
-                candidate.width.max(0).saturating_mul(candidate.height.max(0))
-            }
+            Self::LargestDimensions | Self::SmallestDimensions => candidate
+                .width
+                .max(0)
+                .saturating_mul(candidate.height.max(0)),
             Self::LargestFileSize | Self::SmallestFileSize => candidate.file_size,
         };
         if amount <= 0 {
@@ -1070,14 +1105,19 @@ impl RuleCandidate {
         match format {
             PreferredFormat::Ignore => false,
             PreferredFormat::Raw => self.file_type == 3,
-            PreferredFormat::JpegHeic if self.file_type == 1 => match self.format_label.as_deref() {
-                Some(label) if !label.is_empty() => ["JPG", "JPEG", "JPE", "JFIF", "HEIC", "HEIF", "HIF"]
-                    .iter()
-                    .any(|format| label.eq_ignore_ascii_case(format)),
-                _ => {
-                    crate::t_image::is_jpeg_path(&self.path) || crate::t_image::is_heic_path(&self.path)
+            PreferredFormat::JpegHeic if self.file_type == 1 => {
+                match self.format_label.as_deref() {
+                    Some(label) if !label.is_empty() => {
+                        ["JPG", "JPEG", "JPE", "JFIF", "HEIC", "HEIF", "HIF"]
+                            .iter()
+                            .any(|format| label.eq_ignore_ascii_case(format))
+                    }
+                    _ => {
+                        crate::t_image::is_jpeg_path(&self.path)
+                            || crate::t_image::is_heic_path(&self.path)
+                    }
                 }
-            },
+            }
             PreferredFormat::JpegHeic => false,
         }
     }
@@ -1147,7 +1187,11 @@ fn apply_keep_rules(
             " WHERE ?1 = ''",
         )
     };
-    let pair_sql = if group_raw_pairs && similar_scope.is_none() { RAW_PAIR_MEMBER_SQL } else { "0" };
+    let pair_sql = if group_raw_pairs && similar_scope.is_none() {
+        RAW_PAIR_MEMBER_SQL
+    } else {
+        "0"
+    };
     let sql = format!(
         "SELECT i.group_id, i.file_id, i.is_keep, f.path || '/' || a.name, a.file_type, COALESCE(a.width,0), COALESCE(a.height,0), COALESCE(a.created_at,0), ({pair_sql}), a.format_label, COALESCE(a.modified_at,0), COALESCE(a.size,0) FROM {items} i JOIN {groups} g ON g.id=i.group_id JOIN afiles a ON a.id=i.file_id JOIN afolders f ON f.id=a.folder_id{scope} ORDER BY i.group_id, i.file_id"
     );
@@ -1210,7 +1254,8 @@ fn apply_keep_rules(
         };
         candidates.sort_by_cached_key(rank);
         let best_rank = rank(&candidates[0]);
-        let tied = &candidates[..candidates.partition_point(|candidate| rank(candidate) == best_rank)];
+        let tied =
+            &candidates[..candidates.partition_point(|candidate| rank(candidate) == best_rank)];
         // The preferred date only breaks ties; files without a usable timestamp
         // rank last instead of disabling the rule for the whole tie.
         let winner = tied
@@ -1242,10 +1287,15 @@ fn apply_keep_rules(
 }
 
 fn pair_keep_locked(conn: &Connection, group_id: i64) -> Result<bool, String> {
-    conn.query_row(&format!(
-        "SELECT EXISTS (SELECT 1 FROM duplicate_group_items i JOIN afiles a ON a.id = i.file_id
+    conn.query_row(
+        &format!(
+            "SELECT EXISTS (SELECT 1 FROM duplicate_group_items i JOIN afiles a ON a.id = i.file_id
          WHERE i.group_id = ?1 AND i.is_keep = 1 AND ({RAW_PAIR_MEMBER_SQL}))"
-    ), [group_id], |row| row.get(0)).map_err(|e| e.to_string())
+        ),
+        [group_id],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
 }
 
 pub fn set_keep(group_id: i64, file_id: i64, group_raw_pairs: bool) -> Result<(), String> {
@@ -1299,8 +1349,11 @@ fn raw_pair_protected_delete_ids(conn: &Connection) -> Result<HashSet<i64>, Stri
              WHERE raw.media_subtype = 'raw_jpeg_pair' AND keep.is_keep = 1",
         )
         .map_err(|e| e.to_string())?;
-    let rows = stmt.query_map([], |row| row.get(0)).map_err(|e| e.to_string())?;
-    rows.collect::<Result<HashSet<_>, _>>().map_err(|e| e.to_string())
+    let rows = stmt
+        .query_map([], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashSet<_>, _>>()
+        .map_err(|e| e.to_string())
 }
 
 fn raw_pair_has_exact_keep(conn: &Connection, file_id: i64) -> Result<bool, String> {
@@ -1327,7 +1380,8 @@ fn raw_pair_has_exact_keep(conn: &Connection, file_id: i64) -> Result<bool, Stri
                )
          )",
     ).map_err(|e| e.to_string())?;
-    stmt.query_row([file_id], |row| row.get(0)).map_err(|e| e.to_string())
+    stmt.query_row([file_id], |row| row.get(0))
+        .map_err(|e| e.to_string())
 }
 
 fn delete_preview(
@@ -1335,13 +1389,15 @@ fn delete_preview(
     files: &[crate::t_cmds::BatchDeleteFile],
     group_raw_pairs: bool,
 ) -> Result<(DedupDeletePreview, HashMap<i64, Vec<(i64, String)>>), String> {
-    let mut stmt = conn.prepare(
-        "SELECT a.size, a.media_subtype, c.id, f.path || '/' || c.name, c.size
+    let mut stmt = conn
+        .prepare(
+            "SELECT a.size, a.media_subtype, c.id, f.path || '/' || c.name, c.size
          FROM afiles a
          LEFT JOIN afiles c ON c.id = a.live_photo_video_id
          LEFT JOIN afolders f ON f.id = c.folder_id
          WHERE a.id = ?1",
-    ).map_err(|e| e.to_string())?;
+        )
+        .map_err(|e| e.to_string())?;
     let mut components = HashMap::new();
     let mut bytes = 0i64;
     let mut raw_companion_count = 0;
@@ -1350,11 +1406,17 @@ fn delete_preview(
     let primary_ids: HashSet<_> = files.iter().map(|file| file.file_id).collect();
     let mut seen_components = HashSet::new();
     for file in files {
-        let (size, subtype, id, path, companion_size) = stmt.query_row([file.file_id], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, Option<String>>(1)?,
-                row.get::<_, Option<i64>>(2)?, row.get::<_, Option<String>>(3)?,
-                row.get::<_, Option<i64>>(4)?))
-        }).map_err(|e| e.to_string())?;
+        let (size, subtype, id, path, companion_size) = stmt
+            .query_row([file.file_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
         bytes = bytes.saturating_add(size);
         hasher.update(&[0]);
         hasher.update(&file.file_id.to_le_bytes());
@@ -1362,7 +1424,10 @@ fn delete_preview(
         hasher.update(blake3::hash(file.file_path.as_bytes()).as_bytes());
         let is_raw_pair = subtype.as_deref() == Some("raw_jpeg_pair");
         if let (Some(id), Some(path)) = (id, path) {
-            if (!is_raw_pair || group_raw_pairs) && !primary_ids.contains(&id) && seen_components.insert(id) {
+            if (!is_raw_pair || group_raw_pairs)
+                && !primary_ids.contains(&id)
+                && seen_components.insert(id)
+            {
                 hasher.update(&[1]);
                 hasher.update(&id.to_le_bytes());
                 hasher.update(&companion_size.unwrap_or(0).to_le_bytes());
@@ -1373,12 +1438,15 @@ fn delete_preview(
             }
         }
     }
-    Ok((DedupDeletePreview {
-        token: hasher.finalize().to_hex().to_string(),
-        item_count: files.len(),
-        raw_companion_count,
-        bytes,
-    }, components))
+    Ok((
+        DedupDeletePreview {
+            token: hasher.finalize().to_hex().to_string(),
+            item_count: files.len(),
+            raw_companion_count,
+            bytes,
+        },
+        components,
+    ))
 }
 
 fn similar_delete_candidates(
@@ -1436,7 +1504,10 @@ pub fn delete(request: DedupDeleteRequest) -> Result<DedupDeleteResult, String> 
         if request.delete_all || request.group_ids.is_some() {
             return Err("Invalid similar dedup delete request".to_string());
         }
-        let ids = request.file_ids.as_deref().ok_or("Missing similar dedup file IDs")?;
+        let ids = request
+            .file_ids
+            .as_deref()
+            .ok_or("Missing similar dedup file IDs")?;
         similar_requested_count = Some(ids.iter().collect::<HashSet<_>>().len());
         files_to_delete = similar_delete_candidates(&tx, group_id, ids, request.group_raw_pairs)?;
     } else if request.delete_all {
@@ -1528,7 +1599,8 @@ pub fn delete(request: DedupDeleteRequest) -> Result<DedupDeleteResult, String> 
         let mut safe_files = Vec::new();
         for file in files_to_delete {
             if !protected_ids.contains(&file.file_id)
-                && (request.similar_group_id.is_some() || raw_pair_has_exact_keep(&tx, file.file_id)?)
+                && (request.similar_group_id.is_some()
+                    || raw_pair_has_exact_keep(&tx, file.file_id)?)
             {
                 safe_files.push(file);
             }
@@ -1562,7 +1634,11 @@ pub fn delete(request: DedupDeleteRequest) -> Result<DedupDeleteResult, String> 
                 .map(|(folder, _)| (file.file_id, folder.to_string()))
         })
         .collect();
-    let delete_result = crate::t_cmds::delete_files_with_components(files_to_delete, request.permanently, Some(components))?;
+    let delete_result = crate::t_cmds::delete_files_with_components(
+        files_to_delete,
+        request.permanently,
+        Some(components),
+    )?;
     let deleted_ids: HashSet<i64> = delete_result.deleted_file_ids.iter().copied().collect();
     let affected_folder_paths = source_folders
         .into_iter()
@@ -1649,7 +1725,11 @@ mod keep_rules_tests {
         let files = similar_delete_candidates(&conn, 10, &[1, 2, 3, 3, 5, 99], true).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].file_id, 3);
-        assert!(similar_delete_candidates(&conn, 30, &[3], true).unwrap().is_empty());
+        assert!(
+            similar_delete_candidates(&conn, 30, &[3], true)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1694,14 +1774,25 @@ mod keep_rules_tests {
             preferred_size: PreferredSize::LargestDimensions,
         };
         rebuild_duplicate_groups(&mut conn, None, Some(rules), true).unwrap();
-        let mut stmt = conn.prepare("SELECT file_id, is_keep FROM duplicate_group_items ORDER BY file_id").unwrap();
-        let results = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
-            .unwrap().collect::<Result<Vec<_>, _>>().unwrap();
-        assert_eq!(results, vec![(1,1),(2,1),(5,0),(7,0),(8,0),(9,1),(11,0)]);
+        let mut stmt = conn
+            .prepare("SELECT file_id, is_keep FROM duplicate_group_items ORDER BY file_id")
+            .unwrap();
+        let results = stmt
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            results,
+            vec![(1, 1), (2, 1), (5, 0), (7, 0), (8, 0), (9, 1), (11, 0)]
+        );
         assert!(raw_pair_has_exact_keep(&conn, 5).unwrap());
         assert!(!raw_pair_has_exact_keep(&conn, 3).unwrap());
 
-        let files = [crate::t_cmds::BatchDeleteFile { file_id: 5, file_path: "/photos/c.raw".into() }];
+        let files = [crate::t_cmds::BatchDeleteFile {
+            file_id: 5,
+            file_path: "/photos/c.raw".into(),
+        }];
         let (enabled, components) = delete_preview(&conn, &files, true).unwrap();
         assert_eq!(enabled.raw_companion_count, 1);
         assert_eq!(enabled.bytes, 120);
@@ -1729,7 +1820,12 @@ mod keep_rules_tests {
             CREATE TABLE duplicate_groups(id INTEGER PRIMARY KEY,hash TEXT,file_size INTEGER,file_count INTEGER,total_size INTEGER,updated_at INTEGER);
             CREATE TABLE duplicate_group_items(group_id INTEGER,file_id INTEGER,is_keep INTEGER,is_selected INTEGER,score REAL);").unwrap();
         let winner = |conn: &Connection| {
-            conn.query_row("SELECT file_id FROM duplicate_group_items WHERE is_keep=1", [], |row| row.get::<_, i64>(0)).unwrap()
+            conn.query_row(
+                "SELECT file_id FROM duplicate_group_items WHERE is_keep=1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap()
         };
         rebuild_duplicate_groups(&mut conn, None, None, true).unwrap();
         assert_eq!(winner(&conn), 2);
@@ -1742,7 +1838,8 @@ mod keep_rules_tests {
             preferred_date: PreferredDate::CreatedEarliest,
             preferred_size: PreferredSize::LargestDimensions,
         };
-        conn.execute("UPDATE afolders SET path = '/renamed' WHERE id = 1", []).unwrap();
+        conn.execute("UPDATE afolders SET path = '/renamed' WHERE id = 1", [])
+            .unwrap();
         rebuild_duplicate_groups(&mut conn, None, Some(rules(vec![999, 1])), true).unwrap();
         assert_eq!(winner(&conn), 2);
         apply_keep_rules_on(&conn, None, rules(vec![])).unwrap();
@@ -1781,14 +1878,27 @@ mod keep_rules_tests {
             preferred_size: PreferredSize::LargestDimensions,
         };
         assert_eq!(
-            apply_keep_rules_on(&conn, None, rule(vec![], PreferredFormat::Raw, PreferredDate::ModifiedEarliest)).unwrap(),
+            apply_keep_rules_on(
+                &conn,
+                None,
+                rule(
+                    vec![],
+                    PreferredFormat::Raw,
+                    PreferredDate::ModifiedEarliest
+                )
+            )
+            .unwrap(),
             0
         );
         assert_eq!(
             apply_keep_rules_on(
                 &conn,
                 None,
-                rule(vec![1], PreferredFormat::JpegHeic, PreferredDate::ModifiedEarliest)
+                rule(
+                    vec![1],
+                    PreferredFormat::JpegHeic,
+                    PreferredDate::ModifiedEarliest
+                )
             )
             .unwrap(),
             1
@@ -1797,7 +1907,11 @@ mod keep_rules_tests {
             apply_keep_rules_on(
                 &conn,
                 Some("active"),
-                rule(vec![], PreferredFormat::Raw, PreferredDate::ModifiedEarliest)
+                rule(
+                    vec![],
+                    PreferredFormat::Raw,
+                    PreferredDate::ModifiedEarliest
+                )
             )
             .unwrap(),
             1
@@ -1815,13 +1929,21 @@ mod keep_rules_tests {
         apply_keep_rules_on(
             &conn,
             Some("active"),
-            rule(vec![], PreferredFormat::JpegHeic, PreferredDate::ModifiedEarliest),
+            rule(
+                vec![],
+                PreferredFormat::JpegHeic,
+                PreferredDate::ModifiedEarliest,
+            ),
         )
         .unwrap();
         assert_eq!(winner(&conn, 1), 4);
         let dates_only = KeepRules {
             preferred_size: PreferredSize::Ignore,
-            ..rule(vec![], PreferredFormat::Ignore, PreferredDate::ModifiedEarliest)
+            ..rule(
+                vec![],
+                PreferredFormat::Ignore,
+                PreferredDate::ModifiedEarliest,
+            )
         };
         apply_keep_rules_on(&conn, Some("active"), dates_only).unwrap();
         assert_eq!(winner(&conn, 1), 2);
@@ -1833,7 +1955,11 @@ mod keep_rules_tests {
         ] {
             let rules = KeepRules {
                 preferred_size,
-                ..rule(vec![], PreferredFormat::JpegHeic, PreferredDate::ModifiedEarliest)
+                ..rule(
+                    vec![],
+                    PreferredFormat::JpegHeic,
+                    PreferredDate::ModifiedEarliest,
+                )
             };
             apply_keep_rules_on(&conn, Some("active"), rules).unwrap();
             assert_eq!(winner(&conn, 1), expected);
@@ -1843,23 +1969,49 @@ mod keep_rules_tests {
         apply_keep_rules_on(
             &conn,
             Some("active"),
-            rule(vec![], PreferredFormat::JpegHeic, PreferredDate::CreatedEarliest),
+            rule(
+                vec![],
+                PreferredFormat::JpegHeic,
+                PreferredDate::CreatedEarliest,
+            ),
         )
         .unwrap();
         assert_eq!(winner(&conn, 1), 1);
         apply_keep_rules_on(
             &conn,
             Some("active"),
-            rule(vec![], PreferredFormat::JpegHeic, PreferredDate::CreatedLatest),
+            rule(
+                vec![],
+                PreferredFormat::JpegHeic,
+                PreferredDate::CreatedLatest,
+            ),
         )
         .unwrap();
         assert_eq!(winner(&conn, 1), 4);
-        for (preferred_date, expected) in [(PreferredDate::ModifiedLatest, 1), (PreferredDate::ModifiedEarliest, 4)] {
-            apply_keep_rules_on(&conn, Some("active"), rule(vec![], PreferredFormat::JpegHeic, preferred_date)).unwrap();
+        for (preferred_date, expected) in [
+            (PreferredDate::ModifiedLatest, 1),
+            (PreferredDate::ModifiedEarliest, 4),
+        ] {
+            apply_keep_rules_on(
+                &conn,
+                Some("active"),
+                rule(vec![], PreferredFormat::JpegHeic, preferred_date),
+            )
+            .unwrap();
             assert_eq!(winner(&conn, 1), expected);
         }
-        conn.execute("UPDATE afiles SET modified_at=NULL WHERE id=4", []).unwrap();
-        apply_keep_rules_on(&conn, Some("active"), rule(vec![], PreferredFormat::JpegHeic, PreferredDate::ModifiedLatest)).unwrap();
+        conn.execute("UPDATE afiles SET modified_at=NULL WHERE id=4", [])
+            .unwrap();
+        apply_keep_rules_on(
+            &conn,
+            Some("active"),
+            rule(
+                vec![],
+                PreferredFormat::JpegHeic,
+                PreferredDate::ModifiedLatest,
+            ),
+        )
+        .unwrap();
         // A missing timestamp ranks last: the tied file that still has one wins.
         assert_eq!(winner(&conn, 1), 1);
     }
@@ -1893,7 +2045,8 @@ mod keep_rules_tests {
         };
         apply_keep_rules_on(&conn, None, rules()).unwrap();
         assert_eq!(winner(&conn), 2);
-        conn.execute("UPDATE afiles SET modified_at=NULL", []).unwrap();
+        conn.execute("UPDATE afiles SET modified_at=NULL", [])
+            .unwrap();
         apply_keep_rules_on(&conn, None, rules()).unwrap();
         assert_eq!(winner(&conn), 2);
     }
@@ -2215,7 +2368,8 @@ mod keep_rules_tests {
                     );
                 }
             }
-            let (preview, components) = delete_preview(&conn, &removed, case.group_raw_pairs).unwrap();
+            let (preview, components) =
+                delete_preview(&conn, &removed, case.group_raw_pairs).unwrap();
             let mut component_ids = components
                 .iter()
                 .flat_map(|(&primary, members)| members.iter().map(move |(id, _)| (primary, *id)))

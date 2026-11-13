@@ -499,6 +499,40 @@
       </div>
 
       <div class="shrink-0">
+      <div v-if="hasVlFileId" class="border-t border-base-content/5 px-1 py-3">
+        <button type="button" class="flex w-full items-center gap-1 cursor-pointer text-base-content/70 hover:text-base-content" :aria-expanded="showVlPanel" @click="toggleVlPanel">
+          <IconRight class="w-3 h-3 transition-transform duration-200" :class="{ 'rotate-90': showVlPanel }" />
+          <span class="font-bold uppercase text-xs tracking-wide text-base-content/30">{{ $t('file_info.vl_understanding') }}</span>
+        </button>
+        <div v-if="showVlPanel" class="pt-3 pl-4 space-y-3 text-xs">
+          <div v-if="vlLoading" class="text-[12px] text-base-content/40">{{ $t('file_info.vl_loading') }}</div>
+          <template v-else-if="vlGroups.length > 0">
+            <div v-for="group in vlGroups" :key="group.key" class="space-y-1.5">
+              <div class="flex items-center gap-1 text-[11px] text-base-content/40">
+                <span>{{ group.templateLabel }}</span>
+                <span v-if="group.model"> · {{ group.model }}</span>
+                <span v-if="group.time"> · {{ group.time }}</span>
+              </div>
+              <div v-for="entry in group.entries" :key="entry.key" class="grid grid-cols-[84px_minmax(0,1fr)] gap-x-4">
+                <div class="text-[11px] text-base-content/30 min-h-6 py-1">{{ entry.label }}</div>
+                <div class="text-[12px] text-base-content/70 wrap-break-word py-1">{{ entry.text }}</div>
+              </div>
+              <button
+                v-if="group.copyText"
+                type="button"
+                class="flex items-center gap-1 text-[11px] text-base-content/40 hover:text-base-content cursor-pointer"
+                @click.stop="copyVlDescription(group.copyText)"
+              >
+                <IconCopy class="w-3 h-3" />{{ $t('file_info.vl_copy') }}
+              </button>
+            </div>
+          </template>
+          <div v-else class="text-[12px] text-base-content/40">{{ $t('file_info.vl_empty') }}</div>
+        </div>
+      </div>
+      </div>
+
+      <div class="shrink-0">
       <div v-if="hasSourceMetadata" class="border-t border-base-content/5 px-1 py-3">
         <button type="button" class="flex w-full items-center gap-1 cursor-pointer text-base-content/70 hover:text-base-content" :aria-expanded="showSourceMetadataPanel" @click="toggleSourceMetadata">
           <IconRight class="w-3 h-3 transition-transform duration-200" :class="{ 'rotate-90': showSourceMetadataPanel }" />
@@ -544,6 +578,14 @@ import { useUIStore } from '@/stores/uiStore';
 import { config, libConfig } from '@/common/config';
 import { isWebViewVideoPlaybackDisabled, getGStreamerAvailability } from '@/common/video';
 import { isOriginalUnavailable } from '@/common/availability';
+import { getVlAnnotations, listVlTemplates } from '@/common/vlApi';
+import {
+  buildResultEntries,
+  findTemplateVersion,
+  parseResponseSpec,
+  parseResultJson,
+  templateLabel,
+} from '@/common/vlLogic';
 import { getTagsForFile, renameFile, editImage, getAlbum, getFileCollections, getFileInfo, getMotionPhotoVideoPath, revealPath, getFacesForFile, getPersonThumbnail, isCloudOnlyFile } from '@/common/api';
 import { 
   copyFilePaths,
@@ -1214,6 +1256,99 @@ function toggleMetadata() {
 
 function toggleMapPanel() {
   config.infoPanel.showMap = !config.infoPanel.showMap;
+}
+
+// --- image understanding (VL) results ---
+
+// Collapsed by default: the annotations load on the first expand, not on
+// every file selection.
+const showVlPanel = ref(false);
+const vlAnnotations = ref<any[]>([]);
+const vlTemplates = ref<any[]>([]);
+const vlLoading = ref(false);
+const hasVlFileId = computed(() => Number(props.fileInfo?.id) > 0);
+
+const vlGroups = computed(() => {
+  return vlAnnotations.value.map((annotation, index) => {
+    // The response spec of the version that produced the annotation, not
+    // the newest version of the template.
+    const template = findTemplateVersion(vlTemplates.value, annotation.templateId, annotation.templateVersion);
+    const parsed = parseResultJson(annotation.resultJson ?? annotation.result_json ?? '');
+    const entries = parsed.ok
+      ? buildResultEntries(parsed.value, parseResponseSpec(template?.responseSpec ?? template?.response_spec ?? '').spec)
+        .filter(entry => entry.kind === 'text' || entry.kind === 'tags')
+        .map(entry => ({
+          key: entry.key,
+          label: entry.labelKey
+            ? String(t(vlFieldLabel(entry.labelKey)) ?? entry.labelKey)
+            : entry.key,
+          text: entry.kind === 'tags' ? entry.items.join('、') : entry.text,
+        }))
+      : [];
+    return {
+      key: `${annotation.id ?? index}`,
+      templateLabel: template ? templateLabel(template) : `${annotation.templateId ?? ''} v${annotation.templateVersion ?? ''}`,
+      model: annotation.model || '',
+      time: annotation.createdAt ? formatRelativeTime(annotation.createdAt, t) : (annotation.created_at ? formatRelativeTime(annotation.created_at, t) : ''),
+      entries,
+      copyText: entries.map(entry => entry.text).filter(Boolean).join('\n'),
+    };
+  }).filter(group => group.entries.length > 0 || group.copyText);
+});
+
+function vlFieldLabel(labelKey: string) {
+  return labelKey;
+}
+
+let vlLoadSeq = 0;
+async function loadVlAnnotations() {
+  const fileId = Number(props.fileInfo?.id);
+  if (!Number.isFinite(fileId) || fileId <= 0) {
+    vlAnnotations.value = [];
+    return;
+  }
+  const seq = ++vlLoadSeq;
+  vlLoading.value = true;
+  try {
+    const [annotations, templates] = await Promise.all([
+      getVlAnnotations(fileId),
+      listVlTemplates(),
+    ]);
+    if (seq !== vlLoadSeq) return;
+    vlAnnotations.value = annotations;
+    vlTemplates.value = templates;
+  } catch (error) {
+    console.error('Failed to load VL annotations:', error);
+    if (seq === vlLoadSeq) vlAnnotations.value = [];
+  } finally {
+    if (seq === vlLoadSeq) vlLoading.value = false;
+  }
+}
+
+function toggleVlPanel() {
+  showVlPanel.value = !showVlPanel.value;
+  if (showVlPanel.value) void loadVlAnnotations();
+}
+
+// A finished run may have annotated the file being shown.
+let unlistenVlFinished: (() => void) | null = null;
+onMounted(async () => {
+  try {
+    unlistenVlFinished = await listen('vl-analysis-finished', () => {
+      if (showVlPanel.value) void loadVlAnnotations();
+    });
+  } catch {
+    // Without the event the panel simply shows the state of the last expand.
+  }
+});
+onBeforeUnmount(() => {
+  unlistenVlFinished?.();
+  unlistenVlFinished = null;
+});
+
+function copyVlDescription(text: string) {
+  void navigator.clipboard?.writeText(text);
+  toast(t('file_info.vl_copied'));
 }
 
 const quickSave = async (): Promise<boolean> => {

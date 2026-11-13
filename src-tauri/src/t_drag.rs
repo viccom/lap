@@ -3,12 +3,12 @@ use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
-use tauri::{ipc::Channel, AppHandle, Emitter, Listener, Manager, Window};
+use tauri::{AppHandle, Emitter, Listener, Manager, Window, ipc::Channel};
 
 const MAX_NATIVE_DRAG_FILES: usize = 1000;
 

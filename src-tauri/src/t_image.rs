@@ -29,8 +29,8 @@ use std::time::UNIX_EPOCH;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::{t_jxl, t_libraw, t_utils};
 use crate::t_raw_display::RawDisplayOptions;
+use crate::{t_jxl, t_libraw, t_utils};
 
 #[derive(Default)]
 pub struct CaptureSettings {
@@ -484,7 +484,12 @@ pub fn is_jpeg_path(file_path: &str) -> bool {
     Path::new(file_path)
         .extension()
         .and_then(|ext| ext.to_str())
-        .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "jpg" | "jpeg" | "jpe" | "jfif"))
+        .map(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "jpg" | "jpeg" | "jpe" | "jfif"
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -589,7 +594,12 @@ pub fn generate_directory_thumbnails(
 
             let orientation = get_image_orientation(&path_str);
             let thumb = if file_type == 3 {
-                get_raw_thumbnail(&path_str, orientation, thumbnail_size, RawDisplayOptions::rendered_bright())
+                get_raw_thumbnail(
+                    &path_str,
+                    orientation,
+                    thumbnail_size,
+                    RawDisplayOptions::rendered_bright(),
+                )
             } else {
                 get_image_thumbnail(&path_str, orientation, thumbnail_size)
             };
@@ -643,7 +653,11 @@ pub(crate) fn get_image_thumbnail_with_encoding(
     }
 
     if crate::t_libraw::is_tiff_path(file_path) {
-        if let Ok(Some(data)) = crate::t_libraw::get_raw_thumbnail(file_path, thumbnail_size, RawDisplayOptions::rendered_bright()) {
+        if let Ok(Some(data)) = crate::t_libraw::get_raw_thumbnail(
+            file_path,
+            thumbnail_size,
+            RawDisplayOptions::rendered_bright(),
+        ) {
             return Ok(Some(data));
         }
     }
@@ -820,18 +834,17 @@ pub fn get_raw_thumbnail(
     thumbnail_size: u32,
     prefer_embedded_jpeg: RawDisplayOptions,
 ) -> Result<Option<Vec<u8>>, String> {
-    if let Ok(Some(data)) = t_libraw::get_raw_thumbnail(
-        file_path,
-        thumbnail_size,
-        prefer_embedded_jpeg,
-    ) {
+    if let Ok(Some(data)) =
+        t_libraw::get_raw_thumbnail(file_path, thumbnail_size, prefer_embedded_jpeg)
+    {
         return Ok(Some(data));
     }
 
     // Fallback: EXIF-based embedded JPEG extraction
     if let Ok(Some(preview)) = select_embedded_jpeg_for_thumbnail(file_path, thumbnail_size) {
         if let Ok(img) = image::load_from_memory(&preview.data) {
-            return resize_dynamic_image_to_jpeg(img, preview.orientation, thumbnail_size).map(Some);
+            return resize_dynamic_image_to_jpeg(img, preview.orientation, thumbnail_size)
+                .map(Some);
         }
     }
 
@@ -1261,7 +1274,9 @@ fn should_generate_preview_for_file(file_path: &str, file_type: i64) -> bool {
         || is_avif_path(file_path)
 }
 
-pub(crate) async fn get_generated_preview_bytes(file_path: &str) -> Result<Option<Vec<u8>>, String> {
+pub(crate) async fn get_generated_preview_bytes(
+    file_path: &str,
+) -> Result<Option<Vec<u8>>, String> {
     let file_type = t_utils::get_file_type(file_path).unwrap_or(0);
 
     if file_type == 3 {
@@ -1289,11 +1304,7 @@ pub(crate) async fn get_generated_preview_bytes(file_path: &str) -> Result<Optio
     }
 
     if is_heic_path(file_path) {
-        return crate::t_heif::get_heif_preview(
-            file_path,
-            get_image_orientation(file_path),
-            4096,
-        );
+        return crate::t_heif::get_heif_preview(file_path, get_image_orientation(file_path), 4096);
     }
 
     if is_ffmpeg_backed_image_path(file_path) {
@@ -1777,7 +1788,7 @@ pub fn get_cached_preview_bytes(path: &str, options: RawDisplayOptions) -> Optio
             .find(|entry| entry.0 == path && entry.2 == options)
             .or_else(|| cache.iter().rev().find(|entry| entry.0 == path))
         {
-            return Some(entry.3 .0.clone());
+            return Some(entry.3.0.clone());
         }
     }
     FILE_IMAGE_RESULT_CACHE
@@ -1874,9 +1885,15 @@ fn get_embedded_preview(path: &str) -> Option<Vec<u8>> {
     // Some cameras expose previews that LibRaw cannot extract. Preserve the
     // existing JPEG extraction fallback, with accurate source metadata.
     if let Ok(Some(preview)) = select_embedded_jpeg_for_preview(path) {
-        let (raw_width, raw_height, _) = t_libraw::get_raw_dimensions_with_flip(path).unwrap_or((1024, 512, 0));
-        if t_libraw::embedded_preview_is_large_enough(preview.width, preview.height, raw_width, raw_height)
-            && let Ok(image) = image::load_from_memory(&preview.data) {
+        let (raw_width, raw_height, _) =
+            t_libraw::get_raw_dimensions_with_flip(path).unwrap_or((1024, 512, 0));
+        if t_libraw::embedded_preview_is_large_enough(
+            preview.width,
+            preview.height,
+            raw_width,
+            raw_height,
+        ) && let Ok(image) = image::load_from_memory(&preview.data)
+        {
             let image = apply_orientation(image, preview.orientation);
             let data = crate::t_jpeg::encode_rgb8(&image.to_rgb8(), 85).ok()?;
             return Some(data);
@@ -1885,13 +1902,20 @@ fn get_embedded_preview(path: &str) -> Option<Vec<u8>> {
     None
 }
 
-fn get_raw_preview_with_source(path: &str, options: RawDisplayOptions, full_size: bool) -> Result<RawPreviewResult, String> {
+fn get_raw_preview_with_source(
+    path: &str,
+    options: RawDisplayOptions,
+    full_size: bool,
+) -> Result<RawPreviewResult, String> {
     if options.embedded() {
         if let Some(data) = get_embedded_preview(path) {
             return Ok((data, "embedded", false));
         }
     }
-    let rendered = RawDisplayOptions { mode: crate::t_raw_display::RawPreviewMode::Rendered, ..options };
+    let rendered = RawDisplayOptions {
+        mode: crate::t_raw_display::RawPreviewMode::Rendered,
+        ..options
+    };
     match t_libraw::get_raw_preview_with_size(path, rendered, full_size) {
         Ok((data, source, _)) => Ok((data, source, options.embedded())),
         Err(error) => {
@@ -1902,7 +1926,8 @@ fn get_raw_preview_with_source(path: &str, options: RawDisplayOptions, full_size
             }
             // Thumbnail and editing paths also accept files whose contents do
             // not match their RAW extension. Keep browsing's final fallback.
-            let image = ImageReader::open(path).ok()
+            let image = ImageReader::open(path)
+                .ok()
                 .and_then(|reader| reader.with_guessed_format().ok())
                 .and_then(|reader| reader.decode().ok());
             if let Some(image) = image {
@@ -1913,100 +1938,207 @@ fn get_raw_preview_with_source(path: &str, options: RawDisplayOptions, full_size
                 Some(data) => Ok((data, "image", false)),
                 None => Err(error),
             }
-        },
+        }
     }
 }
 
 // Keep decoder work off the async runtime and bound concurrent full RAW previews.
 type RawPreviewResult = (Vec<u8>, &'static str, bool);
-static RAW_PREVIEW_CACHE: Lazy<Mutex<VecDeque<(String, (u64, u128), RawDisplayOptions, RawPreviewResult, bool)>>> = Lazy::new(|| Mutex::new(VecDeque::new()));
-static RAW_PREVIEW_PERMITS: Lazy<Vec<std::sync::Arc<tokio::sync::Semaphore>>> = Lazy::new(|| (0..2).map(|_| std::sync::Arc::new(tokio::sync::Semaphore::new(1))).collect());
-static RAW_PREVIEW_LOCKS: Lazy<Vec<tokio::sync::Mutex<()>>> = Lazy::new(|| (0..64).map(|_| tokio::sync::Mutex::new(())).collect());
-static RAW_PREVIEW_REQUESTS: Lazy<Mutex<HashMap<String, std::sync::Weak<std::sync::atomic::AtomicBool>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static RAW_PREVIEW_CACHE: Lazy<
+    Mutex<
+        VecDeque<(
+            String,
+            (u64, u128),
+            RawDisplayOptions,
+            RawPreviewResult,
+            bool,
+        )>,
+    >,
+> = Lazy::new(|| Mutex::new(VecDeque::new()));
+static RAW_PREVIEW_PERMITS: Lazy<Vec<std::sync::Arc<tokio::sync::Semaphore>>> = Lazy::new(|| {
+    (0..2)
+        .map(|_| std::sync::Arc::new(tokio::sync::Semaphore::new(1)))
+        .collect()
+});
+static RAW_PREVIEW_LOCKS: Lazy<Vec<tokio::sync::Mutex<()>>> =
+    Lazy::new(|| (0..64).map(|_| tokio::sync::Mutex::new(())).collect());
+static RAW_PREVIEW_REQUESTS: Lazy<
+    Mutex<HashMap<String, std::sync::Weak<std::sync::atomic::AtomicBool>>>,
+> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub fn register_raw_preview_request(viewer: &str) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
     let active = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     if let Ok(mut requests) = RAW_PREVIEW_REQUESTS.lock() {
         requests.retain(|_, request| request.strong_count() > 0);
-        if let Some(previous) = requests.insert(viewer.to_string(), std::sync::Arc::downgrade(&active)).and_then(|request| request.upgrade()) {
+        if let Some(previous) = requests
+            .insert(viewer.to_string(), std::sync::Arc::downgrade(&active))
+            .and_then(|request| request.upgrade())
+        {
             previous.store(false, std::sync::atomic::Ordering::Relaxed);
         }
     }
     active
 }
 
-fn raw_preview_disk_path(path: &str, signature: (u64, u128), options: RawDisplayOptions, full_size: bool) -> Result<std::path::PathBuf, String> {
-    let key = blake3::hash(format!("raw-preview-v6:{}:{path}:{signature:?}:{options:?}:{full_size}", options.cache_tag()).as_bytes());
-    Ok(crate::t_config::get_app_cache_dir()?.join("raw-previews").join(key.to_hex().as_str()))
+fn raw_preview_disk_path(
+    path: &str,
+    signature: (u64, u128),
+    options: RawDisplayOptions,
+    full_size: bool,
+) -> Result<std::path::PathBuf, String> {
+    let key = blake3::hash(
+        format!(
+            "raw-preview-v6:{}:{path}:{signature:?}:{options:?}:{full_size}",
+            options.cache_tag()
+        )
+        .as_bytes(),
+    );
+    Ok(crate::t_config::get_app_cache_dir()?
+        .join("raw-previews")
+        .join(key.to_hex().as_str()))
 }
 
 fn read_raw_preview_disk(path: &std::path::Path) -> Option<RawPreviewResult> {
     let bytes = fs::read(path).ok()?;
-    let source = match *bytes.first()? { 1 => "embedded", 2 => "rendered", 3 => "brightened", 4 => "image", _ => return None };
+    let source = match *bytes.first()? {
+        1 => "embedded",
+        2 => "rendered",
+        3 => "brightened",
+        4 => "image",
+        _ => return None,
+    };
     let unavailable = *bytes.get(1)? != 0;
     let data = bytes.get(2..)?;
-    if !data.starts_with(&[0xff, 0xd8]) || !data.ends_with(&[0xff, 0xd9]) { return None; }
+    if !data.starts_with(&[0xff, 0xd8]) || !data.ends_with(&[0xff, 0xd9]) {
+        return None;
+    }
     Some((data.to_vec(), source, unavailable))
 }
 
 fn write_raw_preview_disk(path: &std::path::Path, result: &RawPreviewResult) {
-    let Some(dir) = path.parent() else { return; };
-    if fs::create_dir_all(dir).is_err() { return; }
-    let mut bytes = vec![match result.1 { "embedded" => 1, "brightened" => 3, "image" => 4, _ => 2 }, result.2 as u8];
+    let Some(dir) = path.parent() else {
+        return;
+    };
+    if fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let mut bytes = vec![
+        match result.1 {
+            "embedded" => 1,
+            "brightened" => 3,
+            "image" => 4,
+            _ => 2,
+        },
+        result.2 as u8,
+    ];
     bytes.extend_from_slice(&result.0);
     let temp = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
-    if fs::write(&temp, bytes).is_ok() { let _ = fs::rename(&temp, path); }
+    if fs::write(&temp, bytes).is_ok() {
+        let _ = fs::rename(&temp, path);
+    }
     let _ = fs::remove_file(&temp);
-    let mut entries: Vec<_> = fs::read_dir(dir).into_iter().flatten().flatten().filter_map(|entry| {
-        if entry.path().extension().is_some() { return None; }
-        let meta = entry.metadata().ok()?;
-        Some((entry.path(), meta.len(), meta.modified().ok()?))
-    }).collect();
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            if entry.path().extension().is_some() {
+                return None;
+            }
+            let meta = entry.metadata().ok()?;
+            Some((entry.path(), meta.len(), meta.modified().ok()?))
+        })
+        .collect();
     let mut size: u64 = entries.iter().map(|entry| entry.1).sum();
     entries.sort_by_key(|entry| entry.2);
     for (file, len, _) in entries {
-        if size <= 512 * 1024 * 1024 { break; }
-        if fs::remove_file(file).is_ok() { size = size.saturating_sub(len); }
+        if size <= 512 * 1024 * 1024 {
+            break;
+        }
+        if fs::remove_file(file).is_ok() {
+            size = size.saturating_sub(len);
+        }
     }
 }
 
-pub async fn get_raw_preview_cached(path: &str, options: RawDisplayOptions, full_size: bool, active: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>) -> Result<RawPreviewResult, String> {
+pub async fn get_raw_preview_cached(
+    path: &str,
+    options: RawDisplayOptions,
+    full_size: bool,
+    active: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+) -> Result<RawPreviewResult, String> {
     let signature = get_file_signature(path)?;
     let disk = raw_preview_disk_path(path, signature, options, full_size).ok();
     let hash = blake3::hash(format!("{path}:{options:?}:{full_size}").as_bytes());
-    let _request = RAW_PREVIEW_LOCKS[hash.as_bytes()[0] as usize % 64].lock().await;
+    let _request = RAW_PREVIEW_LOCKS[hash.as_bytes()[0] as usize % 64]
+        .lock()
+        .await;
     let check_active = || {
-        if active.as_ref().is_some_and(|active| !active.load(std::sync::atomic::Ordering::Relaxed)) {
+        if active
+            .as_ref()
+            .is_some_and(|active| !active.load(std::sync::atomic::Ordering::Relaxed))
+        {
             Err("RAW preview superseded".to_string())
-        } else { Ok(()) }
+        } else {
+            Ok(())
+        }
     };
     check_active()?;
     if let Ok(cache) = RAW_PREVIEW_CACHE.lock() {
-        if let Some(entry) = cache.iter().find(|entry| entry.0 == path && entry.1 == signature && entry.2 == options && entry.4 == full_size) {
+        if let Some(entry) = cache.iter().find(|entry| {
+            entry.0 == path && entry.1 == signature && entry.2 == options && entry.4 == full_size
+        }) {
             return Ok(entry.3.clone());
         }
     }
     let cached = if let Some(disk) = disk.clone() {
-        tauri::async_runtime::spawn_blocking(move || read_raw_preview_disk(&disk)).await.map_err(|e| e.to_string())?
-    } else { None };
-    let result = if let Some(cached) = cached { cached } else {
-        let permit = RAW_PREVIEW_PERMITS[full_size as usize].clone().acquire_owned().await.map_err(|e| e.to_string())?;
+        tauri::async_runtime::spawn_blocking(move || read_raw_preview_disk(&disk))
+            .await
+            .map_err(|e| e.to_string())?
+    } else {
+        None
+    };
+    let result = if let Some(cached) = cached {
+        cached
+    } else {
+        let permit = RAW_PREVIEW_PERMITS[full_size as usize]
+            .clone()
+            .acquire_owned()
+            .await
+            .map_err(|e| e.to_string())?;
         check_active()?;
         let path = path.to_string();
         tauri::async_runtime::spawn_blocking(move || {
             let _permit = permit;
             let result = get_raw_preview_with_source(&path, options, full_size)?;
             if options.embedded() || result.1 != "embedded" {
-                if let Some(disk) = disk { write_raw_preview_disk(&disk, &result); }
+                if let Some(disk) = disk {
+                    write_raw_preview_disk(&disk, &result);
+                }
             }
             Ok::<_, String>(result)
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
-    if !options.embedded() && result.1 == "embedded" { return Ok(result); }
+    if !options.embedded() && result.1 == "embedded" {
+        return Ok(result);
+    }
     if let Ok(mut cache) = RAW_PREVIEW_CACHE.lock() {
-        cache.retain(|entry| entry.0 != path || (entry.1 == signature && (entry.2 != options || entry.4 != full_size)));
-        cache.push_back((path.to_string(), signature, options, result.clone(), full_size));
-        while cache.len() > 8 { cache.pop_front(); }
+        cache.retain(|entry| {
+            entry.0 != path
+                || (entry.1 == signature && (entry.2 != options || entry.4 != full_size))
+        });
+        cache.push_back((
+            path.to_string(),
+            signature,
+            options,
+            result.clone(),
+            full_size,
+        ));
+        while cache.len() > 8 {
+            cache.pop_front();
+        }
     }
     Ok(result)
 }
@@ -2020,11 +2152,23 @@ mod offline_preview_tests {
         let path = "/fixture/pentax/sample.pef";
         let signature = (123, 456);
         let options = RawDisplayOptions::default();
-        let legacy = blake3::hash(format!("raw-preview-v6:{path}:{signature:?}:{options:?}:false").as_bytes());
+        let legacy = blake3::hash(
+            format!("raw-preview-v6:{path}:{signature:?}:{options:?}:false").as_bytes(),
+        );
         let current = raw_preview_disk_path(path, signature, options, false).unwrap();
-        assert_ne!(current.file_name().unwrap().to_str().unwrap(), legacy.to_hex().as_str());
-        assert_ne!(current, raw_preview_disk_path(path, signature, options, true).unwrap());
-        assert_ne!(current, raw_preview_disk_path(path, signature, RawDisplayOptions::rendered_bright(), false).unwrap());
+        assert_ne!(
+            current.file_name().unwrap().to_str().unwrap(),
+            legacy.to_hex().as_str()
+        );
+        assert_ne!(
+            current,
+            raw_preview_disk_path(path, signature, options, true).unwrap()
+        );
+        assert_ne!(
+            current,
+            raw_preview_disk_path(path, signature, RawDisplayOptions::rendered_bright(), false)
+                .unwrap()
+        );
     }
 
     #[test]
@@ -2035,21 +2179,53 @@ mod offline_preview_tests {
         fs::create_dir_all(&output).unwrap();
         for path in fs::read_to_string(manifest).unwrap().lines() {
             let name = Path::new(path).file_name().unwrap().to_str().unwrap();
-            println!("FILE {name}, type={:?}, EXIF={}", t_utils::get_file_type(path), get_image_orientation(path));
+            println!(
+                "FILE {name}, type={:?}, EXIF={}",
+                t_utils::get_file_type(path),
+                get_image_orientation(path)
+            );
             t_libraw::inspect_raw_fixture_orientation(path);
-            for mode in [crate::t_raw_display::RawPreviewMode::Embedded, crate::t_raw_display::RawPreviewMode::Rendered] {
-                let options = RawDisplayOptions { mode, prefer_pair: false, auto_bright: false };
+            for mode in [
+                crate::t_raw_display::RawPreviewMode::Embedded,
+                crate::t_raw_display::RawPreviewMode::Rendered,
+            ] {
+                let options = RawDisplayOptions {
+                    mode,
+                    prefer_pair: false,
+                    auto_bright: false,
+                };
                 let thumb = if t_utils::get_file_type(path) == Some(3) {
                     get_raw_thumbnail(path, get_image_orientation(path), 512, options)
-                } else { get_image_thumbnail(path, get_image_orientation(path), 512) }.unwrap().unwrap();
+                } else {
+                    get_image_thumbnail(path, get_image_orientation(path), 512)
+                }
+                .unwrap()
+                .unwrap();
                 let (preview, source) = if t_utils::get_file_type(path) == Some(3) {
-                    let (data, source, _) = get_raw_preview_with_source(path, options, false).unwrap();
+                    let (data, source, _) =
+                        get_raw_preview_with_source(path, options, false).unwrap();
                     (data, source)
-                } else { (tauri::async_runtime::block_on(get_file_image_bytes_cached(path, options)).unwrap(), "tiff") };
+                } else {
+                    (
+                        tauri::async_runtime::block_on(get_file_image_bytes_cached(path, options))
+                            .unwrap(),
+                        "tiff",
+                    )
+                };
                 let a = image::load_from_memory(&thumb).unwrap();
                 let b = image::load_from_memory(&preview).unwrap();
-                println!("  {mode:?}: thumb={}x{} preview={}x{} source={source}",a.width(),a.height(),b.width(),b.height());
-                assert_eq!(a.width() > a.height(), b.width() > b.height(), "{name}: {mode:?} orientation differs");
+                println!(
+                    "  {mode:?}: thumb={}x{} preview={}x{} source={source}",
+                    a.width(),
+                    a.height(),
+                    b.width(),
+                    b.height()
+                );
+                assert_eq!(
+                    a.width() > a.height(),
+                    b.width() > b.height(),
+                    "{name}: {mode:?} orientation differs"
+                );
                 fs::write(output.join(format!("{name}-{mode:?}-thumb.jpg")), thumb).unwrap();
                 fs::write(output.join(format!("{name}-{mode:?}-preview.jpg")), preview).unwrap();
             }
@@ -2060,14 +2236,28 @@ mod offline_preview_tests {
     #[ignore = "requires LAP_RAW_PREVIEW_FIXTURE pointing to a portrait Nikon E5700 NEF"]
     fn nikon_e5700_thumbnail_matches_preview_orientation() {
         let path = std::env::var("LAP_RAW_PREVIEW_FIXTURE").unwrap();
-        for mode in [crate::t_raw_display::RawPreviewMode::Embedded, crate::t_raw_display::RawPreviewMode::Rendered] {
-            let options = RawDisplayOptions { mode, prefer_pair: false, auto_bright: false };
-            let thumbnail = get_raw_thumbnail(&path, get_image_orientation(&path), 512, options).unwrap().unwrap();
+        for mode in [
+            crate::t_raw_display::RawPreviewMode::Embedded,
+            crate::t_raw_display::RawPreviewMode::Rendered,
+        ] {
+            let options = RawDisplayOptions {
+                mode,
+                prefer_pair: false,
+                auto_bright: false,
+            };
+            let thumbnail = get_raw_thumbnail(&path, get_image_orientation(&path), 512, options)
+                .unwrap()
+                .unwrap();
             let thumbnail_image = image::load_from_memory(&thumbnail).unwrap();
             let (preview, source, _) = get_raw_preview_with_source(&path, options, false).unwrap();
             let preview_image = image::load_from_memory(&preview).unwrap();
-            println!("{mode:?}: thumbnail {}x{}, preview {}x{} ({source})",
-                thumbnail_image.width(), thumbnail_image.height(), preview_image.width(), preview_image.height());
+            println!(
+                "{mode:?}: thumbnail {}x{}, preview {}x{} ({source})",
+                thumbnail_image.width(),
+                thumbnail_image.height(),
+                preview_image.width(),
+                preview_image.height()
+            );
             assert!(preview_image.height() > preview_image.width());
             assert!(thumbnail_image.height() > thumbnail_image.width());
         }
@@ -2077,12 +2267,19 @@ mod offline_preview_tests {
     #[ignore = "requires LAP_RAW_PREVIEW_FIXTURE pointing to an unsupported RAW file"]
     fn editable_raw_preview_falls_back_to_embedded_pixels() {
         let path = std::env::var("LAP_RAW_PREVIEW_FIXTURE").unwrap();
-        assert!(t_libraw::get_raw_preview_image(&path, RawDisplayOptions::rendered_bright()).is_err());
+        assert!(
+            t_libraw::get_raw_preview_image(&path, RawDisplayOptions::rendered_bright()).is_err()
+        );
         let embedded = get_embedded_preview(&path).expect("embedded preview must be available");
         let editing = tauri::async_runtime::block_on(get_generated_preview_bytes(&path))
-            .unwrap().unwrap();
+            .unwrap()
+            .unwrap();
         let image = image::load_from_memory(&editing).unwrap();
-        println!("Editable embedded preview: {} × {}", image.width(), image.height());
+        println!(
+            "Editable embedded preview: {} × {}",
+            image.width(),
+            image.height()
+        );
         assert_eq!(editing, embedded);
         // Export/crop must decode the same oriented pixels as the editing preview.
         let export = tauri::async_runtime::block_on(load_oriented_image(&path, 1)).unwrap();
@@ -2099,10 +2296,18 @@ mod offline_preview_tests {
             let path = dir.join(format!("sample.{extension}"));
             fs::write(&path, &jpeg).unwrap();
             let path = path.to_str().unwrap();
-            for mode in [crate::t_raw_display::RawPreviewMode::Embedded, crate::t_raw_display::RawPreviewMode::Rendered] {
-                let options = RawDisplayOptions { mode, auto_bright: true, prefer_pair: false };
+            for mode in [
+                crate::t_raw_display::RawPreviewMode::Embedded,
+                crate::t_raw_display::RawPreviewMode::Rendered,
+            ] {
+                let options = RawDisplayOptions {
+                    mode,
+                    auto_bright: true,
+                    prefer_pair: false,
+                };
                 for full_size in [false, true] {
-                    let (data, source, unavailable) = get_raw_preview_with_source(path, options, full_size).unwrap();
+                    let (data, source, unavailable) =
+                        get_raw_preview_with_source(path, options, full_size).unwrap();
                     let decoded = image::load_from_memory(&data).unwrap();
                     assert_eq!((decoded.width(), decoded.height()), (32, 24));
                     assert_eq!(source, "image");
@@ -2110,7 +2315,10 @@ mod offline_preview_tests {
                 }
             }
             fs::write(path, b"not an image").unwrap();
-            assert!(get_raw_preview_with_source(path, RawDisplayOptions::rendered_bright(), false).is_err());
+            assert!(
+                get_raw_preview_with_source(path, RawDisplayOptions::rendered_bright(), false)
+                    .is_err()
+            );
         }
         fs::remove_dir_all(dir).unwrap();
     }

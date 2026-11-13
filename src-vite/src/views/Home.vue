@@ -202,6 +202,7 @@ import Library from '@/components/Library.vue';
 import AlbumList from '@/components/AlbumList.vue';
 const SmartAlbumList = defineAsyncComponent(() => import('@/components/SmartAlbumList.vue'));
 const ImageSearch = defineAsyncComponent(() => import('@/components/ImageSearch.vue'));
+const AiSearchPanel = defineAsyncComponent(() => import('@/components/AiSearchPanel.vue'));
 const Tag = defineAsyncComponent(() => import('@/components/Tag.vue'));
 const Calendar = defineAsyncComponent(() => import('@/components/Calendar.vue'));
 const Location = defineAsyncComponent(() => import('@/components/Location.vue'));
@@ -222,6 +223,7 @@ import {
   IconPerson,
   IconCamera,
   IconSearch,
+  IconSparkles,
   IconSettings,
   IconDot,
   IconPhotoAll,
@@ -382,6 +384,10 @@ const buttons = computed(() =>  [
   { index: SIDEBAR.ALBUM, icon: IconFolders, component: AlbumList, text: localeMsg.value.sidebar.album, props: { selectionSource: 'album' } },
   { index: SIDEBAR.SMART_ALBUM, icon: IconFolderCog, component: SmartAlbumList, text: localeMsg.value.album.smart_album_list },
   { index: SIDEBAR.SEARCH, icon: IconSearch, component: ImageSearch, text: localeMsg.value.sidebar.search },
+  // The AI search entry sits right below the official search. Its sidebar
+  // index (9) is new, so the persisted indices of the existing entries stay
+  // valid; the optional `order` sorts it between SEARCH (3) and TAG (4).
+  { index: SIDEBAR.AI_SEARCH, icon: IconSparkles, component: AiSearchPanel, text: localeMsg.value.sidebar.ai_search, order: 3.5 },
   { index: SIDEBAR.CALENDAR, icon: IconCalendarDay, component: Calendar, text: localeMsg.value.sidebar.calendar },
   { index: SIDEBAR.TAG, icon: IconTag, component: Tag, text: localeMsg.value.sidebar.tag },
   { index: SIDEBAR.PERSON, icon: IconPerson, component: Person, text: localeMsg.value.sidebar.people, hidden: !config.settings.face.enabled },
@@ -401,7 +407,7 @@ const visibleButtons = computed(() =>
   buttons.value
     .map((item) => ({ ...item, disabled: libraryEmpty.value && item.index !== SIDEBAR.ALBUM }))
     .filter(item => !item.hidden)
-    .sort((a, b) => a.index - b.index)
+    .sort((a, b) => (a.order ?? a.index) - (b.order ?? b.index))
 );
 
 watch(() => config.settings.face.enabled, (enabled) => {

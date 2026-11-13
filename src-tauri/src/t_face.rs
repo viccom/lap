@@ -753,7 +753,9 @@ pub fn run_face_indexing(
             // We need to know if we used a thumbnail to scale the bbox
             let thumb = t_sqlite::AThumb::fetch(file_id);
             // Reading the online-only original would download it; retry once it is local.
-            if !matches!(&thumb, Ok(Some(t)) if t.thumb_data.is_some()) && crate::t_utils::is_cloud_only_path(&file_path) {
+            if !matches!(&thumb, Ok(Some(t)) if t.thumb_data.is_some())
+                && crate::t_utils::is_cloud_only_path(&file_path)
+            {
                 continue;
             }
             let mut engine = face_state.0.lock().unwrap();
@@ -822,12 +824,19 @@ pub fn run_face_indexing(
                     }
                 }
                 Err(e) => {
-                    if !crate::t_utils::content_readable(&file_path) { continue; }
+                    if !crate::t_utils::content_readable(&file_path) {
+                        continue;
+                    }
                     eprintln!("Failed to process image {}: {}", file_path, e);
                     // Do not retry files the decoder cannot read on every resume.
                     // Status 2 means the image was processed without a face result.
-                    if let Err(mark_error) = t_sqlite::Face::mark_scanned_with_conn(&db_conn, file_id, 2) {
-                        eprintln!("Failed to mark unreadable file {} as skipped: {}", file_id, mark_error);
+                    if let Err(mark_error) =
+                        t_sqlite::Face::mark_scanned_with_conn(&db_conn, file_id, 2)
+                    {
+                        eprintln!(
+                            "Failed to mark unreadable file {} as skipped: {}",
+                            file_id, mark_error
+                        );
                     }
                 }
             }

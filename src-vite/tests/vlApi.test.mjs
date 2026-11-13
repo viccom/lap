@@ -9,6 +9,9 @@ import {
   getVlAnnotations,
   getVlCalls,
   getVlConfig,
+  listVlModels,
+  listVlRunCalls,
+  listVlRuns,
   listVlTemplates,
   runVlAnalysis,
   setVlConfig,
@@ -19,13 +22,21 @@ import {
   buildRunArgs,
   buildTemplateArgs,
   buildVlConfigArgs,
+  callSucceeded,
+  CALL_STATUS_ERROR,
+  CALL_STATUS_OK,
   describeVlError,
   formatUsage,
   groupTemplatesByName,
+  modelLabel,
+  normalizeMaxConcurrency,
+  normalizeProtocol,
   parseResponseSpec,
   parseResultJson,
+  partitionModels,
   pickLatestVersions,
   resolveApiKeyAction,
+  runStateLabelKey,
   templateEditKeys,
   templateLabel,
   toApiKeyArgument,
@@ -65,8 +76,14 @@ test('set_vl_config keeps the stored key when no key is given', async () => {
   const { calls, invoker } = recorder({ gatewayUrl: 'https://gw', model: 'auto/x', configured: true });
   const view = await setVlConfig({ gatewayUrl: ' https://gw ', model: ' auto/x ' }, invoker);
   assert.equal(calls[0].command, 'set_vl_config');
-  assert.deepEqual(calls[0].args, { gatewayUrl: 'https://gw', apiKey: null, model: 'auto/x', rerankModel: '' });
+  assert.deepEqual(calls[0].args, { gatewayUrl: 'https://gw', apiKey: null, protocol: 'anthropic', model: 'auto/x', rerankModel: '', embedSource: '', embedModel: '', maxConcurrency: 2 });
   assert.equal(view.configured, true);
+});
+
+test('set_vl_config passes the chosen protocol through', async () => {
+  const { calls, invoker } = recorder({ gatewayUrl: '', model: '', configured: true });
+  await setVlConfig({ gatewayUrl: 'https://gw', model: 'm', protocol: ' openai ' }, invoker);
+  assert.equal(calls[0].args.protocol, 'openai');
 });
 
 test('set_vl_config clears the stored key with an empty string', async () => {
@@ -89,12 +106,52 @@ test('the api key argument distinguishes keep, clear and set', () => {
   assert.equal(toApiKeyArgument(undefined), null);
   assert.equal(toApiKeyArgument(''), '');
   assert.equal(toApiKeyArgument(' sk-1 '), 'sk-1');
-  assert.deepEqual(buildVlConfigArgs({ gatewayUrl: ' gw ', apiKey: null, model: ' m ', rerankModel: ' r ' }), {
+  assert.deepEqual(buildVlConfigArgs({ gatewayUrl: ' gw ', apiKey: null, model: ' m ', rerankModel: ' r ', embedSource: ' cloud ', embedModel: ' e ' }), {
     gatewayUrl: 'gw',
     apiKey: null,
+    protocol: 'anthropic',
     model: 'm',
     rerankModel: 'r',
+    embedSource: 'cloud',
+    embedModel: 'e',
+    maxConcurrency: 2,
   });
+  assert.equal(buildVlConfigArgs({ protocol: 'openai' }).protocol, 'openai');
+});
+
+test('the protocol setting normalizes unknown values to anthropic', () => {
+  assert.equal(normalizeProtocol('openai'), 'openai');
+  assert.equal(normalizeProtocol(' OpenAI '), 'openai');
+  assert.equal(normalizeProtocol('anthropic'), 'anthropic');
+  assert.equal(normalizeProtocol(''), 'anthropic');
+  assert.equal(normalizeProtocol(undefined), 'anthropic');
+  assert.equal(normalizeProtocol('nonsense'), 'anthropic');
+});
+
+test('the max concurrency is clamped to 1..16 with a default of 2', () => {
+  assert.equal(normalizeMaxConcurrency(undefined), 2);
+  assert.equal(normalizeMaxConcurrency(0), 2);
+  assert.equal(normalizeMaxConcurrency(-3), 2);
+  assert.equal(normalizeMaxConcurrency(1), 1);
+  assert.equal(normalizeMaxConcurrency(16), 16);
+  assert.equal(normalizeMaxConcurrency(99), 16);
+  assert.equal(normalizeMaxConcurrency(3.9), 3);
+});
+
+test('a run state maps to a translated label and unknown states stay generic', () => {
+  assert.equal(runStateLabelKey('queued'), 'settings.vl.run_state_queued');
+  assert.equal(runStateLabelKey('weird'), 'settings.vl.run_state_unknown');
+});
+
+test('a stored call counts as a success only for the backend ok token', () => {
+  assert.equal(CALL_STATUS_OK, 'ok');
+  assert.equal(CALL_STATUS_ERROR, 'error');
+  assert.equal(callSucceeded({ status: 'ok' }), true);
+  assert.equal(callSucceeded({ status: 'error' }), false);
+  // An unknown or missing token is never rendered as a success.
+  assert.equal(callSucceeded({ status: 'failed' }), false);
+  assert.equal(callSucceeded({}), false);
+  assert.equal(callSucceeded(null), false);
 });
 
 test('the settings form resolves the api key argument from the clear flag and the typed key', async () => {
@@ -148,10 +205,50 @@ test('the annotation and call commands address one file', async () => {
   const { calls, invoker } = recorder([]);
   await getVlAnnotations(9, invoker);
   await getVlCalls(9, invoker);
-  await cancelVlRun(5, invoker);
+  await cancelVlRun('0193a7f0-run-uuid', invoker);
   assert.deepEqual(calls[0], { command: 'get_vl_annotations', args: { fileId: 9 } });
   assert.deepEqual(calls[1], { command: 'get_vl_calls', args: { fileId: 9 } });
-  assert.deepEqual(calls[2], { command: 'cancel_vl_run', args: { runId: 5 } });
+  // Run ids are UUID strings; they must survive without Number() mangling.
+  assert.deepEqual(calls[2], { command: 'cancel_vl_run', args: { runId: '0193a7f0-run-uuid' } });
+});
+
+test('the model and run history commands pass through and normalize lists', async () => {
+  const { calls, invoker } = recorder(command => {
+    if (command === 'list_vl_models') return { models: [{ id: 'm1', vision: 'supported' }], authRequired: false };
+    if (command === 'list_vl_runs') return [{ runId: 'u1', state: 'finished' }];
+    return [{ id: 1 }];
+  });
+  const models = await listVlModels(invoker);
+  const runs = await listVlRuns(invoker);
+  const runCalls = await listVlRunCalls('u1', invoker);
+  assert.deepEqual(calls.map(call => call.command), ['list_vl_models', 'list_vl_runs', 'list_vl_run_calls']);
+  assert.deepEqual(calls[2].args, { runId: 'u1' });
+  assert.equal(models.authRequired, false);
+  assert.equal(models.models[0].id, 'm1');
+  assert.equal(runs[0].runId, 'u1');
+  assert.equal(runCalls[0].id, 1);
+});
+
+test('a model list answer without a models array degrades to an empty list', async () => {
+  const invoker = async command => (command === 'list_vl_models' ? { authRequired: true } : []);
+  const models = await listVlModels(invoker);
+  assert.deepEqual(models.models, []);
+  assert.equal(models.authRequired, true);
+});
+
+test('the model list partitions by vision capability and labels the entries', () => {
+  const models = [
+    { id: 'vl-a', vision: 'supported', displayName: 'VL A' },
+    { id: 'text-b', vision: 'unsupported' },
+    { id: 'mystery', vision: 'unknown' },
+  ];
+  const groups = partitionModels(models);
+  assert.deepEqual(groups.supported.map(model => model.id), ['vl-a']);
+  assert.deepEqual(groups.unsupported.map(model => model.id), ['text-b']);
+  assert.deepEqual(groups.unknown.map(model => model.id), ['mystery']);
+  assert.deepEqual(partitionModels(null), { supported: [], unsupported: [], unknown: [] });
+  assert.equal(modelLabel(models[0]), 'VL A');
+  assert.equal(modelLabel(models[1]), 'text-b');
 });
 
 test('a failing backend call reports the error text of the backend', async () => {

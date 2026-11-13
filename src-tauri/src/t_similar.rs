@@ -1,7 +1,7 @@
 use crate::t_dedup;
 use crate::t_sqlite::{AFile, QueryParams};
 use hnsw_rs::prelude::*;
-use rusqlite::{params, params_from_iter, Connection};
+use rusqlite::{Connection, params, params_from_iter};
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -1,3 +1,4 @@
+use crate::t_storage;
 /**
  * App configuration management.
  * Handles app-config.json for multi-library support.
@@ -15,19 +16,21 @@ use std::sync::{Mutex, OnceLock, RwLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
-use crate::t_storage;
 
 static APP_IDENTIFIER: OnceLock<String> = OnceLock::new();
 static CONFIG_IO_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static CURRENT_LIBRARY_ID: RwLock<Option<String>> = RwLock::new(None);
 
 pub fn current_library_id() -> Result<String, String> {
-    if let Some(id) = CURRENT_LIBRARY_ID.read().map_err(|e| e.to_string())?.clone() {
+    if let Some(id) = CURRENT_LIBRARY_ID
+        .read()
+        .map_err(|e| e.to_string())?
+        .clone()
+    {
         return Ok(id);
     }
     Ok(load_app_config()?.current_library_id)
 }
-
 
 pub fn set_app_identifier(identifier: &str) {
     let _ = APP_IDENTIFIER.set(identifier.to_string());
@@ -310,6 +313,13 @@ pub struct SearchState {
     pub similar_image_history_index: i32,
     #[serde(alias = "file_name")]
     pub file_name: String,
+    /// The AI search box text, kept apart from the classic search fields.
+    #[serde(default)]
+    pub ai_search_text: String,
+    #[serde(default)]
+    pub ai_search_history: Vec<SearchHistoryEntry>,
+    #[serde(default)]
+    pub ai_search_history_index: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -409,12 +419,32 @@ pub struct VlConfig {
     /// and is never part of a response to the webview.
     #[serde(default, skip_serializing)]
     pub api_key: String,
+    /// The gateway dialect: `anthropic` (the pre-protocol default) or `openai`.
+    #[serde(default)]
+    pub protocol: String,
     #[serde(default)]
     pub model: String,
     /// Text model used only for search-result reranking; independent of the
     /// vision model above.
     #[serde(default)]
     pub rerank_model: String,
+    /// Which embedding source backs the semantic search: `local` or `cloud`.
+    #[serde(default)]
+    pub embed_source: String,
+    /// Cloud embedding model for semantic search; unused when the source is
+    /// `local`.
+    #[serde(default)]
+    pub embed_model: String,
+    /// How many image-understanding runs may execute at the same time. The
+    /// queue is FIFO; waiting runs stay `queued` until a slot frees.
+    #[serde(default = "default_vl_max_concurrency")]
+    pub max_concurrency: i64,
+}
+
+/// The default of [`VlConfig::max_concurrency`]; it also covers a config that
+/// predates the field.
+fn default_vl_max_concurrency() -> i64 {
+    2
 }
 
 /// App configuration stored in app-config.json
@@ -528,7 +558,8 @@ pub fn load_app_config() -> Result<AppConfig, String> {
         .lock()
         .map_err(|_| "Config lock poisoned".to_string())?;
     let config = load_app_config_locked()?;
-    *CURRENT_LIBRARY_ID.write().map_err(|e| e.to_string())? = Some(config.current_library_id.clone());
+    *CURRENT_LIBRARY_ID.write().map_err(|e| e.to_string())? =
+        Some(config.current_library_id.clone());
     Ok(config)
 }
 
@@ -643,7 +674,8 @@ fn save_app_config_locked(config: &AppConfig) -> Result<(), String> {
     write_atomic(&config_path, &content)
         .map_err(|e| format!("Failed to write config file: {}", e))?;
     save_vl_api_key(&config.vl.api_key)?;
-    *CURRENT_LIBRARY_ID.write().map_err(|e| e.to_string())? = Some(config.current_library_id.clone());
+    *CURRENT_LIBRARY_ID.write().map_err(|e| e.to_string())? =
+        Some(config.current_library_id.clone());
     Ok(())
 }
 
@@ -662,8 +694,7 @@ fn save_vl_api_key(key: &str) -> Result<(), String> {
         }
         return Ok(());
     }
-    write_atomic_private(&path, key)
-        .map_err(|e| format!("Failed to write the VL API key: {}", e))
+    write_atomic_private(&path, key).map_err(|e| format!("Failed to write the VL API key: {}", e))
 }
 
 fn load_vl_api_key() -> String {
@@ -1021,7 +1052,9 @@ pub fn get_library_info(id: &str) -> Result<LibraryInfo, String> {
 }
 
 fn get_thumb_cache_size(library_id: &str) -> i64 {
-    let Ok(_cache_access) = crate::t_cache_storage::access() else { return 0; };
+    let Ok(_cache_access) = crate::t_cache_storage::access() else {
+        return 0;
+    };
     let Ok(cache_root) = crate::t_cache_storage::root().map(|p| p.join(library_id)) else {
         return 0;
     };
@@ -1029,7 +1062,10 @@ fn get_thumb_cache_size(library_id: &str) -> i64 {
         return 0;
     }
     let mut total: i64 = 0;
-    for entry in walkdir::WalkDir::new(&cache_root).into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir::new(&cache_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -1161,6 +1197,39 @@ mod config_update_tests {
         assert_eq!(config.vl.gateway_url, "");
         assert_eq!(config.vl.api_key, "");
         assert_eq!(config.vl.model, "");
+        // A missing vl section falls back to the derived default (0); the
+        // read path normalizes it to the real default.
+        assert_eq!(config.vl.max_concurrency, 0);
+    }
+
+    #[test]
+    fn a_vl_section_without_max_concurrency_loads_the_default() {
+        let legacy: VlConfig =
+            serde_json::from_value(serde_json::json!({"gateway_url": "http://127.0.0.1:1"}))
+                .unwrap();
+        assert_eq!(legacy.max_concurrency, 2);
+        // An explicit value round-trips.
+        let explicit: VlConfig =
+            serde_json::from_value(serde_json::json!({"max_concurrency": 5})).unwrap();
+        assert_eq!(explicit.max_concurrency, 5);
+    }
+
+    #[test]
+    fn search_state_accepts_a_legacy_payload_without_ai_fields() {
+        let legacy: SearchState = serde_json::from_value(serde_json::json!({
+            "searchType": 1,
+            "searchText": "cat",
+            "searchHistory": ["cat"],
+            "searchHistoryIndex": 0,
+            "similarImageHistory": [],
+            "similarImageHistoryIndex": -1,
+            "fileName": ""
+        }))
+        .unwrap();
+        assert_eq!(legacy.search_text, "cat");
+        assert!(legacy.ai_search_text.is_empty());
+        assert!(legacy.ai_search_history.is_empty());
+        assert_eq!(legacy.ai_search_history_index, 0);
     }
 
     /// Point the config at a scratch directory so a test never touches a live
@@ -1169,8 +1238,7 @@ mod config_update_tests {
 
     impl ScratchAppDir {
         fn new(tag: &str) -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("lap-config-{tag}-{}", Uuid::new_v4()));
+            let dir = std::env::temp_dir().join(format!("lap-config-{tag}-{}", Uuid::new_v4()));
             fs::create_dir_all(&dir).unwrap();
             set_test_app_data_dir(Some(dir.clone()));
             Self(dir)
@@ -1273,8 +1341,9 @@ mod config_update_tests {
         assert!(TagState::default().collapsed_tag_ids.is_empty());
     }
     use std::sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc,
+        mpsc,
     };
 
     #[test]

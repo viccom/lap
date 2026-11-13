@@ -612,6 +612,41 @@
     @cancel="showMoveTo = false"
   />
 
+  <!-- cloud image understanding (VL) run -->
+  <div v-if="showVlAnalyzeDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showVlAnalyzeDialog = false">
+    <div class="w-96 rounded-box bg-base-100 shadow-xl border border-base-content/10 p-4 space-y-3">
+      <h3 class="text-sm font-bold">{{ $t('vl.run_title') }}</h3>
+      <p class="text-xs text-base-content/60">
+        {{ $t('vl.run_count', { count: vlAnalyzeFileIds.length.toLocaleString() }) }}
+      </p>
+      <div class="space-y-1">
+        <label class="text-xs text-base-content/50" for="vl-template-select">{{ $t('vl.run_template') }}</label>
+        <select
+          id="vl-template-select"
+          v-model="vlAnalyzeTemplateId"
+          class="select select-sm w-full bg-base-200/50"
+        >
+          <option v-if="vlTemplateOptions.length === 0" :value="0" disabled>{{ $t('vl.run_no_template') }}</option>
+          <option v-for="tpl in vlTemplateOptions" :key="tpl.id" :value="Number(tpl.id)">{{ templateLabel(tpl) }}</option>
+        </select>
+      </div>
+      <label class="flex items-center gap-2 text-xs cursor-pointer">
+        <input v-model="vlAnalyzeForce" type="checkbox" class="checkbox checkbox-sm" />
+        {{ $t('vl.force_rerun') }}
+      </label>
+      <p v-if="vlTemplateOptions.length === 0" class="text-xs text-warning">{{ $t('vl.run_configure_first') }}</p>
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" class="btn btn-sm" @click="showVlAnalyzeDialog = false">{{ $t('msgbox.cancel') }}</button>
+        <button
+          type="button"
+          class="btn btn-sm btn-primary"
+          :disabled="vlAnalyzeBusy || !vlAnalyzeTemplateId"
+          @click="confirmVlAnalyze"
+        >{{ $t('vl.run_start') }}</button>
+      </div>
+    </div>
+  </div>
+
   <FileConflictDialog
     v-if="fileConflictDialog.show"
     :name="fileConflictDialog.name"
@@ -810,6 +845,9 @@ import {
 import { getShortcutLabel, matchesShortcut, ShortcutActionId, ShortcutPlatform, VIEW_BACKGROUND_SHORTCUTS } from '@/common/shortcuts';
 import { getSmartTagById } from '@/common/smartTags';
 import { SEARCH_RESULT_LIMIT, describeMatches, normalizeSearchMode, planSearch } from '@/common/searchMode';
+import { aiSearchEmptyHint, dedupeGroups, orderFilesByHits, passesAiSearchFilters, planAiSearch, semanticScoreRange } from '@/common/aiSearch';
+import { runVlAnalysis, listVlTemplates } from '@/common/vlApi';
+import { describeVlError, pickLatestVersions, templateLabel } from '@/common/vlLogic';
 import { QUERY_KIND, TITLE_KIND, planNavigationQuery } from '@/common/queryDispatch';
 import { handleVideoPlaybackShortcut, handleVideoEscapeShortcut } from '@/common/video';
 import { clearFolderFileCounts, setFolderFileCount, getCountedFolderPaths } from '@/composables/useAlbumSelection';
@@ -3829,7 +3867,11 @@ function matchesRequestedSidebarCount(request: any) {
         && libConfig.smartAlbum.type === 'custom'
         && String(libConfig.smartAlbum.id) === String(request.id);
     case 'search':
-      return config.main.sidebarIndex === SIDEBAR.SEARCH && libConfig.search.searchText === request.text;
+      return config.main.sidebarIndex === SIDEBAR.SEARCH
+        && libConfig.search.searchText === request.text;
+    case 'ai-search':
+      return config.main.sidebarIndex === SIDEBAR.AI_SEARCH
+        && libConfig.search.aiSearchText === request.text;
     default:
       return false;
   }
@@ -3911,6 +3953,19 @@ function commitRequestedSidebarCount(count: number, request = uiStore.countUpdat
           count: Math.max(0, Number(count || 0)),
         };
         libConfig.search.searchHistory = history;
+      }
+      break;
+    }
+    case 'ai-search': {
+      const history = [...(libConfig.search.aiSearchHistory || [])] as any[];
+      const index = history.findIndex((item: any) => (typeof item === 'string' ? item : item?.text) === request.text);
+      if (index >= 0) {
+        const item = history[index];
+        history[index] = {
+          ...(typeof item === 'string' ? { text: item } : item),
+          count: Math.max(0, Number(count || 0)),
+        };
+        libConfig.search.aiSearchHistory = history;
       }
       break;
     }
@@ -4737,6 +4792,8 @@ function handleItemAction(payload: { action: string, index: number }) {
     'add-to-collection': clickAddToCollection,
     'comment': () => selectMode.value ? openCommentEditor() : (showCommentMsgbox.value = true),
     'search-similar': () => enterSimilarSearchMode(fileList.value[selectedItemIndex.value]),
+    'vl-analyze': () => openVlAnalyzeDialog([fileList.value[selectedItemIndex.value]]),
+    'vl-analyze-selected': () => openVlAnalyzeDialog(getActionableSelectedItems()),
     'find-person': () => {
       if (!config.settings.face.enabled) return;
       enterPersonSearchMode(fileList.value[selectedItemIndex.value]);
@@ -6590,7 +6647,7 @@ watch(() => libConfig._libraryId, () => {
   uiStore.clearCountUpdateRequest();
 });
 
-/// watch for file list changes
+/// watch for query-context changes that do not move the selection
 watch(
   () => JSON.stringify({
     libraryId: libConfig._libraryId,
@@ -6600,6 +6657,7 @@ watch(
     libraryItem: libConfig.library.item,
     smartId: libConfig.library.smartId,
     searchText: libConfig.search.searchText,
+    aiSearchText: libConfig.search.aiSearchText,
     rating: libConfig.rating.item,
     culling: libConfig.culling.item,
     album: [libConfig.album.id, libConfig.album.folderId, libConfig.album.folderPath, libConfig.album.selected],
@@ -6623,6 +6681,7 @@ watch(
   },
 );
 
+/// watch for file list changes
 watch(
   () => [
     config.main.sidebarIndex,      // toolbar index
@@ -6635,9 +6694,11 @@ watch(
     // Count and cover updates are query outputs, not refresh triggers.
     JSON.stringify((libConfig.smartAlbums || []).map(({ count, coverFileId, ...rest }: any) => rest)), // smart album
     libConfig.search.searchText,
+    libConfig.search.aiSearchText,
     libConfig.rating.item, // rating
     libConfig.culling.item, // culling
     config.search.fileType, config.search.favoritesOnly, config.search.sortType, config.search.sortOrder, // search and sort
+    config.settings.aiSearchMode,                                                     // AI search mode
     config.settings.showSubfolderFiles,                                            // album folder view
     config.settings.folderSort, config.settings.calendarSort, config.settings.locationSort, config.settings.cameraSort, config.search.groupBy, // group sorting and filtering (tag/person sorts only affect their sidebars, not content grouping)
     libConfig.person.id,                                                              // person
@@ -6696,7 +6757,11 @@ watch(
 
     const requestId = ++sidebarCountRequestId;
     try {
-      const result = await getSidebarQueryCountAndSum();
+      // The AI search entry has its own count legs; every other panel goes
+      // through the shared sidebar total.
+      const result = request.source === 'ai-search'
+        ? await getAiSearchSidebarCountAndSum(String(request.text ?? ''))
+        : await getSidebarQueryCountAndSum();
       if (requestId !== sidebarCountRequestId || uiStore.countUpdateRequest !== request) return;
       if (result) {
         commitRequestedSidebarCount(Number(result[0] || 0), request);
@@ -6927,13 +6992,38 @@ async function getSearchSidebarCountAndSum() {
   return [files.size, [...files.values()].reduce((sum, file) => sum + Number(file.size || 0), 0)];
 }
 
+/// The sidebar count of an AI search query: both legs, filtered and
+/// de-duplicated by file id. A failed leg is treated as empty so the
+/// history count never blocks on a broken embedding model.
+async function getAiSearchSidebarCountAndSum(searchText: string) {
+  const plan = planAiSearch(config.settings.aiSearchMode);
+  const filters = {
+    favoritesOnly: Boolean(config.search.favoritesOnly),
+    fileType: Number(config.search.fileType || 0),
+  };
+  const [precise, semantic] = await Promise.all([
+    plan.fts ? searchPreciseMatches(searchText, SEARCH_RESULT_LIMIT).catch(() => ({ files: [], matchColumns: new Map() })) : Promise.resolve({ files: [], matchColumns: new Map() }),
+    plan.captions ? searchSemanticMatches(searchText, SEARCH_RESULT_LIMIT).catch(() => ({ files: [], hits: [] })) : Promise.resolve({ files: [], hits: [] }),
+  ]);
+  const files = new Map<number, any>();
+  for (const file of (precise.files || [])) {
+    if (passesAiSearchFilters(file, filters)) files.set(Number(file.id), file);
+  }
+  for (const file of (semantic.files || [])) {
+    if (passesAiSearchFilters(file, filters)) files.set(Number(file.id), file);
+  }
+  return [files.size, [...files.values()].reduce((sum, file) => sum + Number(file.size || 0), 0)];
+}
+
 async function refreshRequestedSidebarCount() {
   const request = uiStore.countUpdateRequest;
   if (!request) return;
   const requestId = ++sidebarCountRequestId;
   const contentRequestId = currentContentRequestId;
   try {
-    const result = await getSidebarQueryCountAndSum();
+    const result = request.source === 'ai-search'
+      ? await getAiSearchSidebarCountAndSum(String(request.text ?? ''))
+      : await getSidebarQueryCountAndSum();
     if (requestId !== sidebarCountRequestId || contentRequestId !== currentContentRequestId) return;
     if (result) commitRequestedSidebarCount(Number(result[0] || 0), request);
   } catch (error) {
@@ -7616,6 +7706,7 @@ async function getFileList(
     cullingFlag = -1,
     tagId = 0,
     personId = 0,
+    vlAnnotated = null,
     gpsMinLat = null,
     gpsMaxLat = null,
     gpsMinLon = null,
@@ -7657,6 +7748,7 @@ async function getFileList(
     cullingFlag,
     tagId,
     personId,
+    vlAnnotated,
     gpsMinLat,
     gpsMaxLat,
     gpsMinLon,
@@ -8311,6 +8403,217 @@ async function getUnifiedSearchFileList(searchText: string, requestId: number) {
 
 let contentUpdateSeq = 0;
 
+/// --- AI search (the image-understanding search entry) ---
+
+/// The semantic leg: query embedding vs the stored caption embeddings.
+/// The hits carry the order and the scores; the id lookup must not lose them.
+async function searchSemanticMatches(searchText: string, limit: number) {
+  const empty = { files: [] as any[], hits: [] as any[] };
+  const hits = await invoke('search_captions', { query: searchText, limit });
+  if (!Array.isArray(hits) || hits.length === 0) return empty;
+
+  const hitId = (hit: any) => Number(hit?.fileId ?? hit?.file_id);
+  const ids = hits
+    .map(hitId)
+    .filter((id: number) => Number.isFinite(id) && id > 0);
+  const files = await getFilesByIds(ids);
+  return {
+    hits,
+    files: orderFilesByHits(ids, Array.isArray(files) ? files : []),
+  };
+}
+
+/// The AI search entry: BM25 (precise) and/or the caption embeddings
+/// (semantic), never the CLIP vector leg of the official unified search.
+async function getAiSearchFileList(searchText: string, mode: string, requestId: number) {
+  const plan = planAiSearch(mode);
+  const filters = {
+    favoritesOnly: Boolean(config.search.favoritesOnly),
+    fileType: Number(config.search.fileType || 0),
+  };
+  const textParams = {
+    searchFileType: filters.fileType,
+    sortType: 3,
+    sortOrder: 0,
+    searchFileName: '',
+    searchAllSubfolders: '',
+    searchFolder: '',
+    startDate: 0,
+    endDate: 0,
+    calendarSort: config.settings.calendarSort,
+    folderSort: config.settings.folderSort,
+    categorySort: categorySortForGroup(effectiveGroupBy.value),
+    make: '',
+    model: '',
+    lensMake: '',
+    lensModel: '',
+    locationAdmin1: '',
+    locationName: '',
+    isFavorite: filters.favoritesOnly,
+    rating: -1,
+    tagId: 0,
+    personId: 0,
+    groupBy: 0,
+  };
+  currentQueryParams.value = textParams;
+  currentQuerySource.value = 'search';
+  currentSmartQueryParams.value = null;
+  currentCollectionId.value = null;
+  currentSearchFileIds.value = [];
+  currentImageSearchParams.value = null;
+  imageSearchError.value = false;
+  imageSearchLanguageUnsupported.value = false;
+  isLoading.value = true;
+  timelineData.value = [];
+
+  try {
+    const emptyPrecise = { files: [] as any[], matchColumns: new Map<number, string[]>() };
+    const emptySemantic = { files: [] as any[], hits: [] as any[] };
+    const [preciseResult, semanticResult] = await Promise.all([
+      plan.fts
+        ? searchPreciseMatches(searchText, SEARCH_RESULT_LIMIT).catch(error => {
+            console.error('AI precise search failed:', error);
+            return emptyPrecise;
+          })
+        : Promise.resolve(emptyPrecise),
+      plan.captions
+        ? searchSemanticMatches(searchText, SEARCH_RESULT_LIMIT).catch(error => {
+            console.error('AI semantic search failed:', error);
+            return emptySemantic;
+          })
+        : Promise.resolve(emptySemantic),
+    ]);
+    if (requestId !== currentContentRequestId) return;
+
+    const precise = preciseResult || emptyPrecise;
+    searchMatchColumns.value = precise.matchColumns;
+    const preciseMatches = (Array.isArray(precise.files) ? precise.files : [])
+      .filter((file: any) => passesAiSearchFilters(file, filters));
+    const semanticMatches = (Array.isArray(semanticResult?.files) ? semanticResult.files : [])
+      .filter((file: any) => passesAiSearchFilters(file, filters));
+    // A file found by both legs shows once, in the precise group.
+    const merged = dedupeGroups({ ftsFiles: preciseMatches, semanticFiles: semanticMatches });
+    const files = preserveLoadedThumbnails([...merged.ftsFiles, ...merged.semanticFiles]);
+    contentCountIsAuthoritative.value = true;
+
+    clearSelectionForFileListUpdate();
+    resetGroupingState();
+    fileList.value = files;
+    currentSearchFileIds.value = fileList.value
+      .map(file => Number(file.id))
+      .filter(id => Number.isFinite(id) && id > 0);
+    totalFileCount.value = fileList.value.length;
+    totalFileSize.value = fileList.value.reduce((total, file) => total + Number(file.size || 0), 0);
+
+    const range = semanticScoreRange(semanticResult?.hits || []);
+    const semanticLabel = range
+      ? `${localeMsg.value.search.semantic_matches} · ${range.min.toFixed(2)}–${range.max.toFixed(2)}`
+      : localeMsg.value.search.semantic_matches;
+    const groups = isFilmstripView.value ? [] : [
+      merged.ftsFiles.length > 0
+        ? {
+            id: 'ai-precise',
+            label: buildPreciseMatchLabel(merged.ftsFiles),
+            icon: IconFileSearch,
+            files: merged.ftsFiles,
+            countLabel: String(merged.ftsFiles.length),
+          }
+        : null,
+      merged.semanticFiles.length > 0
+        ? {
+            id: 'ai-semantic',
+            label: semanticLabel,
+            icon: IconPhotoSearch,
+            files: merged.semanticFiles,
+            countLabel: String(merged.semanticFiles.length),
+          }
+        : null,
+    ].filter(Boolean) as Array<{ id: string; label: string; icon: any; files: any[]; countLabel: string }>;
+
+    let fileIndex = 0;
+    for (const group of groups) {
+      const rowIndex = groupedRows.value.length;
+      const size = group.files.reduce((total, file) => total + Number(file.size || 0), 0);
+      groupedRows.value.push({
+        type: 'group',
+        id: `group-row-${group.id}`,
+        group_id: group.id,
+        label: group.label,
+        icon: group.icon,
+        count: group.files.length,
+        countLabel: group.countLabel,
+        size,
+      });
+      groupedTimelineGroups.value.push({
+        groupId: group.id,
+        label: group.label,
+        icon: group.icon,
+        count: group.files.length,
+        size,
+        rowIndex,
+      });
+      groupMetaMap.set(group.id, { count: group.files.length, size });
+      groupFileIdsCache.set(group.id, group.files.map(file => Number(file.id)));
+
+      for (let groupFileIndex = 0; groupFileIndex < group.files.length; groupFileIndex++) {
+        const loadedFile = fileList.value[fileIndex];
+        const id = Number(loadedFile?.id || 0);
+        if (id > 0) fileIdToGroupId.set(id, group.id);
+        groupedRows.value.push({
+          type: 'item',
+          id: `search-item-${group.id}-${id}`,
+          group_id: group.id,
+          file_index: fileIndex,
+          file: loadedFile,
+        });
+        fileIndex++;
+      }
+    }
+
+    groupedModeActive.value = groups.length > 0;
+    totalRowCount.value = groupedRows.value.length;
+    selectedItemIndex.value = fileList.value.length > 0 ? 0 : -1;
+    scrollPosition.value = 0;
+    markDedupSourceUpdated(requestId);
+    openImageViewer(0, false, true);
+
+    if (fileList.value.length === 0) {
+      // Explain an empty semantic result instead of showing a bare void:
+      // nothing annotated yet, or annotated but nothing cleared the threshold.
+      let captions = 0;
+      try {
+        const status = await invoke('embed_status');
+        captions = Number(status?.captions ?? 0);
+      } catch {
+        // The hint degrades to the plain empty state.
+      }
+      if (requestId !== currentContentRequestId) return;
+      const hint = aiSearchEmptyHint({
+        mode,
+        captions,
+        semanticHits: semanticMatches.length,
+        ftsHits: preciseMatches.length,
+      });
+      if (hint) {
+        const hintText = hint === 'no-annotations'
+          ? localeMsg.value.aiSearch?.empty_no_annotations
+          : localeMsg.value.aiSearch?.empty_no_match;
+        if (hintText) {
+          contentTitle.value = `${lookupLocaleMessage('aiSearch.title')} - ${searchText}（${hintText}）`;
+        }
+      }
+    } else {
+      getFileListThumb(fileList.value);
+    }
+  } finally {
+    if (requestId === currentContentRequestId) {
+      isLoading.value = false;
+      hasLoadedInitialResult.value = true;
+      contentReady.value = true;
+    }
+  }
+}
+
 /// --- navigation dispatch ---
 /// The sidebar selection decides which query runs. The plan itself comes from
 /// src/common/queryDispatch.js, the execution stays here.
@@ -8341,7 +8644,12 @@ function buildNavigationState(albumRecord: any = null, sidebarIndex: number = co
       id: libConfig.smartAlbum.id,
       items: libConfig.smartAlbums || [],
     },
-    search: { text: libConfig.search.searchText },
+    search: {
+      text: sidebarIndex === SIDEBAR.AI_SEARCH
+        ? libConfig.search.aiSearchText
+        : libConfig.search.searchText,
+    },
+    aiSearch: { mode: config.settings.aiSearchMode },
     calendar: {
       year: calendar.year,
       month: calendar.month,
@@ -8407,6 +8715,10 @@ function resolveNavigationTitle(title: any) {
       return title.name || '';
     case TITLE_KIND.SEARCH:
       return `${lookupLocaleMessage('search.title')} - ${title.text}`;
+    case TITLE_KIND.AI_SEARCH: {
+      const base = `${lookupLocaleMessage('aiSearch.title')} - ${title.text}`;
+      return title.hint ? `${base}（${title.hint}）` : base;
+    }
     default:
       return '';
   }
@@ -8430,6 +8742,10 @@ function executeNavigationPlan(plan: any, requestId: number) {
     case QUERY_KIND.UNIFIED_SEARCH:
       contentTitle.value = resolveNavigationTitle(plan.title);
       getUnifiedSearchFileList(plan.text, requestId);
+      break;
+    case QUERY_KIND.AI_SEARCH:
+      contentTitle.value = resolveNavigationTitle(plan.title);
+      getAiSearchFileList(plan.text, plan.mode, requestId);
       break;
     case QUERY_KIND.EMPTY:
       contentTitle.value = resolveNavigationTitle(plan.title);
@@ -8647,6 +8963,129 @@ async function updateContent(force = false, preserveMultiSelection = selectMode.
 }
 
 // --- Similar Search Mode Logic ---
+
+// --- cloud image understanding (VL) runs started from the main view ---
+const showVlAnalyzeDialog = ref(false);
+const vlAnalyzeFileIds = ref<number[]>([]);
+const vlAnalyzeTemplateId = ref<number>(0);
+const vlAnalyzeForce = ref(false);
+const vlTemplates = ref<any[]>([]);
+const vlAnalyzeBusy = ref(false);
+const vlActiveRunIds = new Set<string>();
+// One progress toast per 10% of the run, at most every 2 seconds; the
+// finish toast carries the final numbers.
+const vlProgressToast = { lastProcessed: -1, lastAt: 0 };
+let unlistenVlProgress: (() => void) | null = null;
+let unlistenVlFinish: (() => void) | null = null;
+onBeforeUnmount(() => {
+  unlistenVlProgress?.();
+  unlistenVlFinish?.();
+  unlistenVlProgress = null;
+  unlistenVlFinish = null;
+});
+
+const vlTemplateOptions = computed(() =>
+  pickLatestVersions(vlTemplates.value).filter((tpl: any) => tpl.enabled !== false)
+);
+
+async function openVlAnalyzeDialog(files: any[]) {
+  const ids = (Array.isArray(files) ? files : [])
+    .map(file => Number(file?.id))
+    .filter(id => Number.isFinite(id) && id > 0);
+  if (ids.length === 0) return;
+  vlAnalyzeFileIds.value = ids;
+  vlAnalyzeForce.value = false;
+  showVlAnalyzeDialog.value = true;
+  try {
+    vlTemplates.value = await listVlTemplates();
+  } catch (error) {
+    console.error('Failed to list VL templates:', error);
+    vlTemplates.value = [];
+  }
+  if (!vlTemplateOptions.value.some(tpl => Number(tpl.id) === Number(vlAnalyzeTemplateId.value))) {
+    vlAnalyzeTemplateId.value = Number(vlTemplateOptions.value[0]?.id || 0);
+  }
+}
+
+async function confirmVlAnalyze() {
+  const templateId = Number(vlAnalyzeTemplateId.value);
+  if (!templateId) {
+    toast.error(t('vl.run_configure_first'));
+    return;
+  }
+  vlAnalyzeBusy.value = true;
+  try {
+    const runId = await runVlAnalysis(vlAnalyzeFileIds.value, templateId, vlAnalyzeForce.value);
+    vlActiveRunIds.add(String(runId));
+    vlProgressToast.lastProcessed = -1;
+    vlProgressToast.lastAt = 0;
+    ensureVlRunListeners();
+    showVlAnalyzeDialog.value = false;
+    toast.info(t('vl.run_started', { count: vlAnalyzeFileIds.value.length }));
+  } catch (error) {
+    toast.error(describeVlError(error));
+  } finally {
+    vlAnalyzeBusy.value = false;
+  }
+}
+
+/// The backend emits one progress event per file (twice per call), so the
+/// toast is throttled to one per 10% of the run and at most every 2 seconds.
+function maybeShowVlProgress(status: any) {
+  const total = Math.max(0, Number(status.total || 0));
+  const processed = Math.max(0, Number(status.processed || 0));
+  // The finish toast already reports the last file.
+  if (total > 0 && processed >= total) return;
+  const step = Math.max(1, Math.ceil(total / 10));
+  if (processed === vlProgressToast.lastProcessed) return;
+  if (processed % step !== 0) return;
+  if (Date.now() - vlProgressToast.lastAt < 2000) return;
+  vlProgressToast.lastProcessed = processed;
+  vlProgressToast.lastAt = Date.now();
+  toast.info(t('vl.run_progress', { done: processed, total }));
+}
+
+// Toasts only for the runs this view started; the lab has its own display.
+function ensureVlRunListeners() {
+  if (unlistenVlProgress) return;
+  void (async () => {
+    const { listen } = await import('@tauri-apps/api/event');
+    unlistenVlProgress = await listen('vl-analysis-progress', (event: any) => {
+      const status = event.payload;
+      if (!status || !vlActiveRunIds.has(String(status.runId)) || status.state !== 'running') return;
+      maybeShowVlProgress(status);
+    });
+    unlistenVlFinish = await listen('vl-analysis-finished', (event: any) => {
+      const status = event.payload;
+      if (!status || !vlActiveRunIds.has(String(status.runId))) return;
+      vlActiveRunIds.delete(String(status.runId));
+      vlProgressToast.lastProcessed = -1;
+      vlProgressToast.lastAt = 0;
+      toast.success(t('vl.run_finished', { ok: status.succeeded, fail: status.failed, skip: status.skipped }));
+      // Patch the derived annotation flags of the loaded files in place. Only
+      // views whose membership depends on them need a full requery.
+      const annotatedIds = Array.isArray(status.succeededFileIds) ? status.succeededFileIds.map(Number) : [];
+      if (annotatedIds.length > 0) {
+        const wanted = new Set(annotatedIds);
+        for (const file of fileList.value) {
+          if (!wanted.has(Number(file?.id))) continue;
+          // The backend serializes the derived marker as `vlAnnotated`; the
+          // Thumbnail badge also accepts the snake_case form.
+          (file as any).vlAnnotated = true;
+          (file as any).vl_annotated = true;
+        }
+      }
+      const membershipChanged =
+        currentQuerySource.value === 'search' ||
+        (config.main.sidebarIndex === SIDEBAR.LIBRARY
+          && (libConfig.library.item === LIB_ITEM.VL_ANNOTATED || libConfig.library.item === LIB_ITEM.VL_UNANNOTATED));
+      if (membershipChanged) {
+        void updateContent(true);
+      }
+    });
+  })().catch(error => console.error('VL run listeners failed:', error));
+}
+
 function enterSimilarSearchMode(file: any) {
   if (file.file_type !== 1 && file.file_type !== 3) {
     return;
