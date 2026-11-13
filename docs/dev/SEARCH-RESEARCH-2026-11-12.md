@@ -317,6 +317,8 @@ node docs/dev/search-eval/product_replay.mjs   # 见同目录脚本（node 版�
 - 只覆盖一个模板（内置描述 v1）与中文；其他语言/模板未评测。
 - 产品索引还包含未标注照片的文件名/元数据，评测只统计 40 篇标注文档的相对排名。
 
+**2026-11-13 追加：本地/多语言模型改为「appdata 优先、resource 兜底」双位置解析（用户拍板）。** `bge-local` 与 multilingual 的读取顺序变为：`<AppData>/models/<name>`（完整 = model+tokenizer 同时在）优先，否则回退 exe 旁 `models/<name>`（便携/安装包 resource 目录）；下载/安装目标永远是 appdata（resource 在安装布局下只读）。实现：`t_embed::resolve_local_model_dir`、`t_ai::resolve_multilingual_model_dir`（纯函数 + 7 个单测），`t_config::get_resource_models_dir` 在 `finish_startup` 用 Tauri resource 目录钉住（钉住前用 exe 旁目录兜底）。已实测：隐藏 appdata 的 bge-local、仅留 `D:\LapPortable\models\bge-local` 时 `embed_status.localAvailable=true` 且 `search_captions` 正常返回命中（查询向量即从 resource 副本编码）——便携目录可作完整自包含模型仓库。
+
 ## 9. 来源
 
 - BM25 vs dense benchmark & hybrid RRF: https://arxiv.org/html/2604.01733v1
