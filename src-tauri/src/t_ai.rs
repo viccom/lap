@@ -179,6 +179,25 @@ fn restore_interrupted_multilingual_model(model_dir: &Path) {
     let _ = std::fs::rename(backup_dir, model_dir);
 }
 
+fn multilingual_model_files_present(dir: &Path) -> bool {
+    dir.join(t_common::AI_TEXT_MODEL).is_file() && dir.join(t_common::AI_TOKENIZER).is_file()
+}
+
+/// Where the multilingual text model is read from: the app-data copy (also
+/// the download target) wins when complete, the bundled `models/multilingual`
+/// resource copy beside the binary is the fallback.
+fn resolve_multilingual_model_dir(
+    appdata: &Path,
+    resource_models: Option<&Path>,
+) -> Option<PathBuf> {
+    if multilingual_model_files_present(appdata) {
+        return Some(appdata.to_path_buf());
+    }
+    resource_models
+        .map(|root| root.join("multilingual"))
+        .filter(|dir| multilingual_model_files_present(dir))
+}
+
 impl AiEngine {
     pub fn new() -> Self {
         Self {
@@ -242,13 +261,25 @@ impl AiEngine {
         crate::t_config::get_app_data_dir().map(|dir| dir.join("models").join("multilingual"))
     }
 
+    /// The read location for the multilingual model, resolved through the
+    /// fallback; a location is always returned so missing files can be
+    /// reported against the app-data install target.
+    fn multilingual_read_dir(app: &AppHandle) -> Result<PathBuf, String> {
+        let install = Self::multilingual_model_dir(app)?;
+        let resource = app
+            .path()
+            .resolve("models", tauri::path::BaseDirectory::Resource)
+            .ok();
+        Ok(resolve_multilingual_model_dir(&install, resource.as_deref()).unwrap_or(install))
+    }
+
     fn text_model_paths(
         app: &AppHandle,
         model: ImageSearchTextModel,
     ) -> Result<TextModelPaths, String> {
         let model_dir = match model {
             ImageSearchTextModel::Default => Self::resource_model_dir(app)?,
-            ImageSearchTextModel::Multilingual => Self::multilingual_model_dir(app)?,
+            ImageSearchTextModel::Multilingual => Self::multilingual_read_dir(app)?,
         };
 
         Ok(TextModelPaths {
@@ -258,14 +289,15 @@ impl AiEngine {
     }
 
     pub fn is_multilingual_model_available(app: &AppHandle) -> bool {
-        Self::text_model_paths(app, ImageSearchTextModel::Multilingual)
-            .map(|paths| {
-                if let Some(model_dir) = paths.model.parent() {
-                    restore_interrupted_multilingual_model(model_dir);
-                }
-                paths.model.exists() && paths.tokenizer.exists()
-            })
-            .unwrap_or(false)
+        let Ok(install) = Self::multilingual_model_dir(app) else {
+            return false;
+        };
+        restore_interrupted_multilingual_model(&install);
+        let resource = app
+            .path()
+            .resolve("models", tauri::path::BaseDirectory::Resource)
+            .ok();
+        resolve_multilingual_model_dir(&install, resource.as_deref()).is_some()
     }
 
     pub fn model_status(&self, app: &AppHandle) -> ImageSearchModelStatus {
@@ -286,8 +318,10 @@ impl AiEngine {
 
         let paths = Self::text_model_paths(app, model)?;
         if model == ImageSearchTextModel::Multilingual {
-            if let Some(model_dir) = paths.model.parent() {
-                restore_interrupted_multilingual_model(model_dir);
+            // Only the app-data install dir is writable and carries backups;
+            // the read dir may have fallen back to the bundled resource copy.
+            if let Ok(install) = Self::multilingual_model_dir(app) {
+                restore_interrupted_multilingual_model(&install);
             }
         }
         if !paths.model.exists() || !paths.tokenizer.exists() {
@@ -1122,5 +1156,77 @@ mod text_limit_tests {
         // ~120 tokens hit "Attempting to broadcast ... 77 by 120".
         assert_eq!(text_token_limit(ImageSearchTextModel::Default), 77);
         assert!(text_token_limit(ImageSearchTextModel::Multilingual) >= 128);
+    }
+}
+
+#[cfg(test)]
+mod multilingual_fallback_tests {
+    use super::*;
+
+    fn multilingual_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("lap-multilingual-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn resource_root(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "lap-multilingual-resource-{tag}-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn seed_model_files(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join(t_common::AI_TEXT_MODEL), b"text").unwrap();
+        std::fs::write(dir.join(t_common::AI_TOKENIZER), b"tokenizer").unwrap();
+    }
+
+    #[test]
+    fn the_app_data_copy_wins_when_both_locations_carry_the_model() {
+        let appdata = multilingual_dir("both-appdata");
+        let resource = resource_root("both-resource");
+        seed_model_files(&appdata);
+        let bundled = resource.join("multilingual");
+        seed_model_files(&bundled);
+        assert_eq!(
+            resolve_multilingual_model_dir(&appdata, Some(&resource)),
+            Some(appdata.clone())
+        );
+    }
+
+    #[test]
+    fn the_bundled_copy_serves_when_app_data_has_no_model() {
+        let appdata = multilingual_dir("empty-appdata");
+        let resource = resource_root("seeded-resource");
+        let bundled = resource.join("multilingual");
+        seed_model_files(&bundled);
+        assert_eq!(
+            resolve_multilingual_model_dir(&appdata, Some(&resource)),
+            Some(bundled.clone())
+        );
+    }
+
+    #[test]
+    fn an_incomplete_app_data_copy_falls_through_or_reports_none() {
+        let appdata = multilingual_dir("partial-appdata");
+        let resource = resource_root("partial-resource");
+        // app-data carries a leftover text model without the tokenizer
+        std::fs::create_dir_all(&appdata).unwrap();
+        std::fs::write(appdata.join(t_common::AI_TEXT_MODEL), b"text").unwrap();
+        let bundled = resource.join("multilingual");
+        seed_model_files(&bundled);
+        assert_eq!(
+            resolve_multilingual_model_dir(&appdata, Some(&resource)),
+            Some(bundled.clone())
+        );
+
+        let empty = multilingual_dir("none-appdata");
+        assert_eq!(resolve_multilingual_model_dir(&empty, None), None);
     }
 }

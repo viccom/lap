@@ -5,14 +5,15 @@
 //! embedding model, so both sides have to live in the same text-vector space.
 //! Two sources are supported:
 //!
-//! * `local` — a BGE-family ONNX model under `<app data>/models/bge-local`
-//!   (no network; bge-small-zh-v1.5 measured R@1 0.945 on the eval set);
+//! * `local` — a BGE-family ONNX model under `<app data>/models/bge-local`,
+//!   falling back to a copy bundled in the `models` directory beside the
+//!   binary (no network; bge-small-zh-v1.5 measured R@1 0.945 on the eval set);
 //! * `cloud` — the configured VL gateway `/v1/embeddings` (comparison source).
 //!
 //! Embeddings are derived data: they are refreshed next to the FTS caption
 //! hooks, can always be rebuilt, and a failure never blocks an annotation.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use ort::{inputs, value::Value};
@@ -332,10 +333,48 @@ pub fn rank_rows(
 // Local BGE model
 // ----------------------------------------------------------------------------
 
-fn local_model_dir() -> Result<PathBuf, String> {
-    Ok(crate::t_config::get_app_data_dir()?
-        .join("models")
-        .join(LOCAL_EMBED_MODEL_NAME))
+fn local_model_files_present(dir: &Path) -> bool {
+    dir.join(LOCAL_EMBED_MODEL_FILE).is_file() && dir.join(crate::t_common::AI_TOKENIZER).is_file()
+}
+
+/// Where the local embedding model is read from: the app-data copy wins, the
+/// bundled resource copy (a `models` directory beside the binary, e.g. a
+/// self-contained portable layout) is the fallback. Both roots are the
+/// `models` directories; `None` when no complete copy exists.
+fn resolve_local_model_dir(
+    appdata_models: Option<&Path>,
+    resource_models: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Some(dir) = appdata_models
+        .map(|root| root.join(LOCAL_EMBED_MODEL_NAME))
+        .filter(|dir| local_model_files_present(dir))
+    {
+        return Some(dir);
+    }
+    resource_models
+        .map(|root| root.join(LOCAL_EMBED_MODEL_NAME))
+        .filter(|dir| local_model_files_present(dir))
+}
+
+/// The active copy of the model, resolved from app-data and the resource dir.
+fn resolved_local_model_dir() -> Option<PathBuf> {
+    resolve_local_model_dir(
+        crate::t_config::get_app_data_dir()
+            .ok()
+            .map(|dir| dir.join("models"))
+            .as_deref(),
+        crate::t_config::get_resource_models_dir().as_deref(),
+    )
+}
+
+/// The directory a missing model is reported against: the app-data install
+/// target, where a download or manual copy is expected to land.
+fn active_local_model_dir() -> Result<PathBuf, String> {
+    resolved_local_model_dir().ok_or_else(|| {
+        "本地嵌入模型未安装：请在 设置→图片理解 把嵌入源切到云端，或把 BGE 模型\
+         （model.onnx + tokenizer.json）放入 用户数据目录或程序目录下的 models/bge-local/"
+            .to_string()
+    })
 }
 
 /// The identity of the installed local model: its file size. The directory
@@ -343,7 +382,7 @@ fn local_model_dir() -> Result<PathBuf, String> {
 /// swapping the model file changes the fingerprint and forces a re-embed
 /// instead of silently mixing incompatible vector spaces.
 fn local_model_fingerprint() -> Result<u64, String> {
-    let path = local_model_dir()?.join(LOCAL_EMBED_MODEL_FILE);
+    let path = active_local_model_dir()?.join(LOCAL_EMBED_MODEL_FILE);
     let meta = std::fs::metadata(&path).map_err(|e| format!("{path:?}: {e}"))?;
     Ok(meta.len())
 }
@@ -358,12 +397,7 @@ fn local_model_vector_name() -> Result<String, String> {
 }
 
 pub fn local_model_available() -> bool {
-    local_model_dir()
-        .map(|dir| {
-            dir.join(LOCAL_EMBED_MODEL_FILE).is_file()
-                && dir.join(crate::t_common::AI_TOKENIZER).is_file()
-        })
-        .unwrap_or(false)
+    resolved_local_model_dir().is_some()
 }
 
 struct LocalModel {
@@ -383,7 +417,7 @@ fn local_embedder() -> Result<Arc<Mutex<LocalModel>>, String> {
             return Ok(model.clone());
         }
     }
-    let dir = local_model_dir()?;
+    let dir = active_local_model_dir()?;
     let tokenizer = tokenizers::Tokenizer::from_file(dir.join(crate::t_common::AI_TOKENIZER))
         .map_err(|e| format!("Failed to load the embedding tokenizer: {e}"))?;
     let session = ort::session::Session::builder()
@@ -609,10 +643,7 @@ pub fn make_embedder() -> Result<Box<dyn Embedder>, String> {
     match EmbedSource::from_config(&config) {
         EmbedSource::Local => {
             if !local_model_available() {
-                return Err(
-                    "本地嵌入模型未安装：请在 设置→图片理解 把嵌入源切到云端，或把 BGE 模型（model.onnx + tokenizer.json）放入 models/bge-local/"
-                        .to_string(),
-                );
+                return Err(active_local_model_dir().unwrap_err());
             }
             let model = local_embedder()?;
             Ok(Box::new(ActiveEmbedder::Local(model)))
@@ -943,5 +974,73 @@ mod search_exclusion_tests {
         let rows = vec![(7_i64, 4_usize, vec![0_u8; 16])];
         let kept = filter_excluded_rows(&conn, rows);
         assert_eq!(kept.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod local_model_resolution_tests {
+    use super::*;
+
+    fn models_root(tag: &str) -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("lap-embed-model-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn seed_model(models: &Path) {
+        let dir = models.join(LOCAL_EMBED_MODEL_NAME);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(LOCAL_EMBED_MODEL_FILE), b"model").unwrap();
+        std::fs::write(dir.join(crate::t_common::AI_TOKENIZER), b"tokenizer").unwrap();
+    }
+
+    #[test]
+    fn the_app_data_copy_wins_when_both_roots_carry_a_model() {
+        let appdata = models_root("both-appdata");
+        let resource = models_root("both-resource");
+        seed_model(&appdata);
+        seed_model(&resource);
+        assert_eq!(
+            resolve_local_model_dir(Some(&appdata), Some(&resource)),
+            Some(appdata.join(LOCAL_EMBED_MODEL_NAME))
+        );
+    }
+
+    #[test]
+    fn the_resource_copy_serves_when_app_data_has_no_model() {
+        let appdata = models_root("empty-appdata");
+        let resource = models_root("seeded-resource");
+        seed_model(&resource);
+        assert_eq!(
+            resolve_local_model_dir(Some(&appdata), Some(&resource)),
+            Some(resource.join(LOCAL_EMBED_MODEL_NAME))
+        );
+    }
+
+    #[test]
+    fn an_incomplete_app_data_copy_falls_through_to_the_resource_copy() {
+        let appdata = models_root("partial-appdata");
+        let resource = models_root("full-resource");
+        let partial = appdata.join(LOCAL_EMBED_MODEL_NAME);
+        std::fs::create_dir_all(&partial).unwrap();
+        std::fs::write(partial.join(LOCAL_EMBED_MODEL_FILE), b"model").unwrap();
+        seed_model(&resource);
+        assert_eq!(
+            resolve_local_model_dir(Some(&appdata), Some(&resource)),
+            Some(resource.join(LOCAL_EMBED_MODEL_NAME))
+        );
+    }
+
+    #[test]
+    fn no_copy_anywhere_means_no_local_model() {
+        let appdata = models_root("none-appdata");
+        let resource = models_root("none-resource");
+        assert_eq!(
+            resolve_local_model_dir(Some(&appdata), Some(&resource)),
+            None
+        );
+        assert_eq!(resolve_local_model_dir(Some(&appdata), None), None);
     }
 }

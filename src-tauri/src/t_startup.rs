@@ -109,6 +109,14 @@ pub fn get_ai_initialization_status(app: AppHandle) -> String {
 #[tauri::command]
 pub fn finish_startup(app: AppHandle, model: i64) {
     mark(&app, "first-content-ready");
+    // Pin the bundled models dir for the optional-model fallback; before
+    // this runs the executable directory serves (see t_config).
+    if let Ok(resource) = app
+        .path()
+        .resolve("models", tauri::path::BaseDirectory::Resource)
+    {
+        crate::t_config::set_resource_models_dir(resource);
+    }
     if app
         .state::<StartupState>()
         .background_started

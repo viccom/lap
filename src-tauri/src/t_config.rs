@@ -511,6 +511,32 @@ pub fn get_app_data_dir() -> Result<PathBuf, String> {
         .map(|p| p.join(app_dir_name))
 }
 
+static RESOURCE_MODELS_DIR: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Pin the bundled `models` directory once a Tauri handle exists; until then
+/// the executable directory serves (see `get_resource_models_dir`).
+pub fn set_resource_models_dir(dir: PathBuf) {
+    if let Ok(mut pinned) = RESOURCE_MODELS_DIR.lock() {
+        *pinned = Some(dir);
+    }
+}
+
+/// The bundled `models` directory that optional models fall back to when the
+/// app-data copy is missing: pinned from the Tauri resource dir at startup,
+/// with the directory beside the running executable as the pre-startup
+/// fallback (the Windows installed and portable layouts both keep their
+/// resources next to the binary).
+pub fn get_resource_models_dir() -> Option<PathBuf> {
+    if let Ok(pinned) = RESOURCE_MODELS_DIR.lock() {
+        if let Some(dir) = pinned.as_ref() {
+            return Some(dir.clone());
+        }
+    }
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("models")))
+}
+
 fn get_app_data_folder_name() -> String {
     let identifier = APP_IDENTIFIER
         .get()
