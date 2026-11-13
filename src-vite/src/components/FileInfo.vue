@@ -1330,6 +1330,17 @@ function toggleVlPanel() {
   if (showVlPanel.value) void loadVlAnnotations();
 }
 
+// A file switch must refresh the VL panel: the annotations are async state
+// and would otherwise keep showing the previous file's understanding while
+// every prop-driven field around them already shows the new file.
+watch(() => [libConfig._libraryId, props.fileInfo?.id], () => {
+  if (showVlPanel.value) {
+    void loadVlAnnotations();
+  } else {
+    vlAnnotations.value = [];
+  }
+});
+
 // A finished run may have annotated the file being shown.
 let unlistenVlFinished: (() => void) | null = null;
 onMounted(async () => {
