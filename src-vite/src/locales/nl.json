@@ -726,7 +726,10 @@
       "last_image": "Dit is de laatste foto"
     },
     "album_exists": "Dit album bestaat al",
-    "album_nested": "Deze map overlapt met een ander album"
+    "album_nested": "Deze map overlapt met een ander album",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} bestanden ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Stel een externe speler in bij Instellingen om niet-ondersteunde formaten te openen.",
       "use_external_generic": "Probeer het te openen in de externe speler.",
       "use_external_with_app": "Probeer het in plaats daarvan te openen in {app}.",
-      "unknown": "Onbekende fout"
+      "unknown": "Onbekende fout",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

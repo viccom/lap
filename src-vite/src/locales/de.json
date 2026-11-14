@@ -726,7 +726,10 @@
       "last_image": "Letztes Foto"
     },
     "album_exists": "Album existiert bereits",
-    "album_nested": "Dieser Ordner überschneidet sich mit einem anderen Album"
+    "album_nested": "Dieser Ordner überschneidet sich mit einem anderen Album",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} Dateien ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Um nicht unterstützte Formate zu öffnen, konfigurieren Sie einen externen Player in den Einstellungen.",
       "use_external_generic": "Versuchen Sie, es im externen Player zu öffnen.",
       "use_external_with_app": "Versuchen Sie stattdessen, es in {app} zu öffnen.",
-      "unknown": "Unbekannter Fehler"
+      "unknown": "Unbekannter Fehler",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

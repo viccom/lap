@@ -1064,6 +1064,14 @@ onBeforeUnmount(() => {
   if (navigatorAutoHideTimer) {
     clearTimeout(navigatorAutoHideTimer);
   }
+  if (gestureResetTimeout) {
+    clearTimeout(gestureResetTimeout);
+    gestureResetTimeout = null;
+  }
+  if (wheelZoomTimeout) {
+    clearTimeout(wheelZoomTimeout);
+    wheelZoomTimeout = null;
+  }
   cancelWarmImageScheduling();
 });
 

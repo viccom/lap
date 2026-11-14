@@ -726,7 +726,10 @@
       "last_image": "Es la última foto"
     },
     "album_exists": "Este álbum ya existe",
-    "album_nested": "Esta carpeta se solapa con otro álbum"
+    "album_nested": "Esta carpeta se solapa con otro álbum",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} archivos ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Para abrir formatos no compatibles, configure un reproductor externo en Configuración.",
       "use_external_generic": "Intente abrirlo en el reproductor externo.",
       "use_external_with_app": "Intente abrir en {app} en su lugar.",
-      "unknown": "Error desconocido"
+      "unknown": "Error desconocido",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

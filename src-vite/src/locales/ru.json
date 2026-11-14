@@ -726,7 +726,10 @@
       "last_image": "Последнее фото"
     },
     "album_exists": "Альбом уже существует",
-    "album_nested": "Эта папка пересекается с другим альбомом"
+    "album_nested": "Эта папка пересекается с другим альбомом",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "Файлов: {count} ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Для открытия неподдерживаемых форматов укажите внешний плеер в настройках.",
       "use_external_generic": "Попробуйте открыть во внешнем плеере.",
       "use_external_with_app": "Попробуйте открыть в {app}.",
-      "unknown": "Неизвестная ошибка"
+      "unknown": "Неизвестная ошибка",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

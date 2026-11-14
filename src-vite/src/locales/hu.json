@@ -726,7 +726,10 @@
       "last_image": "Ez az utolsó fotó"
     },
     "album_exists": "Ez az album már létezik",
-    "album_nested": "A mappa átfed egy másik albumot"
+    "album_nested": "A mappa átfed egy másik albumot",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} fájl ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "A nem támogatott formátumokhoz állítson be külső lejátszót.",
       "use_external_generic": "Próbálja külső lejátszóval megnyitni.",
       "use_external_with_app": "Próbálja inkább ezzel megnyitni: {app}.",
-      "unknown": "Ismeretlen hiba"
+      "unknown": "Ismeretlen hiba",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

@@ -726,7 +726,10 @@
       "last_image": "Already the last photo"
     },
     "album_exists": "This album already exists",
-    "album_nested": "This folder overlaps another album"
+    "album_nested": "This folder overlaps another album",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} files ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "To open unsupported formats, set up an external player in Settings.",
       "use_external_generic": "Try opening it in the external player.",
       "use_external_with_app": "Try opening in {app} instead.",
-      "unknown": "Unknown error"
+      "unknown": "Unknown error",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

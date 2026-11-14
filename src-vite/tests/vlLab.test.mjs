@@ -189,6 +189,9 @@ test('the index is consistent when both counts match', () => {
   assert.equal(indexIsConsistent({ documents: 404, files: 404 }), true);
   assert.equal(indexIsConsistent({ documents: 3, files: 4 }), false);
   assert.equal(indexIsConsistent(null), true, 'a missing status shows no warning');
+  // An object without the counts must not read as a mismatch either.
+  assert.equal(indexIsConsistent({}), true, 'a status without counts shows no warning');
+  assert.equal(indexIsConsistent({ documents: 'x', files: 'y' }), true);
 });
 
 test('hit badges map the matched columns to their i18n keys', () => {

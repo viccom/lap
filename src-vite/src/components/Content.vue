@@ -4184,6 +4184,10 @@ onMounted(() => {
 
   migrateRightPanelWidthToPixels();
   window.addEventListener('resize', handleWindowResize);
+  // Register the VL listeners up front: the rows this view shows also carry
+  // the badges of runs started in the lab window, so waiting for a run of our
+  // own would leave them stale.
+  ensureVlRunListeners();
 });
 
 onBeforeUnmount(() => {
@@ -4197,6 +4201,9 @@ onBeforeUnmount(() => {
     contentUpdateTimer = null;
   }
   window.removeEventListener('resize', handleWindowResize);
+  // A drag in progress attaches document listeners; drop them if the view
+  // unmounts mid-drag instead of leaking them onto the document.
+  stopDragging();
   if (resizeObserver) {
     resizeObserver.disconnect();
   }
@@ -9081,6 +9088,9 @@ function ensureVlRunListeners() {
       // Patch the derived annotation flags of the loaded files in place. This
       // also covers runs started elsewhere (the lab window): the sidebar
       // counts refresh for those already, the badges must not lag behind.
+      // The ids are per-library autoincrement, so a payload of the library the
+      // user just left must never stamp its ids onto same-id files here.
+      if (status.libraryId && String(status.libraryId) !== String(libConfig._libraryId)) return;
       // Only views whose membership depends on them need a full requery.
       const annotatedIds = Array.isArray(status.succeededFileIds) ? status.succeededFileIds.map(Number) : [];
       if (annotatedIds.length > 0) {
@@ -11006,26 +11016,43 @@ const selectNoneInCurrentList = () => {
 };
 
 const invertSelectionInCurrentList = async () => {
-  selectedFileIds.clear();
-  let nextCount = 0;
-  let nextSize = 0;
-  for (let i = 0; i < fileList.value.length; i++) {
-    const file = fileList.value[i];
-    if (!file) continue;
-    if (!isRealFileItem(file)) {
-      file.isSelected = false;
-      continue;
+  // Invert means "everything except the current selection", so for a list that
+  // is only partly materialised the complement must be taken over the whole
+  // query result, not just the loaded window (mirror selectAllInCurrentList).
+  const previouslySelected = new Set(selectedFileIds);
+  const hasPlaceholders = fileList.value.some(isPendingFileItem);
+  const next = new Set<number>();
+  if (hasPlaceholders) {
+    const ids = await getCurrentQueryFileIds();
+    if (!Array.isArray(ids)) {
+      toast.error(t('info_panel.selection_load_failed'));
+      return;
     }
-    file.isSelected = !file.isSelected;
-    if (file.isSelected) {
-      selectedFileIds.add(Number(file.id));
-      nextCount++;
-      nextSize += Number(file.size || 0);
+    for (const id of ids) {
+      const fileId = Number(id);
+      if (Number.isFinite(fileId) && fileId > 0 && !previouslySelected.has(fileId)) next.add(fileId);
+    }
+  } else {
+    for (const file of fileList.value) {
+      if (isRealFileItem(file) && !previouslySelected.has(Number(file.id))) next.add(Number(file.id));
+    }
+  }
+  selectedFileIds.clear();
+  for (const id of next) selectedFileIds.add(id);
+
+  let nextSize = 0;
+  for (const file of fileList.value) {
+    if (!file) continue;
+    if (isRealFileItem(file)) {
+      file.isSelected = next.has(Number(file.id));
+      if (file.isSelected) nextSize += Number(file.size || 0);
+    } else {
+      file.isSelected = false;
     }
   }
   recomputeLoadedGroupSelectedCounts();
-  selectedCount.value = nextCount;
-  selectedSize.value = nextCount === totalFileCount.value ? totalFileSize.value : nextSize;
+  selectedCount.value = selectedFileIds.size;
+  selectedSize.value = selectedFileIds.size === totalFileCount.value ? totalFileSize.value : nextSize;
   syncSelectionVersions();
   selectMode.value = true;
 };

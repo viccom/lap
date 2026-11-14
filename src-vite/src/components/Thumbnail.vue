@@ -409,6 +409,10 @@ onBeforeUnmount(() => {
     resizeObserver.disconnect();
   }
   stopMediaPreview();
+  if (transitionTimeout) {
+    clearTimeout(transitionTimeout);
+    transitionTimeout = null;
+  }
 });
 
 watch(() => config.settings.grid.style, () => {

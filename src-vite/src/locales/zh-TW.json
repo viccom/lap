@@ -726,7 +726,10 @@
       "last_image": "已是最後一張相片"
     },
     "album_exists": "此相簿已存在",
-    "album_nested": "此資料夾與另一個相簿重疊"
+    "album_nested": "此資料夾與另一個相簿重疊",
+    "album": {
+      "remove": "從相簿移除"
+    }
   },
   "statusbar": {
     "files_summary": "{count} 個檔案（{size}）"
@@ -1373,7 +1376,8 @@
       "use_external": "若要開啟不支援的格式，請在設定中設定外部播放器。",
       "use_external_generic": "試著用外部播放器開啟。",
       "use_external_with_app": "改試著用 {app} 開啟。",
-      "unknown": "未知錯誤"
+      "unknown": "未知錯誤",
+      "playback_failed": "影片播放失敗"
     }
   },
   "settings": {

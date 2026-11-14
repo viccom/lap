@@ -82,8 +82,11 @@ test("single-letter actions match by character and still allow shift", () => {
 });
 
 test("non-letter codes: digits and numpad keep exact physical matching", () => {
+  // Explicit platform: without it the case depends on the host OS (the default
+  // platform is resolved from navigator), so it is red on Windows/Linux and
+  // green on macOS.
   assert.equal(
-    matchesShortcut("app.scale.increase", cmd("+", "NumpadAdd")),
+    matchesShortcut("app.scale.increase", cmd("+", "NumpadAdd"), "mac"),
     true,
   );
   // Digit bindings stay physical so shifted digit slots keep working on both

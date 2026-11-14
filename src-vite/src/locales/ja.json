@@ -726,7 +726,10 @@
       "last_image": "最後の写真です"
     },
     "album_exists": "このアルバムは既に存在します",
-    "album_nested": "このフォルダは別のアルバムと重複しています"
+    "album_nested": "このフォルダは別のアルバムと重複しています",
+    "album": {
+      "remove": "アルバムから削除"
+    }
   },
   "statusbar": {
     "files_summary": "{count} ファイル ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "未対応の形式を開くには、設定で外部プレイヤーを設定してください。",
       "use_external_generic": "外部プレイヤーで開いてみてください。",
       "use_external_with_app": "代わりに {app} で開いてみてください。",
-      "unknown": "不明なエラー"
+      "unknown": "不明なエラー",
+      "playback_failed": "動画の再生に失敗しました"
     }
   },
   "settings": {

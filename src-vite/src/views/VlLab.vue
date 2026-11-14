@@ -412,6 +412,9 @@ async function openSettings() {
 
 const files = ref<any[]>([]);
 const loadingFiles = ref(false);
+// Bumped on every library switch: a load that lands afterwards carries the
+// previous library's ids and must be dropped instead of refilling the view.
+let libraryEpoch = 0;
 const selectedIds = ref<Set<number>>(new Set());
 const annotationsByFileId = ref<Record<number, any[]>>({});
 const templateId = ref(0);
@@ -433,8 +436,11 @@ const selectionSummary = computed(() => {
 async function loadFiles() {
   if (loadingFiles.value) return;
   loadingFiles.value = true;
+  const epoch = libraryEpoch;
   try {
     const list = await getQueryFiles(buildLabQueryParams(), 0, LAB_MAX_FILES);
+    // A library switch while the query was in flight invalidates the answer.
+    if (epoch !== libraryEpoch) return;
     files.value = Array.isArray(list) ? list.slice(0, LAB_MAX_FILES) : [];
     // The ids that went away cannot be selected any more.
     const present = new Set(files.value.map((file: any) => Number(file.id)));
@@ -500,6 +506,7 @@ function observeThumbs() {
 async function loadThumb(fileId: number) {
   if (!fileId || thumbs.has(fileId) || thumbInflight.has(fileId)) return;
   thumbInflight.add(fileId);
+  const epoch = libraryEpoch;
   try {
     const file = fileById.value.get(fileId);
     if (!file) return;
@@ -511,6 +518,7 @@ async function loadThumb(fileId: number) {
       256,
       false,
     );
+    if (epoch !== libraryEpoch) return;
     thumbs.set(fileId, getThumbnailDataUrl(thumb, '', false, 256));
   } catch {
     // The cell keeps its placeholder; the next intersection tries again.
@@ -776,6 +784,8 @@ const matchColumnSummary = computed(() => {
 async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
   const query = searchQuery.value.trim();
   if (!query || searching.value) return;
+  // A switch mid-search invalidates whatever the awaits return.
+  const epoch = libraryEpoch;
   searchKind.value = kind;
   searching.value = true;
   searchError.value = '';
@@ -815,6 +825,7 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
           rerankFailed(error);
         }
       }
+      if (epoch !== libraryEpoch) return;
       searchHits.value = hits;
       searchFiles.value = files;
     } else {
@@ -833,10 +844,13 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
           rerankFailed(error);
         }
       }
+      const fileIds = list.map(hit => Number(hit.fileId)).filter(id => id > 0);
+      const files = fileIds.length ? ((await getFilesByIds(fileIds)) ?? []) : [];
+      if (epoch !== libraryEpoch) return;
       searchHits.value = list;
-      const fileIds = searchHits.value.map(hit => Number(hit.fileId)).filter(id => id > 0);
-      searchFiles.value = fileIds.length ? ((await getFilesByIds(fileIds)) ?? []) : [];
+      searchFiles.value = files;
     }
+    if (epoch !== libraryEpoch) return;
     searched.value = true;
     observeThumbs();
   } catch (error) {
@@ -849,6 +863,7 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
 // ----- lifecycle -----
 
 function resetAfterLibrarySwitch() {
+  libraryEpoch += 1;
   stopPolling();
   running.value = false;
   starting.value = false;

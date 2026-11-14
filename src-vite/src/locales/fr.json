@@ -726,7 +726,10 @@
       "last_image": "Dernière photo"
     },
     "album_exists": "Cet album existe déjà",
-    "album_nested": "Ce dossier chevauche un autre album"
+    "album_nested": "Ce dossier chevauche un autre album",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} fichiers ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Pour ouvrir les formats non pris en charge, configurez un lecteur externe dans les Paramètres.",
       "use_external_generic": "Essayez de l'ouvrir dans le lecteur externe.",
       "use_external_with_app": "Essayez d'ouvrir dans {app} à la place.",
-      "unknown": "Erreur inconnue"
+      "unknown": "Erreur inconnue",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

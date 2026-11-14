@@ -70,6 +70,63 @@ test('a finished run refreshes the badges of this view even when it was started 
     'the badge patch and the membership refresh must follow the toast gate');
 });
 
+test('the finished listener patches badges only for the library on screen', async () => {
+  const source = await read('../src/components/Content.vue');
+  const listenerAt = source.indexOf("listen('vl-analysis-finished'");
+  const body = source.slice(listenerAt, source.indexOf('});', listenerAt));
+  // Ids are per-library autoincrement: a run of the library the user just
+  // left would otherwise stamp its ids onto same-id files of the new library.
+  const guardAt = body.indexOf('libConfig._libraryId');
+  const patchAt = body.indexOf('succeededFileIds');
+  assert.ok(guardAt >= 0, 'the badge patch must compare the run library with the displayed one');
+  assert.ok(patchAt > guardAt, 'the library guard must precede the badge patch');
+});
+
+test('the main window registers the VL run listeners on mount, not only after it starts a run', async () => {
+  const source = await read('../src/components/Content.vue');
+  const mountAt = source.indexOf('onMounted(() => {');
+  assert.ok(mountAt >= 0, 'Content.vue must have a synchronous onMounted hook');
+  const unmountAt = source.indexOf('onBeforeUnmount(', mountAt);
+  assert.ok(unmountAt > mountAt, 'the mount hook must be followed by its unmount hook');
+  assert.ok(source.slice(mountAt, unmountAt).includes('ensureVlRunListeners()'),
+    'onMounted must register the VL listeners so lab-started runs refresh the badges');
+});
+
+test('the lab drops in-flight loads when the main window switches libraries', async () => {
+  const source = await read('../src/views/VlLab.vue');
+  assert.ok(source.includes('libraryEpoch'), 'VlLab.vue must track a library epoch');
+  const loadAt = source.indexOf('async function loadFiles');
+  assert.ok(source.slice(loadAt, source.indexOf('\n}', loadAt)).includes('libraryEpoch'),
+    'loadFiles must drop results that land after a library switch');
+  const searchAt = source.indexOf('async function runSearch');
+  assert.ok(source.slice(searchAt, source.indexOf('\n}', searchAt)).includes('libraryEpoch'),
+    'runSearch must drop results that land after a library switch');
+  const resetAt = source.indexOf('function resetAfterLibrarySwitch');
+  const resetBody = source.slice(resetAt, source.indexOf('\n}', resetAt));
+  assert.ok(resetBody.includes('libraryEpoch += 1') || resetBody.includes('libraryEpoch++'),
+    'resetAfterLibrarySwitch must bump the epoch');
+});
+
+test('the template manager releases its library listener even if it unmounts mid-registration', async () => {
+  const source = await read('../src/components/VlTemplateManager.vue');
+  assert.ok(source.includes('libraryListenerDisposed'),
+    'the awaited listener must be released if the component unmounted while registering');
+});
+
+test('invert selection complements the whole list, not only the loaded window', async () => {
+  const source = await read('../src/components/Content.vue');
+  const at = source.indexOf('const invertSelectionInCurrentList');
+  assert.ok(at >= 0, 'Content.vue must define invertSelectionInCurrentList');
+  const body = source.slice(at, source.indexOf('\n};', at));
+  // A virtualised list holds null placeholders for the rows it has not
+  // materialised yet; flipping only the loaded ones yields a wrong set that
+  // the user then acts on. Mirror selectAll: fetch the whole id list first.
+  assert.ok(body.includes('isPendingFileItem'),
+    'invert must detect the unloaded placeholders like selectAll does');
+  assert.ok(body.includes('getCurrentQueryFileIds'),
+    'invert must fetch the whole id list like selectAll does');
+});
+
 test('the clear-key button is disabled while a save is in flight (the clear must not be silently dropped)', async () => {
   const source = await read('../src/views/Settings.vue');
   const buttonAt = source.indexOf('@click="clearVlApiKey"');

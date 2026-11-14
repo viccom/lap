@@ -726,7 +726,10 @@
       "last_image": "Це вже остання фотографія"
     },
     "album_exists": "Цей альбом уже існує",
-    "album_nested": "Ця тека перекривається з іншим альбомом"
+    "album_nested": "Ця тека перекривається з іншим альбомом",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} файлів ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Щоб відкривати непідтримувані формати, налаштуйте зовнішній програвач у Налаштуваннях.",
       "use_external_generic": "Спробуйте відкрити його у зовнішньому програвачі.",
       "use_external_with_app": "Спробуйте відкрити натомість у {app}.",
-      "unknown": "Невідома помилка"
+      "unknown": "Невідома помилка",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

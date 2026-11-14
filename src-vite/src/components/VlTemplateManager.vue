@@ -272,15 +272,25 @@ async function confirmDelete() {
 // This component lives in the settings window and outlives a library switch
 // of the main window; the templates are per-library, so the list must reload.
 let stopLibraryListener: (() => void) | null = null;
+// Switching the settings tab unmounts this component; if that happens while
+// the registration is still in flight, the listener must be released instead
+// of leaking on a dead instance.
+let libraryListenerDisposed = false;
 
 onMounted(async () => {
-  stopLibraryListener = await listen('library-switched', () => {
+  const stop = await listen('library-switched', () => {
     void reload();
   });
+  if (libraryListenerDisposed) {
+    stop();
+    return;
+  }
+  stopLibraryListener = stop;
   void reload();
 });
 
 onBeforeUnmount(() => {
+  libraryListenerDisposed = true;
   stopLibraryListener?.();
   stopLibraryListener = null;
 });

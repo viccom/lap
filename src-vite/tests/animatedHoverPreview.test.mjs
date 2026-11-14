@@ -62,7 +62,9 @@ test('unmount and file-change cleanup invalidate pending animated previews', asy
     const f = fixture(); f.startAnimatedImagePreview();
     const pending = f.fireTimer();
     const stopMediaPreview = () => f.stopAnimatedImagePreview();
-    new Function('stopMediaPreview', 'resizeObserver', cleanup)(stopMediaPreview, null);
+    // The unmount hook also releases the grid-style transition timer, so the
+    // simulated component scope carries that local too.
+    new Function('stopMediaPreview', 'resizeObserver', 'transitionTimeout', cleanup)(stopMediaPreview, null, null);
     f.checks[0].resolve(false); await pending;
     assert.equal(f.show.value, false);
   }

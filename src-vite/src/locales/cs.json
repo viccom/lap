@@ -726,7 +726,10 @@
       "last_image": "Toto je již poslední fotografie"
     },
     "album_exists": "Toto album již existuje",
-    "album_nested": "Tato složka se překrývá s jiným albem"
+    "album_nested": "Tato složka se překrývá s jiným albem",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} souborů ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Chcete-li otevírat nepodporované formáty, nastavte v Nastavení externí přehrávač.",
       "use_external_generic": "Zkuste video otevřít v externím přehrávači.",
       "use_external_with_app": "Zkuste místo toho otevřít v aplikaci {app}.",
-      "unknown": "Neznámá chyba"
+      "unknown": "Neznámá chyba",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

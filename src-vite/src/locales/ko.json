@@ -726,7 +726,10 @@
       "last_image": "마지막 사진입니다"
     },
     "album_exists": "이미 존재하는 앨범입니다",
-    "album_nested": "이 폴더는 다른 앨범과 겹칩니다"
+    "album_nested": "이 폴더는 다른 앨범과 겹칩니다",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} 파일 ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "지원하지 않는 형식을 열려면 설정에서 외부 플레이어를 구성하세요.",
       "use_external_generic": "외부 플레이어에서 열어보세요.",
       "use_external_with_app": "대신 {app}에서 열어보세요.",
-      "unknown": "알 수 없는 오류"
+      "unknown": "알 수 없는 오류",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

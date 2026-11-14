@@ -726,7 +726,10 @@
       "last_image": "Đây đã là ảnh cuối cùng"
     },
     "album_exists": "Album này đã tồn tại",
-    "album_nested": "Thư mục này chồng lấn với một album khác"
+    "album_nested": "Thư mục này chồng lấn với một album khác",
+    "album": {
+      "remove": "Remove from album"
+    }
   },
   "statusbar": {
     "files_summary": "{count} tệp ({size})"
@@ -1373,7 +1376,8 @@
       "use_external": "Để mở các định dạng không được hỗ trợ, hãy thiết lập trình phát bên ngoài trong Cài đặt.",
       "use_external_generic": "Hãy thử mở bằng trình phát bên ngoài.",
       "use_external_with_app": "Hãy thử mở bằng {app}.",
-      "unknown": "Lỗi không xác định"
+      "unknown": "Lỗi không xác định",
+      "playback_failed": "Video playback failed"
     }
   },
   "settings": {

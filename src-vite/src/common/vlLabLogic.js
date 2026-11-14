@@ -147,7 +147,11 @@ export const OUTCOME_LABEL_KEYS = {
 /// status shows no warning instead of a false alarm.
 export function indexIsConsistent(status) {
   if (!status || typeof status !== 'object') return true;
-  return Number(status.documents) === Number(status.files);
+  const documents = Number(status.documents);
+  const files = Number(status.files);
+  // A status carrying neither count must not read as a mismatch.
+  if (!Number.isFinite(documents) || !Number.isFinite(files)) return true;
+  return documents === files;
 }
 
 /// The matched columns of one hit as badges with their i18n keys.

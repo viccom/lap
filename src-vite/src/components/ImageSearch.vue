@@ -170,10 +170,6 @@ onMounted(() => {
   nextTick(() => focusSearchInput());
 });
 
-onUnmounted(() => {
-  uiStore.removeInputHandler('ImageSearch');
-});
-
 function handleSearchHistoryClick(index: number) {
   const item = libConfig.search.searchHistory[index];
   const searchText = typeof item === 'string' ? item : item?.text;
