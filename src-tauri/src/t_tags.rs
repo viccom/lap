@@ -230,6 +230,10 @@ pub fn import_path(
     Ok(parent)
 }
 
+/// Unfiltered view of a file's keywords; tests use it as the reference the
+/// export exclusion is checked against (production goes through
+/// [`keywords_for_file_excluding_root`]).
+#[cfg(test)]
 pub fn keywords_for_file(conn: &Connection, id: i64) -> Result<(Vec<String>, Vec<String>), String> {
     let sql = format!(
         "{FILE_PATHS} SELECT name,path,valid FROM paths WHERE ancestor_id IS NULL ORDER BY path COLLATE NOCASE,id"
@@ -237,6 +241,46 @@ pub fn keywords_for_file(conn: &Connection, id: i64) -> Result<(Vec<String>, Vec
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([id], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, bool>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+    let mut flat = Vec::new();
+    let mut paths = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for row in rows {
+        let (name, path, valid) = row.map_err(|e| e.to_string())?;
+        if seen.insert(name.to_lowercase()) {
+            flat.push(name);
+        }
+        if valid {
+            paths.push(path);
+        }
+    }
+    Ok((flat, paths))
+}
+
+/// The file's keywords excluding the whole subtree under `root_name`. The
+/// XMP export uses this to keep the sidecar a user-domain artifact:
+/// machine-written tags (e.g. the AI understanding tree) stay in the
+/// library instead of leaking into dc:subject as bare user keywords.
+pub fn keywords_for_file_excluding_root(
+    conn: &Connection,
+    id: i64,
+    root_name: &str,
+) -> Result<(Vec<String>, Vec<String>), String> {
+    let sql = format!(
+        "{FILE_PATHS} SELECT name,path,valid FROM paths \
+         WHERE ancestor_id IS NULL \
+           AND path <> ?2 AND substr(path, 1, length(?2) + 1) <> ?2 || '|' \
+         ORDER BY path COLLATE NOCASE,id"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![id, root_name], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -426,5 +470,23 @@ mod tests {
         );
         assert!(validate_name("bad|name").is_err());
         assert!(import_path(&conn, &"a|".repeat(129), true).is_err());
+    }
+
+    #[test]
+    fn keywords_can_exclude_the_subtree_under_a_named_root() {
+        let conn = fixture();
+        let paris = import_path(&conn, "Places|France|Paris", true)
+            .unwrap()
+            .unwrap();
+        let ai = import_path(&conn, "AI理解|天空", true).unwrap().unwrap();
+        conn.execute("INSERT INTO afile_tags VALUES(1,?1),(1,?2)", [paris, ai])
+            .unwrap();
+        // Unfiltered: both the user chain and the AI chain come back.
+        let (flat, _) = keywords_for_file(&conn, 1).unwrap();
+        assert_eq!(flat.len(), 2);
+        // Export view: the AI subtree is gone, the user chain stays intact.
+        let (flat, paths) = keywords_for_file_excluding_root(&conn, 1, "AI理解").unwrap();
+        assert_eq!(flat, vec!["Paris"]);
+        assert_eq!(paths, vec!["Places|France|Paris"]);
     }
 }

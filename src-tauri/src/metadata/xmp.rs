@@ -1851,7 +1851,14 @@ fn write_one(conn: &Connection, file_id: i64, cache: &mut ExportIndex) -> Result
         .query_row("SELECT f.path,a.name,COALESCE(a.rating,0),COALESCE(a.culling_flag,0),COALESCE(a.comments,''),COALESCE(a.is_favorite,0) FROM afiles a JOIN afolders f ON f.id=a.folder_id WHERE a.id=?1",
             [file_id], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))
         .map_err(|e|e.to_string())?;
-    let (tags, paths) = crate::t_tags::keywords_for_file(&tx, file_id)?;
+    // The AI understanding subtree stays in the library: exporting it would
+    // drop bare machine keywords into dc:subject where no consumer can tell
+    // them apart from the user's own (REVIEW-2026-11-14 P0-3).
+    let (tags, paths) = crate::t_tags::keywords_for_file_excluding_root(
+        &tx,
+        file_id,
+        crate::t_vl_tags::VL_TAG_ROOT,
+    )?;
     tx.commit().map_err(|e| e.to_string())?;
     let mut components = Path::new(&name).components();
     if !matches!(components.next(), Some(std::path::Component::Normal(_)))
