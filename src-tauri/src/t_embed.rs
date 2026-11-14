@@ -555,6 +555,24 @@ pub fn parse_embeddings_response(body: &str) -> Result<Vec<Vec<f32>>, String> {
     Ok(vectors)
 }
 
+/// Every cloud request is bounded: a gateway that accepts the connection
+/// but never answers must fail here instead of hanging the caller (the
+/// blocking client runs on a dedicated thread that the command joins).
+const CLOUD_EMBED_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+fn cloud_embed_client_with_timeout(
+    timeout: std::time::Duration,
+) -> Result<reqwest::blocking::Client, String> {
+    reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|e| format!("failed to build the embedding client: {e}"))
+}
+
+fn cloud_embed_client() -> Result<reqwest::blocking::Client, String> {
+    cloud_embed_client_with_timeout(CLOUD_EMBED_TIMEOUT)
+}
+
 fn call_cloud_embeddings(
     client: &reqwest::blocking::Client,
     config: &crate::t_vl::VlGatewayConfig,
@@ -622,7 +640,7 @@ impl Embedder for ActiveEmbedder {
                 let config = config.clone();
                 let model = model.clone();
                 std::thread::spawn(move || {
-                    let client = reqwest::blocking::Client::new();
+                    let client = cloud_embed_client()?;
                     let mut vectors = Vec::with_capacity(texts.len());
                     for chunk in texts.chunks(CLOUD_BATCH) {
                         let mut part = call_cloud_embeddings(&client, &config, &model, chunk)?;
@@ -716,8 +734,18 @@ pub fn embed_status() -> Result<EmbedStatusView, String> {
 }
 
 /// Rebuild every caption embedding for the active model from scratch.
+///
+/// Async + `spawn_blocking`: the rebuild can run minutes on a large library
+/// (model load plus every missing caption), which must never sit on the
+/// window thread a synchronous command runs on.
 #[tauri::command]
-pub fn rebuild_caption_embeds() -> Result<(usize, usize), String> {
+pub async fn rebuild_caption_embeds() -> Result<(usize, usize), String> {
+    tauri::async_runtime::spawn_blocking(rebuild_caption_embeds_blocking)
+        .await
+        .map_err(|e| format!("the rebuild task failed: {e}"))?
+}
+
+fn rebuild_caption_embeds_blocking() -> Result<(usize, usize), String> {
     let model = active_model_name()?;
     {
         let conn = crate::t_sqlite::open_conn()?;
@@ -731,8 +759,22 @@ pub fn rebuild_caption_embeds() -> Result<(usize, usize), String> {
 }
 
 /// Semantic search: query embedding vs stored caption embeddings.
+///
+/// Async + `spawn_blocking` for the same reason as the rebuild above: the
+/// first search may load the local model and catch up on every missing
+/// caption embedding.
 #[tauri::command]
-pub fn search_captions(
+pub async fn search_captions(
+    query: String,
+    threshold: Option<f32>,
+    limit: Option<i64>,
+) -> Result<Vec<CaptionHit>, String> {
+    tauri::async_runtime::spawn_blocking(move || search_captions_blocking(query, threshold, limit))
+        .await
+        .map_err(|e| format!("the search task failed: {e}"))?
+}
+
+fn search_captions_blocking(
     query: String,
     threshold: Option<f32>,
     limit: Option<i64>,
@@ -1042,5 +1084,45 @@ mod local_model_resolution_tests {
             None
         );
         assert_eq!(resolve_local_model_dir(Some(&appdata), None), None);
+    }
+}
+
+#[cfg(test)]
+mod cloud_timeout_tests {
+    use super::*;
+
+    #[test]
+    fn a_hanging_embedding_gateway_fails_within_the_client_timeout() {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            // Park every accepted connection: read the request, never answer.
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { break };
+                let _ = stream.read(&mut [0u8; 4096]);
+                std::thread::sleep(std::time::Duration::from_secs(30));
+            }
+        });
+        let config = crate::t_vl::VlGatewayConfig {
+            gateway_url: format!("http://127.0.0.1:{port}"),
+            api_key: String::new(),
+            protocol: Default::default(),
+            model: String::new(),
+            rerank_model: String::new(),
+            embed_source: String::new(),
+            embed_model: String::new(),
+            max_concurrency: 2,
+        };
+        let client =
+            cloud_embed_client_with_timeout(std::time::Duration::from_millis(400)).unwrap();
+        let started = std::time::Instant::now();
+        let result = call_cloud_embeddings(&client, &config, "m", &["probe".to_string()]);
+        let elapsed = started.elapsed();
+        assert!(result.is_err(), "a parked gateway must produce an error");
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "the timeout did not bound the request: {elapsed:?}"
+        );
     }
 }

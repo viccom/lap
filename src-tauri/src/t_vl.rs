@@ -1842,10 +1842,7 @@ pub async fn rerank_search_with_llm(
             });
         }
     }
-    Err(format!(
-        "重排结果无法解析: {}",
-        truncate_chars(last_answer.trim(), 160)
-    ))
+    Err(unparseable_rerank_error(&last_answer, &config.api_key))
 }
 
 // ----------------------------------------------------------------------------
@@ -1968,11 +1965,12 @@ pub async fn call_gateway(
         });
     }
 
-    Ok(VlCallOutcome {
-        response: parsed,
-        raw_body,
-        duration_ms: started.elapsed().as_millis() as i64,
-    })
+    Ok(finalize_success(
+        parsed,
+        &raw_body,
+        &config.api_key,
+        started.elapsed().as_millis() as i64,
+    ))
 }
 
 /// Replace the API key with a placeholder so it can never be stored or shown.
@@ -1981,6 +1979,32 @@ fn redact(text: &str, api_key: &str) -> String {
         return text.to_string();
     }
     text.replace(api_key, "***")
+}
+
+/// Finalize a 2xx response into the stored outcome. The raw body is stored
+/// as evidence and shown in the UI, so — exactly like the error paths — it
+/// must never echo the api key back, whatever a gateway puts into a
+/// successful body.
+fn finalize_success(
+    parsed: VlResponse,
+    raw_body: &str,
+    api_key: &str,
+    duration_ms: i64,
+) -> VlCallOutcome {
+    VlCallOutcome {
+        response: parsed,
+        raw_body: redact(raw_body, api_key),
+        duration_ms,
+    }
+}
+
+/// The error shown when a rerank answer cannot be parsed; the answer text is
+/// gateway output and may quote headers, so it goes through redaction too.
+fn unparseable_rerank_error(answer: &str, api_key: &str) -> String {
+    format!(
+        "重排结果无法解析: {}",
+        truncate_chars(&redact(answer.trim(), api_key), 160)
+    )
 }
 
 /// Extract the message of an error body. The gateway uses an OpenAI style
@@ -2134,6 +2158,76 @@ pub fn set_config(
 // Orchestration
 // ----------------------------------------------------------------------------
 
+/// The original-file fallback of the VL source is bounded: nothing filters
+/// the format before the bytes are read, so without a limit a video or a
+/// multi-gigabyte original would be loaded whole and base64-encoded
+/// (REVIEW-2026-11-14 P1-3).
+const VL_ORIGINAL_FALLBACK_MAX_BYTES: u64 = 30 * 1024 * 1024;
+
+/// Whether the original file may serve as the VL input image at all.
+fn original_fallback_allowed(path: &std::path::Path, len: u64) -> bool {
+    if len == 0 || len > VL_ORIGINAL_FALLBACK_MAX_BYTES {
+        return false;
+    }
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| {
+            matches!(
+                ext.to_ascii_lowercase().as_str(),
+                "jpg"
+                    | "jpeg"
+                    | "png"
+                    | "webp"
+                    | "gif"
+                    | "bmp"
+                    | "tif"
+                    | "tiff"
+                    | "heic"
+                    | "heif"
+                    | "avif"
+            )
+        })
+}
+
+/// Which (file, template, version) triples are being analyzed right now.
+/// One registry lives in the app state and is shared by every run: a racing
+/// claim turns the duplicate call into a Skipped instead of a second
+/// gateway bill (REVIEW-2026-11-14 P1-2).
+#[derive(Default)]
+pub(crate) struct InFlight {
+    set: Mutex<std::collections::HashSet<(i64, i64, i64)>>,
+}
+
+impl InFlight {
+    /// Claim the exclusive right to analyze one file with one template
+    /// version. `None` means another worker is already on it.
+    fn claim(&self, key: (i64, i64, i64)) -> Option<InFlightGuard<'_>> {
+        let mut set = self.set.lock().ok()?;
+        if set.insert(key) {
+            Some(InFlightGuard {
+                registry: self,
+                key,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+/// Releases the claim when the analysis ends, whatever way it ends.
+struct InFlightGuard<'a> {
+    registry: &'a InFlight,
+    key: (i64, i64, i64),
+}
+
+impl Drop for InFlightGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.registry.set.lock() {
+            set.remove(&self.key);
+        }
+    }
+}
+
 /// What happened to one file.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VlFileOutcome {
@@ -2165,7 +2259,13 @@ pub async fn analyze_file(
     template: &VlTemplate,
     force: bool,
     run_id: Option<&str>,
+    in_flight: &InFlight,
 ) -> Result<VlFileOutcome, String> {
+    // One gateway call per file and template at a time, even across runs:
+    // a racing second worker would bill the gateway twice (P1-2).
+    let Some(_in_flight) = in_flight.claim((file_id, template.id, template.version)) else {
+        return Ok(VlFileOutcome::Skipped);
+    };
     if !force
         && store
             .annotation(file_id, template.id, template.version)?
@@ -2544,6 +2644,9 @@ impl VlSource for LibraryBoundSource {
         if crate::t_utils::is_cloud_only(&metadata) {
             return Ok(None);
         }
+        if !original_fallback_allowed(std::path::Path::new(&path), metadata.len()) {
+            return Ok(None);
+        }
         let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
         if bytes.is_empty() {
             return Ok(None);
@@ -2648,6 +2751,7 @@ pub fn run_vl_analysis(
         runs: state.runs.clone(),
         cancel_flags: state.cancel_flags.clone(),
         queue: state.queue.clone(),
+        in_flight: state.in_flight.clone(),
     };
     start_run(&app_handle, &owned, file_ids, template_id, force)
 }
@@ -2960,6 +3064,7 @@ pub struct VlState {
     pub runs: Arc<Mutex<HashMap<String, VlRunStatus>>>,
     pub cancel_flags: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     pub queue: Arc<VlQueue>,
+    pub in_flight: Arc<InFlight>,
 }
 
 impl VlState {
@@ -3253,6 +3358,7 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
                 &template,
                 force,
                 Some(&run_id),
+                &state.in_flight,
             )
             .await
             {
@@ -4541,6 +4647,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4569,6 +4676,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4719,6 +4827,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4762,6 +4871,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4814,6 +4924,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4841,6 +4952,7 @@ mod tests {
             &template,
             true,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4878,6 +4990,7 @@ mod tests {
             &template,
             true,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4945,6 +5058,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -4977,6 +5091,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -5035,6 +5150,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -5079,6 +5195,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -5120,6 +5237,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -5161,6 +5279,7 @@ mod tests {
             &template,
             false,
             None,
+            &InFlight::default(),
         )
         .await
         .unwrap();
@@ -5380,7 +5499,15 @@ mod tests {
             .build()
             .expect("build client");
         let outcome = analyze_file(
-            &store, &source, &client, &config, file_id, &template, true, None,
+            &store,
+            &source,
+            &client,
+            &config,
+            file_id,
+            &template,
+            true,
+            None,
+            &InFlight::default(),
         )
         .await
         .expect("analyze_file");
@@ -6017,5 +6144,86 @@ mod tests {
         assert_eq!(restored.file_name, None);
         let named: VlCall = serde_json::from_value(value).unwrap();
         assert_eq!(named.file_name.as_deref(), Some("a.jpg"));
+    }
+}
+
+#[cfg(test)]
+mod redaction_tests {
+    use super::*;
+
+    const KEY: &str = "sk-lap-test-key-123456";
+
+    #[test]
+    fn a_success_body_echoing_the_api_key_is_redacted_before_it_is_stored() {
+        let parsed = VlResponse {
+            text: "ok".to_string(),
+            ..Default::default()
+        };
+        let body = format!("{{\"content\":[{{\"type\":\"text\",\"text\":\"echo {KEY}\"}}]}}");
+        let outcome = finalize_success(parsed, &body, KEY, 7);
+        assert!(
+            outcome.raw_body.contains("***"),
+            "the key must be masked: {}",
+            outcome.raw_body
+        );
+        assert!(!outcome.raw_body.contains(KEY));
+    }
+
+    #[test]
+    fn an_empty_key_leaves_the_success_body_untouched() {
+        let outcome = finalize_success(VlResponse::default(), "plain body", "", 1);
+        assert_eq!(outcome.raw_body, "plain body");
+    }
+
+    #[test]
+    fn the_rerank_parse_error_never_quotes_the_api_key() {
+        let message =
+            unparseable_rerank_error(&format!("the gateway echoed {KEY} and more text"), KEY);
+        assert!(!message.contains(KEY));
+        assert!(message.contains("***"));
+    }
+}
+
+#[cfg(test)]
+mod in_flight_tests {
+    use super::*;
+
+    #[test]
+    fn an_in_flight_claim_is_exclusive_until_released() {
+        let registry = InFlight::default();
+        let guard = registry
+            .claim((1, 42, 3))
+            .expect("the first claim must succeed");
+        assert!(
+            registry.claim((1, 42, 3)).is_none(),
+            "a duplicate concurrent claim must be refused"
+        );
+        // A different file or template is not blocked by the claim above.
+        assert!(registry.claim((2, 42, 3)).is_some());
+        drop(guard);
+        assert!(
+            registry.claim((1, 42, 3)).is_some(),
+            "a released key can be claimed again"
+        );
+    }
+}
+
+#[cfg(test)]
+mod original_fallback_tests {
+    use super::*;
+
+    #[test]
+    fn the_original_fallback_is_bounded_by_size_and_extension() {
+        use std::path::Path;
+        let bound = VL_ORIGINAL_FALLBACK_MAX_BYTES;
+        assert!(original_fallback_allowed(Path::new("photo.jpg"), 1024));
+        assert!(original_fallback_allowed(Path::new("photo.HEIC"), 1024));
+        assert!(!original_fallback_allowed(
+            Path::new("photo.jpg"),
+            bound + 1
+        ));
+        assert!(!original_fallback_allowed(Path::new("clip.mov"), 1024));
+        assert!(!original_fallback_allowed(Path::new("clip.MOV"), 1024));
+        assert!(!original_fallback_allowed(Path::new("noext"), 1024));
     }
 }

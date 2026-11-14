@@ -97,30 +97,35 @@ pub fn tags_from_result(value: &serde_json::Value, spec: &serde_json::Value) -> 
     tags
 }
 
-/// The id of the AI root tag, created on first use.
+/// The id of the AI root tag, created on first use. The unique root index
+/// makes a concurrent first write a no-op instead of a failed transaction
+/// (REVIEW-2026-11-14 P1-14).
 fn ensure_root(conn: &Connection) -> Result<i64, String> {
     if let Some(id) = crate::t_tags::find(conn, VL_TAG_ROOT, None)? {
         return Ok(id);
     }
     conn.execute(
-        "INSERT INTO atags(name, parent_id) VALUES(?1, NULL)",
+        "INSERT OR IGNORE INTO atags(name, parent_id) VALUES(?1, NULL)",
         params![VL_TAG_ROOT],
     )
     .map_err(|e| e.to_string())?;
-    Ok(conn.last_insert_rowid())
+    crate::t_tags::find(conn, VL_TAG_ROOT, None)?
+        .ok_or_else(|| "failed to create the AI tag root".to_string())
 }
 
-/// The id of one child of the root, created on first use.
+/// The id of one child of the root, created on first use; the unique sibling
+/// index keeps a racing first write from failing the transaction (P1-14).
 fn ensure_child(conn: &Connection, root: i64, name: &str) -> Result<i64, String> {
     if let Some(id) = crate::t_tags::find(conn, name, Some(root))? {
         return Ok(id);
     }
     conn.execute(
-        "INSERT INTO atags(name, parent_id) VALUES(?1, ?2)",
+        "INSERT OR IGNORE INTO atags(name, parent_id) VALUES(?1, ?2)",
         params![name, root],
     )
     .map_err(|e| e.to_string())?;
-    Ok(conn.last_insert_rowid())
+    crate::t_tags::find(conn, name, Some(root))?
+        .ok_or_else(|| format!("failed to create the AI tag '{name}'"))
 }
 
 fn tables_present(conn: &Connection) -> bool {
@@ -176,6 +181,29 @@ pub fn apply_tags(conn: &Connection, file_id: i64, tags: &[String]) -> Result<us
         params![file_id],
     )
     .map_err(|e| e.to_string())?;
+
+    // The afile_tags triggers latch the Tags dirty bit on any change, and a
+    // latched bit makes non-destructive sidecar imports skip this file's
+    // tags forever. AI tags are machine-written: they must not borrow the
+    // protection that exists for *user* edits, so the bit is cleared again
+    // inside the same transaction (schemas without axmp_imports skip this).
+    let has_imports: bool = tx
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='axmp_imports'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count == 1)
+        .unwrap_or(false);
+    if has_imports {
+        let keep_mask = !(crate::metadata::schema::CatalogField::Tags.mask() as i64);
+        tx.execute(
+            "INSERT INTO axmp_imports(file_id, dirty) VALUES(?1, 0)
+             ON CONFLICT(file_id) DO UPDATE SET dirty = dirty & ?2",
+            params![file_id, keep_mask],
+        )
+        .map_err(|e| e.to_string())?;
+    }
     tx.commit().map_err(|e| e.to_string())?;
 
     // The new tags have to be findable right away; a failure here is logged,
@@ -358,5 +386,61 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
         assert_eq!(names_of(&conn, 2), vec!["葡萄"]);
+    }
+
+    #[test]
+    fn applying_tags_clears_the_sidecar_tags_dirty_bit_but_keeps_other_bits() {
+        let conn = fixture();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS axmp_imports(
+                 file_id INTEGER PRIMARY KEY REFERENCES afiles(id) ON DELETE CASCADE,
+                 fingerprint TEXT, dirty INTEGER NOT NULL DEFAULT 0);
+             INSERT OR REPLACE INTO axmp_imports(file_id, dirty) VALUES(1, 8 | 2);",
+        )
+        .unwrap();
+        apply_tags(&conn, 1, &["天空".to_string()]).unwrap();
+        let dirty: i64 = conn
+            .query_row(
+                "SELECT dirty FROM axmp_imports WHERE file_id = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            dirty, 2,
+            "the Tags bit (8) must be cleared by an AI write, other bits preserved"
+        );
+    }
+
+    #[test]
+    fn ensure_helpers_return_the_sibling_that_appeared_concurrently() {
+        let conn = fixture();
+        let root = ensure_root(&conn).unwrap();
+        // Simulate the losing side of the first-write race: the child exists
+        // although an earlier `find` would not have seen it. The creation
+        // helpers must resolve to the existing row instead of failing the
+        // whole apply_tags transaction (REVIEW-2026-11-14 P1-14).
+        conn.execute(
+            "INSERT INTO atags(name, parent_id) VALUES('天空', ?1)",
+            [root],
+        )
+        .unwrap();
+        let child = ensure_child(&conn, root, "天空").unwrap();
+        let existing: i64 = conn
+            .query_row(
+                "SELECT id FROM atags WHERE name = '天空' AND parent_id = ?1",
+                [root],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(child, existing);
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM atags WHERE name = '天空'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "no duplicate sibling may be created");
     }
 }
