@@ -103,10 +103,13 @@ export function semanticScoreRange(hits) {
 ///
 /// `no-annotations`: nothing was ever annotated, so there is nothing to
 /// match against. `no-semantic-match`: photos are annotated but nothing
-/// cleared the similarity threshold.
-export function aiSearchEmptyHint({ mode, captions = 0, semanticHits = 0, ftsHits = 0 } = {}) {
+/// cleared the similarity threshold. `semantic-unavailable`: the semantic leg
+/// failed (embedding model missing / gateway down), so the empty result is
+/// not evidence of anything.
+export function aiSearchEmptyHint({ mode, captions = 0, semanticHits = 0, ftsHits = 0, semanticFailed = false } = {}) {
   const normalized = normalizeAiSearchMode(mode);
   if (normalized === 'precise') return null;
   if (ftsHits > 0 || semanticHits > 0) return null;
+  if (semanticFailed && Number(captions) > 0) return 'semantic-unavailable';
   return Number(captions) > 0 ? 'no-semantic-match' : 'no-annotations';
 }

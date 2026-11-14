@@ -15,7 +15,7 @@
     "test:file-info": "node --test tests/fileInfoMetadata.test.mjs",
     "test:shortcuts": "node --test tests/shortcutsLayout.test.mjs",
     "test:tags": "node --test tests/tagTree.test.mjs",
-    "test:vl": "node --test tests/vlApi.test.mjs",
+    "test:vl": "node --test tests/vlApi.test.mjs tests/vlFileInfo.test.mjs tests/vlWiring.test.mjs",
     "test:lab": "node --test tests/vlLab.test.mjs",
     "test:searchable": "node --test tests/searchableOptions.test.mjs tests/searchableSelectState.test.mjs",
     "test:search": "node --test tests/searchMode.test.mjs tests/aiSearch.test.mjs"

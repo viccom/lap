@@ -279,7 +279,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { useI18n } from 'vue-i18n';
 import TitleBar from '@/components/TitleBar.vue';
 import { IconRight } from '@/common/icons';
@@ -321,6 +321,7 @@ import {
   pickerRows,
   rerankHitList,
   searchFts,
+  shouldFinishRun,
 } from '@/common/vlLabLogic';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 
@@ -390,6 +391,9 @@ async function rebuildIndex() {
 
 async function openSettings() {
   config.settings.tabIndex = VL_SETTINGS_TAB;
+  // The settings window syncs its tab through this event (see main.js);
+  // the local Pinia write only moves this window's own instance.
+  await emit('settings-settingsTabIndex-changed', VL_SETTINGS_TAB);
   try {
     const settingsWindow = await WebviewWindow.getByLabel('settings');
     if (!settingsWindow) {
@@ -417,7 +421,7 @@ const latestTemplates = computed(() => pickLatestVersions(templates.value));
 const annotated = computed(() => annotatedIdSet(annotationsByFileId.value, templateId.value));
 const pickerRowList = computed(() => pickerRows(files.value, [...selectedIds.value], annotated.value));
 const selectedFileIds = computed(() => pickerRowList.value.filter(row => row.selected).map(row => row.id));
-const canRun = computed(() => configured.value && Boolean(templateId.value) && selectedFileIds.value.length > 0 && !running.value);
+const canRun = computed(() => configured.value && Boolean(templateId.value) && selectedFileIds.value.length > 0 && !running.value && !starting.value);
 const selectionSummary = computed(() => {
   const total = selectedFileIds.value.length;
   if (!total) return '';
@@ -518,9 +522,13 @@ async function loadThumb(fileId: number) {
 // ----- F1 run -----
 
 const running = ref(false);
+const starting = ref(false);
 const runId = ref<string | null>(null);
 const progress = ref({ processed: 0, total: 0 });
 const stillRunningHint = ref(false);
+// Set when the poll gave up but the run may still be going in the backend:
+// a matching finished event must still land the results.
+const awaitingFinish = ref(false);
 const errorMessage = ref('');
 const pendingConfirm = ref(false);
 const expandedRaw = reactive(new Set<number>());
@@ -534,6 +542,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollStartedAt = 0;
 let stopFinishedListener: (() => void) | null = null;
 let stopProgressListener: (() => void) | null = null;
+let stopLibraryListener: (() => void) | null = null;
 
 const runSummaryCounts = computed(() => {
   const counts = { succeeded: 0, failed: 0, skipped: 0 };
@@ -562,9 +571,14 @@ function confirmBatch() {
 async function startRun() {
   const ids = selectedFileIds.value.slice();
   const currentTemplate = Number(templateId.value);
-  if (!ids.length || !currentTemplate || running.value) return;
+  if (!ids.length || !currentTemplate || running.value || starting.value) return;
+  // Claim the busy flag before the first await: the baselines cost one IPC
+  // per file, and a second click inside that window would pass the running
+  // guard again and queue a duplicate run.
+  starting.value = true;
   errorMessage.value = '';
   stillRunningHint.value = false;
+  awaitingFinish.value = false;
   resultRows.value = [];
   try {
     // The baselines tell which annotations and calls the run produced.
@@ -585,6 +599,8 @@ async function startRun() {
   } catch (error) {
     running.value = false;
     errorMessage.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    starting.value = false;
   }
 }
 
@@ -626,7 +642,11 @@ async function checkRunFinished() {
   if (!running.value) return;
   if (Date.now() - pollStartedAt >= LAB_POLL_LIMIT_MS) {
     // Give up waiting, not on the run: it may still be going in the backend.
-    resetWaitState();
+    // The run id stays: through the awaitingFinish state the finished event
+    // can still land the results of the run we stopped watching.
+    running.value = false;
+    stopPolling();
+    awaitingFinish.value = true;
     stillRunningHint.value = true;
     return;
   }
@@ -653,6 +673,8 @@ function resetWaitState() {
 }
 
 async function finishRun() {
+  awaitingFinish.value = false;
+  stillRunningHint.value = false;
   resetWaitState();
   await loadResults();
 }
@@ -826,6 +848,30 @@ async function runSearch(kind: 'precise' | 'semantic' = 'precise') {
 
 // ----- lifecycle -----
 
+function resetAfterLibrarySwitch() {
+  stopPolling();
+  running.value = false;
+  starting.value = false;
+  runId.value = null;
+  awaitingFinish.value = false;
+  stillRunningHint.value = false;
+  pendingConfirm.value = false;
+  errorMessage.value = '';
+  files.value = [];
+  selectedIds.value = new Set();
+  annotationsByFileId.value = {};
+  resultRows.value = [];
+  thumbs.clear();
+  searchHits.value = [];
+  searchFiles.value = [];
+  searched.value = false;
+  searchError.value = '';
+  // The templates and the index status belong to the new library.
+  void loadTemplates();
+  void loadStatus();
+  toast.info(t('vl.lab.library_switched'));
+}
+
 onMounted(async () => {
   observer = new IntersectionObserver((entries) => {
     for (const entry of entries) {
@@ -840,8 +886,7 @@ onMounted(async () => {
     const payload = event?.payload;
     if (!payload) return;
     lastFinishedRunId = String(payload.runId);
-    if (!running.value) return;
-    if (runId.value !== null && String(payload.runId) !== runId.value) return;
+    if (!shouldFinishRun(running.value, awaitingFinish.value, runId.value, String(payload.runId))) return;
     void finishRun();
   });
   stopProgressListener = await listen('vl-analysis-progress', (event: any) => {
@@ -849,6 +894,14 @@ onMounted(async () => {
     if (!running.value || runId.value === null) return;
     if (String(payload?.runId) !== runId.value) return;
     progress.value = { processed: Number(payload?.processed || 0), total: Number(payload?.total || progress.value.total) };
+  });
+
+  // This is a separate window: it must hear the main window's library switch
+  // itself. Every id loaded here belongs to the previous library, and a run
+  // started from them would annotate whatever file carries the same id in
+  // the new library (ids are per-library).
+  stopLibraryListener = await listen('library-switched', () => {
+    resetAfterLibrarySwitch();
   });
 
   await loadStatus();
@@ -864,5 +917,7 @@ onBeforeUnmount(() => {
   stopFinishedListener = null;
   stopProgressListener?.();
   stopProgressListener = null;
+  stopLibraryListener?.();
+  stopLibraryListener = null;
 });
 </script>

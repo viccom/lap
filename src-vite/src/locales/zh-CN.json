@@ -2056,7 +2056,8 @@
       "llm_rerank_model": "模型：{model}（在 设置→图片理解 中修改）",
       "llm_rerank_no_match": "没有与描述相符的照片",
       "llm_rerank_unannotated": "其中 {count} 张没有图片描述，未参与重排",
-      "llm_rerank_failed": "云端重排失败，已保留原始排序"
+      "llm_rerank_failed": "云端重排失败，已保留原始排序",
+      "library_switched": "主窗口已切换图库，请重新加载文件列表后再发起理解。"
     },
     "run_started": "正在后台理解 {count} 张照片",
     "run_progress": "理解进度 {done}/{total}",
@@ -2088,6 +2089,7 @@
       "all": "全文索引 + 图片描述",
       "precise": "按文件名、元数据、标签、人名与描述做精确检索",
       "semantic": "按图片描述的语义相似度匹配"
-    }
+    },
+    "empty_semantic_unavailable": "语义搜索无法调用嵌入模型，请检查嵌入设置后重试。"
   }
 }

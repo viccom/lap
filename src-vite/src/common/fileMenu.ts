@@ -134,10 +134,13 @@ export const useFileMenuItems = (
       // A mixed image+video selection has no single external-app target, so
       // disable the entry rather than showing an empty app list.
       { ...externalAppMenu(externalAppKind), disabled: unavailable || kind === 'mixed' },
+      // A mixed image+video selection must not reach the gateway either:
+      // a video only carries its first-frame thumbnail, and the single-file
+      // entry already blocks it (`!isImage`).
       {
         label: String(localeMsg.value.menu.file.vl_analyze_selected || 'AI understanding (cloud)'),
         icon: markRaw(IconSparkles),
-        disabled: selectionCount === 0 || kind === 'video',
+        disabled: selectionCount === 0 || kind !== 'image',
         action: createAction('vl-analyze-selected'),
       },
       {

@@ -254,3 +254,12 @@ export function captionHitsFrom(rows) {
     rank: index + 1,
   }));
 }
+
+/// Whether a `vl-analysis-finished` event should load the results of the run
+/// this page is tracking. After the poll gives up (`awaitingFinish`), the id
+/// match alone must still land the results — the run outlived our patience.
+export function shouldFinishRun(running, awaitingFinish, runId, eventRunId) {
+  if (!runId || !eventRunId) return false;
+  if (String(runId) !== String(eventRunId)) return false;
+  return running === true || awaitingFinish === true;
+}

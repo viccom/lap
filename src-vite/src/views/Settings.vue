@@ -526,7 +526,7 @@
                 />
                 <button
                   class="t-button-default btn-outline shrink-0"
-                  :disabled="!vlConfigured"
+                  :disabled="!vlConfigured || savingVlConfig"
                   :title="$t('settings.vl.api_key_clear')"
                   @click="clearVlApiKey"
                 >{{ $t('settings.vl.api_key_clear') }}</button>
@@ -1412,6 +1412,16 @@ async function saveVlConfig() {
     });
     vlConfig.value = view;
     vlConfigured.value = Boolean(view?.configured);
+    // Write the normalized view back into the form (the same mapping as
+    // loadVlConfig): the backend clamps concurrency to 1-16 and fills default
+    // models, and the fields must not keep selling the typed values as saved.
+    vlGatewayUrl.value = String(view?.gatewayUrl ?? '');
+    vlProtocol.value = normalizeProtocol(view?.protocol);
+    vlModel.value = String(view?.model ?? '');
+    vlRerankModel.value = String(view?.rerankModel ?? '');
+    vlEmbedSource.value = String(view?.embedSource ?? '') === 'cloud' ? 'cloud' : 'local';
+    vlEmbedModel.value = String(view?.embedModel ?? '');
+    vlMaxConcurrency.value = Number(view?.maxConcurrency ?? 2) || 2;
     vlApiKey.value = '';
     // Selecting a model and saving is the end of the task: hide the chip wall.
     vlModelsExpanded.value = false;

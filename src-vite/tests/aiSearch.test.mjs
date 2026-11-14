@@ -118,3 +118,19 @@ test('the empty state distinguishes a library without annotations', () => {
   assert.equal(aiSearchEmptyHint({ mode: 'semantic', captions: 40, semanticHits: 3 }), null);
   assert.equal(aiSearchEmptyHint({ mode: 'all', captions: 0, semanticHits: 0, ftsHits: 5 }), null);
 });
+
+test('a failed semantic leg is reported as unavailable instead of claiming no match', () => {
+  // The embedding call failed (model missing / cloud gateway down): the empty
+  // result is not evidence of anything, so the hint must not send the user
+  // off to annotate more photos.
+  assert.equal(aiSearchEmptyHint({ mode: 'semantic', captions: 40, semanticFailed: true }), 'semantic-unavailable');
+  assert.equal(aiSearchEmptyHint({ mode: 'all', captions: 40, semanticFailed: true }), 'semantic-unavailable');
+  // Without annotations the "nothing annotated yet" guidance still holds.
+  assert.equal(aiSearchEmptyHint({ mode: 'semantic', captions: 0, semanticFailed: true }), 'no-annotations');
+  // Precise hits still produced results in all mode: no hint.
+  assert.equal(aiSearchEmptyHint({ mode: 'all', captions: 40, ftsHits: 2, semanticFailed: true }), null);
+  // Precise mode never runs the semantic leg.
+  assert.equal(aiSearchEmptyHint({ mode: 'precise', captions: 40, semanticFailed: true }), null);
+  // A healthy semantic search keeps the original hints.
+  assert.equal(aiSearchEmptyHint({ mode: 'semantic', captions: 40 }), 'no-semantic-match');
+});

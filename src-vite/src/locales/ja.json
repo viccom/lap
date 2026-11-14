@@ -2056,7 +2056,8 @@
       "llm_rerank_model": "Model: {model}",
       "llm_rerank_no_match": "No photos match this description",
       "llm_rerank_unannotated": "{count} photos have no image description and were not reranked",
-      "llm_rerank_failed": "LLM rerank failed, keeping the original ranking"
+      "llm_rerank_failed": "LLM rerank failed, keeping the original ranking",
+      "library_switched": "メインウィンドウでライブラリが切り替わりました。ファイル一覧を再読み込みしてから理解を実行してください。"
     },
     "run_started": "Understanding {count} photo(s) in the background",
     "run_progress": "Understanding {done}/{total}",
@@ -2088,6 +2089,7 @@
       "all": "全文索引と画像の説明",
       "precise": "ファイル名・メタデータ・タグ・人物・説明を対象に検索",
       "semantic": "画像の説明と意味で照合"
-    }
+    },
+    "empty_semantic_unavailable": "セマンティック検索で埋め込みモデルに接続できませんでした。埋め込み設定を確認して再試行してください。"
   }
 }

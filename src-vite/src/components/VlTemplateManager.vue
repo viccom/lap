@@ -133,8 +133,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { listen } from '@tauri-apps/api/event';
 import { useToast } from '@/common/toast';
 import { IconAdd, IconEdit, IconTrash } from '@/common/icons';
 import TButton from '@/components/TButton.vue';
@@ -268,7 +269,19 @@ async function confirmDelete() {
   }
 }
 
-onMounted(() => {
+// This component lives in the settings window and outlives a library switch
+// of the main window; the templates are per-library, so the list must reload.
+let stopLibraryListener: (() => void) | null = null;
+
+onMounted(async () => {
+  stopLibraryListener = await listen('library-switched', () => {
+    void reload();
+  });
   void reload();
+});
+
+onBeforeUnmount(() => {
+  stopLibraryListener?.();
+  stopLibraryListener = null;
 });
 </script>

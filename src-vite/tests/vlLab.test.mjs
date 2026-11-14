@@ -23,6 +23,7 @@ import {
   rerankHitList,
   rerankSearchWithLlm,
   searchFts,
+  shouldFinishRun,
 } from '../src/common/vlLabLogic.js';
 
 /// An invoker that records the calls and answers with the given result.
@@ -341,4 +342,74 @@ test('captionHitsFrom maps search_captions rows into ranked hits with scores', (
   ]);
   assert.deepEqual(captionHitsFrom(null), []);
   assert.deepEqual(captionHitsFrom([]), []);
+});
+
+test('shouldFinishRun lets a finished event land the results even after the poll gave up', () => {
+  assert.equal(shouldFinishRun(true, false, 'run-1', 'run-1'), true);
+  // The poll gave up waiting but the id matches: the run outlived our
+  // patience, its results must still load.
+  assert.equal(shouldFinishRun(false, true, 'run-1', 'run-1'), true);
+  assert.equal(shouldFinishRun(false, false, 'run-1', 'run-1'), false);
+  assert.equal(shouldFinishRun(true, false, 'run-1', 'run-2'), false);
+  assert.equal(shouldFinishRun(true, false, null, 'run-1'), false);
+  assert.equal(shouldFinishRun(true, false, 'run-1', ''), false);
+  // Ids are compared as strings; numbers pass through unharmed.
+  assert.equal(shouldFinishRun(true, false, 123, '123'), true);
+});
+
+test('startRun claims the busy flag before the first await (a second click cannot queue a duplicate run)', async () => {
+  const source = await readFile(new URL('../src/views/VlLab.vue', import.meta.url), 'utf8');
+  const start = source.indexOf('async function startRun');
+  assert.ok(start >= 0, 'VlLab.vue must define startRun');
+  const body = source.slice(start, source.indexOf('\n}', start));
+  // The baselines cost one IPC per file; without a synchronous flag a second
+  // click inside that window passes the running guard twice and queues two runs.
+  const guardAt = body.indexOf('starting.value = true');
+  const firstAwait = body.indexOf('await ');
+  assert.ok(guardAt >= 0, 'startRun must set starting.value = true');
+  assert.ok(firstAwait < 0 || guardAt < firstAwait,
+    'starting.value = true must run before the first await in startRun');
+  const canRunAt = source.indexOf('const canRun = computed(');
+  assert.ok(canRunAt >= 0, 'VlLab.vue must define canRun');
+  const canRunBody = source.slice(canRunAt, source.indexOf('\n', canRunAt));
+  assert.ok(canRunBody.includes('!starting.value'), 'canRun must include !starting.value');
+});
+
+test('giving up the poll keeps the run id so the finished event can still load the results', async () => {
+  const source = await readFile(new URL('../src/views/VlLab.vue', import.meta.url), 'utf8');
+  const start = source.indexOf('async function checkRunFinished');
+  assert.ok(start >= 0, 'VlLab.vue must define checkRunFinished');
+  const body = source.slice(start, source.indexOf('\n}', start));
+  const giveUpAt = body.indexOf('LAB_POLL_LIMIT_MS)');
+  assert.ok(giveUpAt >= 0, 'checkRunFinished must keep the give-up branch');
+  const giveUpBody = body.slice(giveUpAt, body.indexOf('return;', giveUpAt));
+  assert.ok(!giveUpBody.includes('resetWaitState()'),
+    'the give-up branch must not reset the run id: the finished event needs it to land the results');
+  assert.ok(giveUpBody.includes('awaitingFinish.value = true'),
+    'the give-up branch must enter the awaitingFinish state');
+  const listenerAt = source.indexOf("listen('vl-analysis-finished'");
+  assert.ok(listenerAt >= 0, 'VlLab.vue must listen for vl-analysis-finished');
+  const listenerBody = source.slice(listenerAt, source.indexOf('});', listenerAt));
+  assert.ok(listenerBody.includes('shouldFinishRun'),
+    'the finished listener must route through shouldFinishRun');
+});
+
+test('a library switch in the main window resets the lab window instead of leaving stale ids selectable', async () => {
+  const source = await readFile(new URL('../src/views/VlLab.vue', import.meta.url), 'utf8');
+  // The lab is a separate window: it must hear the switch itself.
+  assert.ok(source.includes("listen('library-switched'"),
+    'VlLab.vue must listen for library-switched');
+  const resetAt = source.indexOf('function resetAfterLibrarySwitch');
+  assert.ok(resetAt >= 0, 'VlLab.vue must define resetAfterLibrarySwitch');
+  const body = source.slice(resetAt, source.indexOf('\n}', resetAt));
+  // Every id loaded here belongs to the previous library; a run started from
+  // them would annotate whatever file carries the same id in the new library.
+  for (const required of [
+    'files.value = []',
+    'selectedIds.value = new Set()',
+    'runId.value = null',
+    'resultRows.value = []',
+  ]) {
+    assert.ok(body.includes(required), `resetAfterLibrarySwitch must clear ${required}`);
+  }
 });

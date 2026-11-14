@@ -8469,6 +8469,7 @@ async function getAiSearchFileList(searchText: string, mode: string, requestId: 
   try {
     const emptyPrecise = { files: [] as any[], matchColumns: new Map<number, string[]>() };
     const emptySemantic = { files: [] as any[], hits: [] as any[] };
+    let semanticFailed = false;
     const [preciseResult, semanticResult] = await Promise.all([
       plan.fts
         ? searchPreciseMatches(searchText, SEARCH_RESULT_LIMIT).catch(error => {
@@ -8479,6 +8480,9 @@ async function getAiSearchFileList(searchText: string, mode: string, requestId: 
       plan.captions
         ? searchSemanticMatches(searchText, SEARCH_RESULT_LIMIT).catch(error => {
             console.error('AI semantic search failed:', error);
+            // The empty fallback is not evidence of "no match": remember the
+            // failure so the empty state can say so instead of guessing.
+            semanticFailed = true;
             return emptySemantic;
           })
         : Promise.resolve(emptySemantic),
@@ -8593,11 +8597,14 @@ async function getAiSearchFileList(searchText: string, mode: string, requestId: 
         captions,
         semanticHits: semanticMatches.length,
         ftsHits: preciseMatches.length,
+        semanticFailed,
       });
       if (hint) {
         const hintText = hint === 'no-annotations'
           ? localeMsg.value.aiSearch?.empty_no_annotations
-          : localeMsg.value.aiSearch?.empty_no_match;
+          : hint === 'semantic-unavailable'
+            ? localeMsg.value.aiSearch?.empty_semantic_unavailable
+            : localeMsg.value.aiSearch?.empty_no_match;
         if (hintText) {
           contentTitle.value = `${lookupLocaleMessage('aiSearch.title')} - ${searchText}（${hintText}）`;
         }
@@ -8977,7 +8984,13 @@ const vlActiveRunIds = new Set<string>();
 const vlProgressToast = { lastProcessed: -1, lastAt: 0 };
 let unlistenVlProgress: (() => void) | null = null;
 let unlistenVlFinish: (() => void) | null = null;
+// The listeners register asynchronously; these flags close the two windows
+// that race with that: a second start before the registration lands, and an
+// unmount while it is still in flight.
+let vlRunListenersRequested = false;
+let vlRunListenersDisposed = false;
 onBeforeUnmount(() => {
+  vlRunListenersDisposed = true;
   unlistenVlProgress?.();
   unlistenVlFinish?.();
   unlistenVlProgress = null;
@@ -9047,23 +9060,28 @@ function maybeShowVlProgress(status: any) {
 
 // Toasts only for the runs this view started; the lab has its own display.
 function ensureVlRunListeners() {
-  if (unlistenVlProgress) return;
+  if (vlRunListenersRequested) return;
+  vlRunListenersRequested = true;
   void (async () => {
     const { listen } = await import('@tauri-apps/api/event');
-    unlistenVlProgress = await listen('vl-analysis-progress', (event: any) => {
+    const stopProgress = await listen('vl-analysis-progress', (event: any) => {
       const status = event.payload;
       if (!status || !vlActiveRunIds.has(String(status.runId)) || status.state !== 'running') return;
       maybeShowVlProgress(status);
     });
-    unlistenVlFinish = await listen('vl-analysis-finished', (event: any) => {
+    const stopFinish = await listen('vl-analysis-finished', (event: any) => {
       const status = event.payload;
-      if (!status || !vlActiveRunIds.has(String(status.runId))) return;
-      vlActiveRunIds.delete(String(status.runId));
-      vlProgressToast.lastProcessed = -1;
-      vlProgressToast.lastAt = 0;
-      toast.success(t('vl.run_finished', { ok: status.succeeded, fail: status.failed, skip: status.skipped }));
-      // Patch the derived annotation flags of the loaded files in place. Only
-      // views whose membership depends on them need a full requery.
+      if (!status) return;
+      if (vlActiveRunIds.has(String(status.runId))) {
+        vlActiveRunIds.delete(String(status.runId));
+        vlProgressToast.lastProcessed = -1;
+        vlProgressToast.lastAt = 0;
+        toast.success(t('vl.run_finished', { ok: status.succeeded, fail: status.failed, skip: status.skipped }));
+      }
+      // Patch the derived annotation flags of the loaded files in place. This
+      // also covers runs started elsewhere (the lab window): the sidebar
+      // counts refresh for those already, the badges must not lag behind.
+      // Only views whose membership depends on them need a full requery.
       const annotatedIds = Array.isArray(status.succeededFileIds) ? status.succeededFileIds.map(Number) : [];
       if (annotatedIds.length > 0) {
         const wanted = new Set(annotatedIds);
@@ -9083,6 +9101,14 @@ function ensureVlRunListeners() {
         void updateContent(true);
       }
     });
+    if (vlRunListenersDisposed) {
+      // The view went away while the registration was in flight.
+      stopProgress();
+      stopFinish();
+      return;
+    }
+    unlistenVlProgress = stopProgress;
+    unlistenVlFinish = stopFinish;
   })().catch(error => console.error('VL run listeners failed:', error));
 }
 
