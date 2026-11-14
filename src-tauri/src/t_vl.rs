@@ -4,10 +4,10 @@
 //! produced from a successful call, and the call evidence kept for every
 //! request (successful or not).
 use base64::Engine as _;
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -3162,6 +3162,34 @@ impl VlState {
 /// progress row all keep using that library's database, so a mid-run library
 /// switch cannot redirect them. A worker panicking still leaves a terminal
 /// run row behind — the supervisor task watches the join handle.
+/// A run must only touch files of the library it is bound to. Ids are
+/// per-library autoincrement, so ids loaded from another library (a lab
+/// window that outlived a library switch) would silently annotate whatever
+/// file happens to carry the same id here.
+fn validate_run_files(conn: &Connection, file_ids: &[i64]) -> Result<(), String> {
+    let mut seen = HashSet::new();
+    let distinct: Vec<i64> = file_ids
+        .iter()
+        .copied()
+        .filter(|id| seen.insert(*id))
+        .collect();
+    // Chunked IN queries keep the bound-parameter count bounded for large
+    // selections.
+    let mut found = 0usize;
+    for chunk in distinct.chunks(500) {
+        let placeholders = vec!["?"; chunk.len()].join(",");
+        let sql = format!("SELECT COUNT(*) FROM afiles WHERE id IN ({placeholders})");
+        let count: i64 = conn
+            .query_row(&sql, params_from_iter(chunk.iter()), |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        found += count as usize;
+    }
+    if found != distinct.len() {
+        return Err("选择的部分文件不在当前图库中，请重新加载文件列表".to_string());
+    }
+    Ok(())
+}
+
 pub fn start_run(
     app_handle: &tauri::AppHandle,
     state: &VlState,
@@ -3183,6 +3211,10 @@ pub fn start_run(
     let store = LibraryBoundStore {
         db_path: library.db_path.clone(),
     };
+    // Fail before the run exists: ids that do not belong to this library
+    // must never be turned into annotations of its files.
+    let conn = crate::t_sqlite::open_conn_for_library(&library.db_path)?;
+    validate_run_files(&conn, &file_ids)?;
     let template = store
         .template(template_id)?
         .ok_or_else(|| "模板不存在".to_string())?;
@@ -6225,5 +6257,48 @@ mod original_fallback_tests {
         assert!(!original_fallback_allowed(Path::new("clip.mov"), 1024));
         assert!(!original_fallback_allowed(Path::new("clip.MOV"), 1024));
         assert!(!original_fallback_allowed(Path::new("noext"), 1024));
+    }
+}
+
+#[cfg(test)]
+mod run_files_validation_tests {
+    use super::validate_run_files;
+    use rusqlite::Connection;
+
+    fn conn_with_files(count: i64) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TABLE afiles(id INTEGER PRIMARY KEY);
+             WITH RECURSIVE seq(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM seq WHERE i < {count})
+             INSERT INTO afiles(id) SELECT i FROM seq;",
+        ))
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn a_run_rejects_ids_missing_from_the_library() {
+        let conn = conn_with_files(2);
+        assert!(validate_run_files(&conn, &[1]).is_ok());
+        let err = validate_run_files(&conn, &[1, 3]).unwrap_err();
+        assert!(
+            err.contains("不在当前图库"),
+            "the error must point at the library mismatch: {err}"
+        );
+    }
+
+    #[test]
+    fn a_run_accepts_duplicates_and_ids_spanning_chunks() {
+        let conn = conn_with_files(600);
+        let ids: Vec<i64> = (1..=600).collect();
+        assert!(validate_run_files(&conn, &ids).is_ok());
+        // Duplicates do not count twice and must not trip the set comparison.
+        let mut duped = ids.clone();
+        duped.push(1);
+        assert!(validate_run_files(&conn, &duped).is_ok());
+        // One stranger id beyond the library's range still fails.
+        let mut with_stranger = ids;
+        with_stranger.push(601);
+        assert!(validate_run_files(&conn, &with_stranger).is_err());
     }
 }
