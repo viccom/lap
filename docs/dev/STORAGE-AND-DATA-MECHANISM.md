@@ -34,7 +34,7 @@ library（每个库一个独立 default.db，按安装 identifier 隔离）
 - `caption_embeds(file_id, model, dims, embeds, updated_at)` — 语义向量；`model` 列区分向量空间（本地源向量名带模型文件大小指纹，换模型自动重嵌）。
 - `athumbs(file_id UNIQUE, error_code, thumb_data BLOB, thumb_key, thumb_mtime, thumb_size)` — 缩略图行；实际像素可能在 BLOB，也可能只有 `thumb_key` 指向缓存文件（见 §2.1）。
 - `files_fts`（FTS5）：列 `name/people/meta/tags/caption` + `aux UNINDEXED`；文档以 rowid=file_id 关联。
-- `axmp_local_tags_{INSERT,...}`（`metadata/xmp.rs`）：**触发器**维护的待导出队列——AI 标签写入标签树时进队，用户手动「保存元数据到 XMP」才落盘 sidecar。
+- `axmp_local_tags_{INSERT,...}`（`metadata/xmp.rs`）：**触发器**维护的**导入保护位**——标签关联变更（含 AI 标签写入）时把该文件 `axmp_imports.dirty |= Tags位` 置位，此后非破坏性重扫不再用 sidecar 覆盖库内标签。注意它**不是导出队列**：导出（手动「保存元数据到 XMP」）时直接读当前标签全量，不消费也不清该位（2026-11-14 后端审查纠正了本文早前"待导出队列"的错误表述）。**2026-11-14 已修复**：AI 标签写入会在同一事务清除 Tags 位（机器写入不借用用户编辑保护，见 REVIEW-2026-11-14 P0-4）；XMP 导出同时排除「AI理解」子树（P0-3）。
 
 ### 2.1 缩略图缓存
 
@@ -110,7 +110,7 @@ library（每个库一个独立 default.db，按安装 identifier 隔离）
 | 添加相册并扫描 | `albums`/`afolders` 行 + `afiles` 行（EXIF/元数据入行，XMP sidecar 此时导入） |
 | 生成缩略图 | `athumbs` 行（key/错误码）+ 缓存文件 `<cache>/<lib>/<album>/<key[0:2]>/<key>.jpg` |
 | AI 理解（VL） | `vl_runs`/`vl_calls`（原始返回、token、耗时）→ `vl_annotations`（result_json 按模板版本） |
-| 标签回写 | `atags` 子树「AI理解」+ `afile_tags` 关联；同时进 `axmp_local_tags_INSERT` 待导出队列 |
+| 标签回写 | `atags` 子树「AI理解」+ `afile_tags` 关联；同时触发 `axmp_local_tags_INSERT` 置导入保护位（见 §2 说明） |
 | 语义向量 | `caption_embeds(file_id, model='bge-local-<指纹>', embeds)` |
 | 全文索引 | `files_fts` 文档（name/people/meta/tags/caption） |
 | 保存元数据到 XMP | sidecar `.xmp` 写到**源文件旁**（唯一随文件走的层） |
