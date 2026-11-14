@@ -2068,6 +2068,10 @@ pub fn rename_file(
     file_path: &str,
     new_name: &str,
 ) -> Result<Option<String>, String> {
+    // The frontend forwards free-form input: a name with separators or a
+    // reserved device name would move the file out of its album directory
+    // (REVIEW-2026-11-14 P1-7), so it dies here before any work happens.
+    crate::t_batch_rename::validate_name(new_name)?;
     let sidecar_rename_plan = build_apple_sidecar_rename_plan(file_id, file_path, new_name)?;
     if !preflight_rename_plan(file_path, new_name, &sidecar_rename_plan) {
         return Ok(None);
@@ -4634,5 +4638,27 @@ mod raw_display_library_tests {
             )
             .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod rename_validation_tests {
+    use super::*;
+
+    #[test]
+    fn rename_file_rejects_names_that_would_escape_the_album_directory() {
+        // The frontend forwards free-form input; a name with separators or a
+        // reserved device name must die at the entry, before any database or
+        // filesystem work (REVIEW-2026-11-14 P1-7).
+        for bad in ["a/b.jpg", "a\\b.jpg", "..\\..\\x.jpg", "con.jpg", "a|b.jpg"] {
+            let error = rename_file(1, "/does-not-exist/old.jpg", bad).unwrap_err();
+            assert!(
+                !error.trim().is_empty(),
+                "{bad} should fail validation, got no message"
+            );
+        }
+        // The separator cases carry the explanatory message.
+        let error = rename_file(1, "/does-not-exist/old.jpg", "a/b.jpg").unwrap_err();
+        assert!(error.to_lowercase().contains("path separators"), "{error}");
     }
 }

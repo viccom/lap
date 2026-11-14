@@ -45,7 +45,7 @@ struct RenameMove {
     new_name: String,
 }
 
-fn validate_name(name: &str) -> Result<(), String> {
+pub(crate) fn validate_name(name: &str) -> Result<(), String> {
     if name.trim().is_empty()
         || name.ends_with([' ', '.'])
         || name

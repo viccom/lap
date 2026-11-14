@@ -737,11 +737,17 @@ fn search_exclusion_available(conn: &Connection) -> Result<bool, String> {
         && !existing_columns(conn, "afolders", &["is_excluded_from_search"])?.is_empty())
 }
 
-/// Search the index from the command layer.
+/// Search the index from the command layer. The ranked path is fast, but the
+/// single-character LIKE fallback scans the whole table, so neither may run
+/// on the window thread a synchronous command would use.
 #[tauri::command]
-pub fn search_fts(query: String, limit: Option<i64>) -> Result<Vec<FtsHit>, String> {
-    let conn = crate::t_sqlite::open_conn()?;
-    search(&conn, &query, limit.unwrap_or(FTS_DEFAULT_LIMIT))
+pub async fn search_fts(query: String, limit: Option<i64>) -> Result<Vec<FtsHit>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = crate::t_sqlite::open_conn()?;
+        search(&conn, &query, limit.unwrap_or(FTS_DEFAULT_LIMIT))
+    })
+    .await
+    .map_err(|e| format!("FTS search task failed: {e}"))?
 }
 
 /// Rebuild the whole index from the command layer. The rebuild walks every
