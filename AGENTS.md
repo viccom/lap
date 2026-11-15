@@ -45,16 +45,17 @@ git checkout develop && git rebase main        # 或 merge；冲突只可能出�
 - UI：Tailwind + daisyUI 类名；文案**必须**走 i18n——17 个 locale 文件同步加 key（至少 en + zh-CN，其余可后补但 key 要先占位）；组件放 `components/`，独立全屏功能（如拼贴）用 WebviewWindow 新窗口 + router 新路由。
 - 测试：`tests/*.test.mjs`（node --test）测纯逻辑模块；可测逻辑抽成独立模块再测，不测 .vue 单文件。跑法：`npm run test:<域>`，按 package.json 追加 script。
 
-### 前端测试基线（F0 实测，必须知道）
+### 前端测试基线（2026-11-15 阶段 0 修复后全绿）
 
-v0.3.3 的 37 个测试文件中 **29 通过、8 失败**，全部是**上游既有缺陷**（Node 20 与 26 均复现；上游 CI 从不跑这些测试，故长期无人发现）：
+**41 个测试文件 / 425 tests 全部通过**（Rust 同批全绿：556/0/9 ignored；证据与复现命令见 [docs/dev/BASELINE-阶段0-服务化拆分基线.md](docs/dev/BASELINE-阶段0-服务化拆分基线.md)）。历史上的「8 个失败文件」已在阶段 0 全部根因修复，真实根因与 F0 初判不同：
 
-| 类型 | 文件 | 根因 |
+| 真实根因 | 影响面 | 修复 |
 |---|---|---|
-| 加载期 SyntaxError | afAreaPersistence / albumRecovery / cloudFileRefresh / offlineCatalog / xmpWriteback | TypeScript 6 的 `ts.transpile` 默认输出 **ESM**（保留 import），而这些测试用 `new Function(code)` 执行 → "Cannot use import statement outside a module"。显式传 `module: ts.ModuleKind.CommonJS` 即可修复 |
-| 断言失败 | fileInfoMetadata / filterSelection / shortcutsLayout | 测试用**字符串锚点**从 Content.vue slice 源码，上游重构后锚点失配（源码里 `:empty="hasConfirmedEmptyContent"` 在，`<div v-else-if="empty"` 已不存在） |
+| **CRLF 工作区 vs LF 锚定正则**：本机 autocrlf=true，import 剥离正则以 `\n` 结尾全部失配 → `new Function` SyntaxError | 7 文件 27 测试（afAreaPersistence / albumRecovery / cloudFileRefresh / offlineCatalog / xmpWriteback / fileInfoMetadata / filterSelection 的加载与内部失败） | 读取处统一 `.replace(/\r\n/g, '\n')` |
+| 菜单位置索引漂移（`menu.value[2]`，vl-analyze-selected 挤位） | offlineCatalog 1 项 | 按子项 actionName 反查分组 |
+| 切片锚点巧合被 f707fc68 打破（注释移位 → query-context watcher 掉出装置；产品无回归） | filterSelection 3 项 | 锚点改为意图明确的注释对 |
 
-**因此：新测试不要用 `new Function(ts.transpile(...))` 模式**（TS 6 下失效）。正确写法二选一：①把被测逻辑抽成 `.mjs`/`.js` 模块直接 import；②用 `startup.test.mjs` 的 `vm.SourceTextModule` 模式（需 `--experimental-vm-modules`）。新增测试必须在这一模式下跑绿，且**不得依赖那 8 个失败文件的既有写法**。
+**新测试必须遵守**：①读源码文件必须归一化 CRLF；②锚点不得依赖跨行 `\n` 形态、位置索引、注释挂位巧合；③TS 源码避免 `new Function(ts.transpile(...))` 模式（能 import 模块就直接 import，或用 `vm.SourceTextModule`）；④涉及文件系统时间戳的测试注入变更前 `sleep ≥25ms`（Windows ~15.6ms tick 合并，t_storage/metadata 的两个 transfer_batch 测试因此修过）。
 
 **i18n / 构建 / 依赖**
 - 支持格式/扩展名常量在 `t_common.rs`；构建脚本 build.rs 负责第三方 C++ 静态编译，不轻易动。
@@ -78,7 +79,7 @@ v0.3.3 的 37 个测试文件中 **29 通过、8 失败**，全部是**上游既
   - MSVC BuildTools 2022 + Windows SDK 已装；**cmake 用 VS 自带的那份**（`Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin`，不在全局 PATH）；**nasm 需另装**（scoop `nasm`，libjpeg-turbo 需要）；`rc.exe` 在 Windows Kits `10.0.26100.0/x64`。
   - **cargo 走 Clash 代理必须关 multiplexing**：`CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1`，否则 sparse index 挂起（进程有连接、CPU≈0、crate 缓存 0 文件）。
   - 模型可直接从安装版 `D:\Lap\models` 复制到 `src-tauri/resources/models`（脚本会校验 SHA-256，5 个文件全部一致）。
-- 测试基线（改动前后都要对照）：`cargo test`（src-tauri 内，334 个）+ `cd src-vite && npm run test:*`（**注意上游既有 8 个失败文件，见「前端测试基线」**）。
+- 测试基线（改动前后都要对照，失败集合不得新增）：`cargo test --bin Lap`（src-tauri 内，556 过/0 败/9 ignored 手动）+ `cd src-vite && node --experimental-vm-modules --test tests/*.test.mjs`（41 文件 425 测试全绿；基线详情见上方「前端测试基线」）。
 - 调试手法：Python `sqlite3` 只读查库（`LENGTH(embeds)/4` 看向量维度等）。
 
 ## 自有功能规划（详见 docs/dev/F1-图片理解技术方案.md 等）
