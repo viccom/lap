@@ -61,6 +61,10 @@ pub fn task_is_due(time: &str, date: &str, now_date: &str, now_minutes: u32) -> 
     date == now_date && parse_hhmm(time).is_some_and(|fire| now_minutes >= fire)
 }
 
+/// Date-only expiry predicate. The production path expires rows in SQL
+/// (`expire_past_tasks`); this mirror exists so the comparison semantics are
+/// stated in one testable place.
+#[cfg(test)]
 pub fn task_is_expired(date: &str, now_date: &str) -> bool {
     date < now_date
 }
