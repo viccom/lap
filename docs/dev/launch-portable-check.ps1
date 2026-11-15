@@ -1,10 +1,16 @@
-# Launch the portable debug build and verify it comes up.
+# Launch the portable debug build the way a double-click does: the working
+# directory MUST be the exe's own directory, otherwise the smoke test inherits
+# the caller's cwd and passes even when real double-click launches would fail.
 # UTF-8 with BOM is required for Windows PowerShell 5.1.
-$p = Start-Process -FilePath 'D:\LapPortable\Lap.exe' -PassThru
+$psi = New-Object System.Diagnostics.ProcessStartInfo
+$psi.FileName = 'D:\LapPortable\Lap.exe'
+$psi.WorkingDirectory = 'D:\LapPortable'
+$psi.UseShellExecute = $true
+$p = [System.Diagnostics.Process]::Start($psi)
 Start-Sleep -Seconds 12
-$proc = Get-Process -Name Lap -ErrorAction SilentlyContinue
+$proc = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
 if ($null -ne $proc) {
-    Write-Output ("running pid=" + ($proc.Id -join ','))
+    Write-Output ("running pid=" + $proc.Id + " title=[" + $proc.MainWindowTitle + "]")
 } else {
-    Write-Output 'NOT RUNNING'
+    try { Write-Output ("EXITED exitCode=" + $p.ExitCode) } catch { Write-Output 'NOT RUNNING' }
 }
