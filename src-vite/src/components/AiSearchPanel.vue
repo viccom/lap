@@ -5,6 +5,20 @@
       <span class="sidebar-panel-header-title flex-1">
         {{ titlebar }}<template v-if="searchHistoryList.length > 0"> ({{ searchHistoryList.length.toLocaleString() }})</template>
       </span>
+      <!-- cloud rerank switch: fallback-only, off by default; sits in the
+           header so it never competes with the search controls below. -->
+      <button
+        type="button"
+        :class="[
+          'mr-1 h-6 px-1.5 rounded-box text-[10px] font-semibold tracking-[0.04em] border transition-colors shrink-0',
+          rerankEnabled
+            ? 'border-primary/50 text-primary bg-primary/10'
+            : 'border-base-content/15 text-base-content/40 hover:text-base-content/70',
+        ]"
+        :title="$t('aiSearch.rerank_hint')"
+        :aria-pressed="rerankEnabled"
+        @click.stop="rerankEnabled = !rerankEnabled"
+      >{{ $t('aiSearch.rerank_short') }}</button>
       <ContextMenu :menuItems="searchPanelMenuItems" :iconMenu="IconMore" :smallIcon="true" />
     </div>
 
@@ -59,12 +73,6 @@
       <div class="mt-1 px-1 text-xs text-base-content/40 truncate" :title="$t(`aiSearch.hint.${mode}`)">
         {{ $t(`aiSearch.hint.${mode}`) }}
       </div>
-
-      <!-- cloud rerank switch: fallback-only, off by default -->
-      <label class="mt-1 px-1 flex items-center gap-1.5 text-xs cursor-pointer select-none" :title="$t('aiSearch.rerank_hint')">
-        <input v-model="rerankEnabled" type="checkbox" class="checkbox checkbox-xs" />
-        <span class="text-base-content/60">{{ $t('aiSearch.rerank') }}</span>
-      </label>
     </div>
 
     <!-- search history (AI search only; the official panel has its own) -->

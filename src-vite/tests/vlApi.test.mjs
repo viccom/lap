@@ -472,8 +472,13 @@ test('the AI search rerank wiring is present and off by default', async () => {
   const lab = await readFile(new URL('../src/views/VlLab.vue', import.meta.url), 'utf8');
   const store = await readFile(new URL('../src/stores/configStore.js', import.meta.url), 'utf8');
 
-  // The panel switch binds the shared setting both ways.
+  // The panel switch sits in the title bar and binds the shared setting.
   assert.ok(panel.includes('config.settings.aiSearchRerank'), 'panel binds aiSearchRerank');
+  assert.ok(
+    panel.indexOf('aiSearch.rerank_short') > panel.indexOf('sidebar-panel-header')
+      && panel.indexOf('aiSearch.rerank_short') < panel.indexOf('ContextMenu'),
+    'the rerank switch lives in the title bar, before the overflow menu',
+  );
   // The search path gates on the flag, reranks through rerankHitList, and
   // keeps the local ranking when the cloud call fails.
   assert.ok(content.includes('config.settings.aiSearchRerank === true'), 'content gates on the flag');
