@@ -278,7 +278,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { emit, listen } from '@tauri-apps/api/event';
 import { useI18n } from 'vue-i18n';
 import TitleBar from '@/components/TitleBar.vue';
@@ -752,7 +752,10 @@ const searchQuery = ref('');
 const searching = ref(false);
 const searched = ref(false);
 const searchKind = ref<'precise' | 'semantic'>('precise');
-const llmRerank = ref(false);
+// The rerank checkbox shares the global AI-search switch, so the last choice
+// made in either place survives page mounts.
+const llmRerank = ref(Boolean(config.settings.aiSearchRerank));
+watch(llmRerank, value => { config.settings.aiSearchRerank = value === true; });
 const reranked = ref(false);
 const unannotatedCount = ref(0);
 const searchError = ref('');

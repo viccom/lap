@@ -608,7 +608,14 @@
               </div>
             </div>
             <div class="flex flex-col gap-1 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
-              <div class="text-sm leading-5">{{ $t('settings.vl.rerank_model') }}</div>
+              <div class="flex items-center gap-2">
+                <div class="text-sm leading-5">{{ $t('settings.vl.rerank_model') }}</div>
+                <button
+                  v-if="vlModels.length > 0"
+                  class="ml-auto btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content"
+                  @click="vlRerankModelsExpanded = !vlRerankModelsExpanded"
+                >{{ vlRerankModelsExpanded ? $t('settings.vl.models_collapse', { count: vlRerankModelOptions.length }) : $t('settings.vl.models_expand', { count: vlRerankModelOptions.length }) }}</button>
+              </div>
               <div class="text-xs text-base-content/30">{{ $t('settings.vl.rerank_model_hint') }}</div>
               <div class="text-xs text-base-content/30">{{ $t('settings.vl.rerank_model_pick_hint') }}</div>
               <input
@@ -621,6 +628,22 @@
               <datalist id="vl-rerank-model-options">
                 <option v-for="option in vlRerankModelOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
               </datalist>
+              <!-- Text-only rerank: every gateway model qualifies, so the chip
+                   wall mirrors the default-model picker without vision colors. -->
+              <div v-if="vlModels.length > 0 && vlRerankModelsExpanded" class="flex flex-wrap gap-1 max-h-40 overflow-y-auto pr-1">
+                <button
+                  v-for="option in vlRerankModelOptions"
+                  :key="option.value"
+                  type="button"
+                  :class="[
+                    'px-1.5 h-6 rounded-box text-xs border transition-colors truncate max-w-48',
+                    option.value === vlRerankModel.trim()
+                      ? 'border-primary text-primary bg-primary/10'
+                      : 'border-base-content/20 text-base-content/70 hover:text-base-content',
+                  ]"
+                  @click="vlRerankModel = option.value"
+                >{{ option.label }}</button>
+              </div>
             </div>
             <div class="flex justify-end">
               <button class="t-button-primary" :disabled="savingVlConfig" @click="saveVlConfig">
@@ -1139,7 +1162,7 @@ import {
   listenImageSearchModelDownloadProgress,
 } from '@/common/api';
 import { formatFileSize, isLinux, isMac, SCALE_VALUES } from '@/common/utils';
-import { VL_SETTINGS_TAB, VL_TASKS_TAB, resolveApiKeyInput, modelLabel, normalizeProtocol, partitionModels, normalizeMaxConcurrency, runStateLabelKey, formatDuration, callSucceeded, taskStateLabelKey, taskStateChipClass } from '@/common/vlLogic';
+import { VL_SETTINGS_TAB, VL_TASKS_TAB, resolveApiKeyInput, modelLabel, normalizeProtocol, partitionModels, normalizeMaxConcurrency, runStateLabelKey, formatDuration, callSucceeded, taskStateLabelKey, taskStateChipClass, rerankModelOptions } from '@/common/vlLogic';
 import { getVlConfig, setVlConfig, listVlModels, listVlRuns, listVlRunCalls, cancelVlRun, retryVlRun, deleteVlRun, clearVlRuns, listVlTasks, updateVlTaskTime, deleteVlTask } from '@/common/vlApi';
 import { useAppearance } from '@/composables/useAppearance';
 import { getShortcutLabels, ShortcutActionId, ShortcutPlatform } from '@/common/shortcuts';
@@ -1192,6 +1215,7 @@ const vlModelsLoading = ref(false);
 const vlModelsAuthRequired = ref(false);
 // The chip wall stays collapsed by default: ~50 models flood the pane otherwise.
 const vlModelsExpanded = ref(false);
+const vlRerankModelsExpanded = ref(false);
 /// Write only: the key is never read back and never kept in the app config.
 const vlApiKey = ref('');
 const vlApiKeyClearPending = ref(false);
@@ -1288,17 +1312,9 @@ const selectedVlModelInfo = computed(() =>
   vlModels.value.find(model => String(model?.id) === vlModel.value.trim()) ?? null
 );
 
-/// Text models from the refreshed gateway list; the current manual value
-/// stays selectable even when the gateway does not list it.
-const vlRerankModelOptions = computed(() => {
-  const groups = partitionModels(vlModels.value);
-  const options = groups.unsupported.map(model => ({ value: String(model.id), label: modelLabel(model) }));
-  const current = vlRerankModel.value.trim();
-  if (current && !options.some(option => option.value === current)) {
-    options.unshift({ value: current, label: current });
-  }
-  return options;
-});
+/// Every refreshed model is a valid rerank candidate: the rerank call sends
+/// text only, so vision capability plays no part (vlLogic.rerankModelOptions).
+const vlRerankModelOptions = computed(() => rerankModelOptions(vlModels.value, vlRerankModel.value));
 
 async function refreshVlModels() {
   if (vlModelsLoading.value) return;

@@ -2122,6 +2122,10 @@
       "precise": "BM25 over names, metadata, tags, people and descriptions",
       "semantic": "Matches the stored image descriptions by meaning"
     },
-    "empty_semantic_unavailable": "The semantic search could not reach the embedding model. Check the embedding settings and retry."
+    "empty_semantic_unavailable": "The semantic search could not reach the embedding model. Check the embedding settings and retry.",
+    "rerank": "Cloud rerank",
+    "rerank_hint": "Off by default. When on, the query and the candidate photo descriptions are sent to the rerank text model (no images, ~1–2 s); failures keep the local ranking. Requires the gateway to be configured.",
+    "rerank_failed": "Cloud rerank failed; the local ranking was kept",
+    "rerank_no_match": "No photo description matched the query"
   }
 }

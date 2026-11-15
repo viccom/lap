@@ -121,6 +121,21 @@ export function modelLabel(model) {
   return String(model.displayName ?? '').trim() || String(model.id ?? '');
 }
 
+/// Pickable rerank models: EVERY refreshed model, not only the ones the
+/// gateway marks as vision-unsupported — the rerank call sends text only, so
+/// vision capability is irrelevant. The current manual value stays pickable
+/// even when the gateway does not list it.
+export function rerankModelOptions(models, current) {
+  const options = (Array.isArray(models) ? models : [])
+    .filter(Boolean)
+    .map(model => ({ value: String(model.id), label: modelLabel(model) }));
+  const typed = String(current ?? '').trim();
+  if (typed && !options.some(option => option.value === typed)) {
+    options.unshift({ value: typed, label: typed });
+  }
+  return options;
+}
+
 /// The status of a stored call as the backend writes it: `ok` or `error`.
 export const CALL_STATUS_OK = 'ok';
 export const CALL_STATUS_ERROR = 'error';

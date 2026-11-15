@@ -205,6 +205,7 @@ export const useConfigStore = defineStore('configStore', {
       // search settings
       searchMode: 'all',            // search mode (all: word + vector, precise: full text index, semantic: vector only)
       aiSearchMode: 'all',          // AI search entry mode (all: fts + caption embeddings, precise: fts only, semantic: captions only)
+      aiSearchRerank: false,        // AI search cloud rerank switch (fallback-only; judges stored descriptions via the VL gateway)
 
       // image search settings
       imageSearch: {

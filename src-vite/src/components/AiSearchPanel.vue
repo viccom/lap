@@ -59,6 +59,12 @@
       <div class="mt-1 px-1 text-xs text-base-content/40 truncate" :title="$t(`aiSearch.hint.${mode}`)">
         {{ $t(`aiSearch.hint.${mode}`) }}
       </div>
+
+      <!-- cloud rerank switch: fallback-only, off by default -->
+      <label class="mt-1 px-1 flex items-center gap-1.5 text-xs cursor-pointer select-none" :title="$t('aiSearch.rerank_hint')">
+        <input v-model="rerankEnabled" type="checkbox" class="checkbox checkbox-xs" />
+        <span class="text-base-content/60">{{ $t('aiSearch.rerank') }}</span>
+      </label>
     </div>
 
     <!-- search history (AI search only; the official panel has its own) -->
@@ -154,6 +160,13 @@ function getSearchHistoryMenuItems(index: number) {
 // belongs to the unified search and is never touched from here.
 const modeEntries = AI_SEARCH_MODES.map(value => ({ value }));
 const mode = computed(() => normalizeAiSearchMode(config.settings.aiSearchMode));
+
+// Cloud rerank shares one global switch with the VL lab, so the setting the
+// user last touched anywhere governs both entrances.
+const rerankEnabled = computed({
+  get: () => config.settings.aiSearchRerank === true,
+  set: (value: boolean) => { config.settings.aiSearchRerank = value === true; },
+});
 
 function setMode(value: string) {
   config.settings.aiSearchMode = normalizeAiSearchMode(value);

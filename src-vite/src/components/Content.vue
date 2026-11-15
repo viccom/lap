@@ -873,6 +873,12 @@ import { getShortcutLabel, matchesShortcut, ShortcutActionId, ShortcutPlatform, 
 import { getSmartTagById } from '@/common/smartTags';
 import { SEARCH_RESULT_LIMIT, describeMatches, normalizeSearchMode, planSearch } from '@/common/searchMode';
 import { aiSearchEmptyHint, dedupeGroups, orderFilesByHits, passesAiSearchFilters, planAiSearch, semanticScoreRange } from '@/common/aiSearch';
+import { rerankHitList } from '@/common/vlLabLogic';
+
+/// Cloud rerank judges the stored image descriptions, so it only sees the
+/// semantic group, and only its head — the same 20-candidate ceiling as the
+/// VL lab, keeping the fallback cheap.
+const AI_SEARCH_RERANK_LIMIT = 20;
 import { runVlAnalysis, listVlTemplates, queueVlTask } from '@/common/vlApi';
 import { describeVlError, pickLatestVersions, templateLabel } from '@/common/vlLogic';
 import { QUERY_KIND, TITLE_KIND, planNavigationQuery } from '@/common/queryDispatch';
@@ -8531,6 +8537,30 @@ async function getAiSearchFileList(searchText: string, mode: string, requestId: 
       .filter((file: any) => passesAiSearchFilters(file, filters));
     // A file found by both legs shows once, in the precise group.
     const merged = dedupeGroups({ ftsFiles: preciseMatches, semanticFiles: semanticMatches });
+    // Cloud rerank (fallback-only, off by default): the text model keeps the
+    // semantic hits whose stored description actually answers the query. A
+    // failure never hides the local ranking — the catch keeps it as-is.
+    if (config.settings.aiSearchRerank === true && merged.semanticFiles.length > 0) {
+      const candidates = merged.semanticFiles.slice(0, AI_SEARCH_RERANK_LIMIT);
+      try {
+        const answer = await rerankHitList(
+          searchText,
+          candidates.map((file: any) => ({ fileId: Number(file.id) })),
+        );
+        if (requestId !== currentContentRequestId) return;
+        const kept = new Set(answer.hits.map((hit: any) => Number(hit.fileId)));
+        merged.semanticFiles = [
+          ...candidates.filter((file: any) => kept.has(Number(file.id))),
+          ...merged.semanticFiles.slice(candidates.length),
+        ];
+        if (answer.reranked && kept.size === 0) {
+          toast.info(t('aiSearch.rerank_no_match'));
+        }
+      } catch (error) {
+        console.error('AI search rerank failed:', error);
+        toast.info(t('aiSearch.rerank_failed'));
+      }
+    }
     const files = preserveLoadedThumbnails([...merged.ftsFiles, ...merged.semanticFiles]);
     contentCountIsAuthoritative.value = true;
 

@@ -42,6 +42,7 @@ import {
   parseResultJson,
   partitionModels,
   pickLatestVersions,
+  rerankModelOptions,
   resolveApiKeyAction,
   runStateLabelKey,
   templateEditKeys,
@@ -417,8 +418,7 @@ test('run lifecycle commands carry the run id verbatim and return counts', async
   assert.equal(clear.calls[0].command, 'clear_vl_runs');
 });
 
-test('task queue commands normalize the payload and address tasks by id', async () => {
-  const queue = recorder({ id: 't1', state: 'pending' });
+test('task queue commands normalize the payload and address tasks by id', async () => {  const queue = recorder({ id: 't1', state: 'pending' });
   const task = await queueVlTask(['12', 13, null], '3', true, '02:30', '2026-11-16', queue.invoker);
   assert.equal(task.id, 't1');
   assert.equal(queue.calls[0].command, 'queue_vl_task');
@@ -443,4 +443,44 @@ test('task queue commands normalize the payload and address tasks by id', async 
   await deleteVlTask('t1', remove.invoker);
   assert.equal(remove.calls[0].command, 'delete_vl_task');
   assert.equal(remove.calls[0].args.id, 't1');
+});
+
+test('rerank model options cover every gateway model, vision irrelevant', () => {
+  const models = [
+    { id: 'vision-a', displayName: 'Vision A', vision: 'supported' },
+    { id: 'text-b', displayName: 'Text B', vision: 'unsupported' },
+    { id: 'mystery-c', vision: 'unknown' },
+  ];
+  // All three groups are pickable: the rerank call sends text only.
+  const options = rerankModelOptions(models, '');
+  assert.deepEqual(options.map(option => option.value), ['vision-a', 'text-b', 'mystery-c']);
+  assert.deepEqual(options.map(option => option.label), ['Vision A', 'Text B', 'mystery-c']);
+  // A manual value the gateway does not list stays on top.
+  const withManual = rerankModelOptions(models, 'my-own-model');
+  assert.equal(withManual[0].value, 'my-own-model');
+  assert.equal(withManual.length, 4);
+  // Duplicated current values are not listed twice.
+  assert.equal(rerankModelOptions(models, 'text-b').length, 3);
+  // Junk input never throws.
+  assert.deepEqual(rerankModelOptions(null, '  '), []);
+});
+
+test('the AI search rerank wiring is present and off by default', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const panel = await readFile(new URL('../src/components/AiSearchPanel.vue', import.meta.url), 'utf8');
+  const content = await readFile(new URL('../src/components/Content.vue', import.meta.url), 'utf8');
+  const lab = await readFile(new URL('../src/views/VlLab.vue', import.meta.url), 'utf8');
+  const store = await readFile(new URL('../src/stores/configStore.js', import.meta.url), 'utf8');
+
+  // The panel switch binds the shared setting both ways.
+  assert.ok(panel.includes('config.settings.aiSearchRerank'), 'panel binds aiSearchRerank');
+  // The search path gates on the flag, reranks through rerankHitList, and
+  // keeps the local ranking when the cloud call fails.
+  assert.ok(content.includes('config.settings.aiSearchRerank === true'), 'content gates on the flag');
+  assert.ok(content.includes('rerankHitList('), 'content reranks via rerankHitList');
+  assert.ok(content.includes("toast.info(t('aiSearch.rerank_failed'))"), 'failure keeps local ranking');
+  // The lab checkbox reads and writes the same switch.
+  assert.ok(lab.includes('config.settings.aiSearchRerank'), 'lab shares the switch');
+  // The default is off.
+  assert.match(store, /aiSearchRerank:\s*false/, 'default is false');
 });
