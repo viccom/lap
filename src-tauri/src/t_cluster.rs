@@ -1,6 +1,5 @@
 use crate::t_common;
 use crate::t_sqlite::{Face, Person};
-use rand::seq::SliceRandom;
 use std::collections::HashMap;
 
 /// Clustering progress information
@@ -90,7 +89,10 @@ where
 {
     const K_NEIGHBORS: usize = t_common::K_NEIGHBORS;
 
-    // 1. Reset all existing assignments and delete persons
+    // 1. Snapshot user-given names (face_id -> name) so re-clustering can
+    //    restore them, then reset all assignments and delete persons.
+    //    Auto-generated "Person N" rows are excluded by the query.
+    let named_faces = Face::get_named_person_snapshot()?;
     Face::reset_all_assignments()?;
 
     // 2. Get ALL faces for clustering — slim: (face_id, file_id, embedding_bytes)
@@ -177,8 +179,9 @@ where
 
     // 6. Run Chinese Whispers Algorithm
     let mut labels: Vec<usize> = (0..n).collect();
-    let mut order: Vec<usize> = (0..n).collect();
-    let mut rng = rand::thread_rng();
+    // Deterministic node order (face-id order). The previous random shuffle
+    // made cluster results differ run-to-run on identical data.
+    let order: Vec<usize> = (0..n).collect();
     let max_iterations = 20;
 
     for iter in 0..max_iterations {
@@ -195,8 +198,6 @@ where
             total: max_iterations,
         });
 
-        order.shuffle(&mut rng);
-
         for &node in &order {
             if graph[node].is_empty() {
                 continue;
@@ -209,11 +210,17 @@ where
                 *label_weights.entry(neighbor_label).or_insert(0.0) += edge.weight;
             }
 
-            // Find best label
-            let best_label = label_weights
-                .into_iter()
-                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
-                .map(|(label, _)| label)
+            // Find best label; ties break toward the smaller label so the
+            // result is deterministic (HashMap iteration order is not).
+            let mut votes: Vec<(usize, f32)> = label_weights.into_iter().collect();
+            votes.sort_by(|a, b| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(b.0.cmp(&a.0))
+            });
+            let best_label = votes
+                .last()
+                .map(|&(label, _)| label)
                 .unwrap_or(labels[node]);
 
             if labels[node] != best_label {
@@ -248,12 +255,14 @@ where
     drop(labels);
     drop(order);
 
-    // 7. Filter clusters
+    // 7. Filter clusters; sort by first face index so "Person N" numbering is
+    //    stable across runs (HashMap iteration order is not).
     const MIN_SAMPLES: usize = t_common::MIN_SAMPLES;
-    let valid_clusters: Vec<_> = cluster_map
+    let mut valid_clusters: Vec<_> = cluster_map
         .into_iter()
         .filter(|(_, face_indices)| face_indices.len() >= MIN_SAMPLES)
         .collect();
+    valid_clusters.sort_by_key(|(_, face_indices)| face_indices[0]);
 
     let total_clusters = valid_clusters.len();
 
@@ -271,7 +280,18 @@ where
             total: total_clusters,
         });
 
-        let person_name = format!("Person {}", cluster_idx + 1);
+        // Restore a user-given name when this cluster continues an old named
+        // person (plurality vote over the pre-reset face assignments).
+        let mut votes: HashMap<&str, usize> = HashMap::new();
+        for &face_idx in &cluster_face_indices {
+            if let Some(name) = named_faces.get(&slim_faces[face_idx].0) {
+                *votes.entry(name.as_str()).or_insert(0) += 1;
+            }
+        }
+        let person_name = match plurality_name(&votes) {
+            Some(name) => name.to_string(),
+            None => format!("Person {}", cluster_idx + 1),
+        };
         let person_id = Person::create(Some(&person_name))?;
 
         for face_idx in cluster_face_indices {
@@ -298,4 +318,32 @@ where
     });
 
     Ok(total_assigned)
+}
+
+/// Deterministic plurality pick: most votes wins; ties break to the
+/// lexicographically smallest name.
+fn plurality_name<'a>(votes: &HashMap<&'a str, usize>) -> Option<&'a str> {
+    votes
+        .iter()
+        .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))
+        .map(|(name, _)| *name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plurality_picks_most_votes_and_breaks_ties_deterministically() {
+        let mut votes: HashMap<&str, usize> = HashMap::new();
+        votes.insert("b", 3);
+        votes.insert("a", 3);
+        votes.insert("c", 1);
+        // tie between a/b -> lexicographically smaller wins
+        assert_eq!(plurality_name(&votes), Some("a"));
+        votes.insert("c", 4);
+        assert_eq!(plurality_name(&votes), Some("c"));
+        let empty: HashMap<&str, usize> = HashMap::new();
+        assert_eq!(plurality_name(&empty), None);
+    }
 }

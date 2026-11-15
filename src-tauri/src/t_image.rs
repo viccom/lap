@@ -367,7 +367,7 @@ pub fn get_image_orientation(file_path: &str) -> i32 {
     scan_orientation_binary(&data).unwrap_or(1)
 }
 
-fn apply_orientation(img: DynamicImage, orientation: i32) -> DynamicImage {
+pub(crate) fn apply_orientation(img: DynamicImage, orientation: i32) -> DynamicImage {
     match orientation {
         2 => img.fliph(),
         3 => img.rotate180(),

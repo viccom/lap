@@ -143,12 +143,38 @@ pub const EMBEDDING_MODEL: &str = "w600k_mbf.onnx"; // MobileFaceNet
 // Quality thresholds - Recommended Values
 pub const MIN_CONFIDENCE: f32 = 0.65; // 0.6-0.7 is standard. 0.65 balances precision/recall.
 // pub const MIN_FACE_RATIO: f32 = 0.0; // Disabled. Rely on absolute pixel size instead (better for high-res photos).
-// pub const MIN_FACE_SIZE: f32 = 90.0; // 80-112px is minimum for good recognition. 90.0 is a safe high-quality baseline.
-pub const MIN_BLUR_SCORE: f32 = 200.0; // Standard Laplacian variance threshold. Below 100 is usually blurry.
+/// Minimum face size in SOURCE-image pixels (the image detection ran on —
+/// thumbnail or original). The alignment warp samples that image, so embedding
+/// quality is bound by the real face size. Faces below this embed noise and
+/// used to become singleton garbage persons.
+pub const MIN_FACE_SIZE: f32 = 90.0; // 80-112px is minimum for good recognition. 90.0 is a safe high-quality baseline.
+/// Laplacian-variance blur floor, measured on the face crop normalized to a
+/// 256px long side (see `calculate_blur_score`). Empirically on this library:
+/// soft background faces score ~15-25, usable faces ~130-450 — 100 separates
+/// them with margin. The old absolute 200 was calibrated per-resolution and
+/// rejected nearly everything detected via full-size originals.
+pub const MIN_BLUR_SCORE: f32 = 100.0; // Below 100 is usually blurry.
 
 // Clustering Constants
 pub const K_NEIGHBORS: usize = 80; // Prune edges to Top-K (K-NN)
 pub const MIN_SAMPLES: usize = 1; // Minimum samples per cluster
+
+/// Face bboxes are stored in DISPLAY (EXIF-oriented) pixel space. JPG-style
+/// rows already store display dims in `afiles.width/height`, but RAW and TIFF
+/// store decoder (sensor) dims there — for those the display dims are the
+/// swap when orientation > 4.
+pub fn display_dimensions(
+    width: i64,
+    height: i64,
+    orientation: i32,
+    sensor_dims: bool,
+) -> (f32, f32) {
+    if sensor_dims && orientation > 4 {
+        (height as f32, width as f32)
+    } else {
+        (width as f32, height as f32)
+    }
+}
 
 // Image understanding (vision-language) gateway
 pub const VL_GATEWAY_URL_ENV: &str = "LAP_VL_GATEWAY_URL";

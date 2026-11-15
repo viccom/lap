@@ -10187,6 +10187,45 @@ impl Person {
         })
     }
 
+    /// Pick the cover face: the explicit `cover_face_id` when it belongs to the
+    /// person, otherwise the highest-confidence face with area as tie-break.
+    /// Pure size used to win, which regularly picked a large false positive.
+    fn select_cover_face_id(
+        conn: &Connection,
+        person_id: i64,
+        cover_face_id: Option<i64>,
+    ) -> Result<Option<i64>, rusqlite::Error> {
+        let get_best_face = || -> Result<i64, rusqlite::Error> {
+            conn.query_row(
+                "SELECT id FROM faces WHERE person_id = ?1 \
+                 ORDER BY json_extract(bbox, '$.confidence') DESC, \
+                          (json_extract(bbox, '$.width') * json_extract(bbox, '$.height')) DESC \
+                 LIMIT 1",
+                params![person_id],
+                |row| row.get(0),
+            )
+        };
+
+        match cover_face_id {
+            Some(fid) => {
+                // Validate that cover_face_id actually belongs to this person
+                let is_valid: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM faces WHERE id = ?1 AND person_id = ?2)",
+                        params![fid, person_id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(false);
+                if is_valid {
+                    Ok(Some(fid))
+                } else {
+                    get_best_face().optional()
+                }
+            }
+            None => get_best_face().optional(),
+        }
+    }
+
     /// Generate thumbnail for a person from their cover face or best quality face
     /// Returns the thumbnail as JPEG bytes
     fn generate_thumbnail(
@@ -10195,43 +10234,15 @@ impl Person {
         cover_face_id: Option<i64>,
     ) -> Result<Option<Vec<u8>>, String> {
         // 1. Determine which face to use
-        let get_best_face = || -> Result<i64, rusqlite::Error> {
-            conn.query_row(
-                "SELECT id FROM faces WHERE person_id = ?1 ORDER BY (json_extract(bbox, '$.width') * json_extract(bbox, '$.height')) DESC LIMIT 1",
-                params![person_id],
-                |row| row.get(0),
-            )
-        };
-
-        let face_id = if let Some(fid) = cover_face_id {
-            // Validate that cover_face_id actually belongs to this person
-            let is_valid: bool = conn
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM faces WHERE id = ?1 AND person_id = ?2)",
-                    params![fid, person_id],
-                    |row| row.get(0),
-                )
-                .unwrap_or(false);
-
-            if is_valid {
-                fid
-            } else {
-                match get_best_face() {
-                    Ok(fid) => fid,
-                    Err(_) => return Ok(None),
-                }
-            }
-        } else {
-            match get_best_face() {
-                Ok(fid) => fid,
-                Err(_) => return Ok(None),
-            }
+        let face_id = match Self::select_cover_face_id(conn, person_id, cover_face_id) {
+            Ok(Some(fid)) => fid,
+            _ => return Ok(None),
         };
 
         // 2. Get face info and file info
         let query = "
-            SELECT f.id, faces.bbox, f.width, f.height, f.e_orientation, f.name, fd.path
-            FROM faces 
+            SELECT f.id, faces.bbox, f.width, f.height, f.e_orientation, f.name, fd.path, f.file_type
+            FROM faces
             JOIN afiles f ON faces.file_id = f.id
             JOIN afolders fd ON f.folder_id = fd.id
             WHERE faces.id = ?1
@@ -10246,6 +10257,7 @@ impl Person {
                 Option<i32>,
                 String,
                 String,
+                Option<i32>,
             ),
             _,
         > = conn.query_row(query, params![face_id], |row| {
@@ -10257,14 +10269,23 @@ impl Person {
                 row.get(4)?,
                 row.get(5)?,
                 row.get(6)?,
+                row.get(7)?,
             ))
         });
 
-        let (file_id, bbox_json, orig_w_opt, orig_h_opt, orientation_opt, file_name, folder_path) =
-            match row {
-                Ok(r) => r,
-                Err(_) => return Ok(None),
-            };
+        let (
+            file_id,
+            bbox_json,
+            orig_w_opt,
+            orig_h_opt,
+            orientation_opt,
+            file_name,
+            folder_path,
+            file_type_opt,
+        ) = match row {
+            Ok(r) => r,
+            Err(_) => return Ok(None),
+        };
 
         let bbox: FaceBBox = match serde_json::from_str(&bbox_json) {
             Ok(b) => b,
@@ -10276,18 +10297,17 @@ impl Person {
         // 3. Load Image (Original or Thumbnail)
         let full_path = std::path::Path::new(&folder_path).join(&file_name);
 
-        // Helper to load and rotate original image
+        // Helper to load and rotate original image. Bboxes are stored in
+        // DISPLAY space, so the pixels are rotated to display space too — the
+        // previous code re-rotated the bbox instead (with the 6/8 branches
+        // swapped and mirrors unhandled), cropping the wrong region for
+        // rotated photos.
         let load_original = || -> Option<(image::DynamicImage, u32, u32)> {
             if !t_utils::content_readable(&full_path.to_string_lossy()) {
                 return None;
             }
-            let mut dyn_img = image::open(&full_path).ok()?;
-            dyn_img = match orientation {
-                3 => dyn_img.rotate180(),
-                6 => dyn_img.rotate90(),
-                8 => dyn_img.rotate270(),
-                _ => dyn_img,
-            };
+            let dyn_img = image::open(&full_path).ok()?;
+            let dyn_img = crate::t_image::apply_orientation(dyn_img, orientation);
             let (w, h) = dyn_img.dimensions();
             Some((dyn_img, w, h))
         };
@@ -10305,53 +10325,33 @@ impl Person {
             None => return Ok(None),
         };
 
-        // 4. Calculate Dimensions & BBox
+        // 4. Reference dims = the display space the bbox was stored in.
+        // RAW/TIFF rows carry sensor dims in afiles; JPG-style rows already
+        // store display dims.
         let (ref_w, ref_h) = if let (Some(ow), Some(oh)) = (orig_w_opt, orig_h_opt) {
-            match orientation {
-                6 | 8 => (oh, ow),
-                _ => (ow, oh),
-            }
+            let sensor_dims = file_type_opt.unwrap_or(1) == 3
+                || t_libraw::is_tiff_path(&full_path.to_string_lossy());
+            let (dw, dh) = crate::t_common::display_dimensions(
+                ow as i64,
+                oh as i64,
+                orientation,
+                sensor_dims,
+            );
+            (dw as u32, dh as u32)
         } else {
             (img_w, img_h)
         };
 
-        let transformed_bbox = if orig_w_opt.is_some() && orig_h_opt.is_some() {
-            let orig_w = orig_w_opt.unwrap();
-            let orig_h = orig_h_opt.unwrap();
-            match orientation {
-                6 => FaceBBox {
-                    x: orig_h as f32 - bbox.y - bbox.height,
-                    y: bbox.x,
-                    width: bbox.height,
-                    height: bbox.width,
-                },
-                8 => FaceBBox {
-                    x: bbox.y,
-                    y: orig_w as f32 - bbox.x - bbox.width,
-                    width: bbox.height,
-                    height: bbox.width,
-                },
-                3 => FaceBBox {
-                    x: orig_w as f32 - bbox.x - bbox.width,
-                    y: orig_h as f32 - bbox.y - bbox.height,
-                    width: bbox.width,
-                    height: bbox.height,
-                },
-                _ => bbox,
-            }
-        } else {
-            bbox
-        };
-
-        // 5. Crop and Resize
+        // 5. Crop and Resize — bbox and loaded image are both display-space;
+        // scale between the two and crop directly.
         let scale_x = img_w as f32 / ref_w as f32;
         let scale_y = img_h as f32 / ref_h as f32;
         let expansion = 0.2;
 
-        let face_x = transformed_bbox.x * scale_x;
-        let face_y = transformed_bbox.y * scale_y;
-        let face_w = transformed_bbox.width * scale_x;
-        let face_h = transformed_bbox.height * scale_y;
+        let face_x = bbox.x * scale_x;
+        let face_y = bbox.y * scale_y;
+        let face_w = bbox.width * scale_x;
+        let face_h = bbox.height * scale_y;
 
         let crop_x = (face_x - face_w * expansion).max(0.0) as u32;
         let crop_y = (face_y - face_h * expansion).max(0.0) as u32;
@@ -10686,6 +10686,33 @@ impl Face {
         Ok(faces)
     }
 
+    /// Snapshot of user-named persons by face id, taken before re-clustering
+    /// wipes the `persons` table. Auto-generated "Person N" rows are excluded:
+    /// only names a human typed survive a re-cluster.
+    pub fn get_named_person_snapshot() -> Result<std::collections::HashMap<i64, String>, String> {
+        let conn = open_conn()?;
+        Self::get_named_person_snapshot_with_conn(&conn)
+    }
+
+    /// Testable variant of [`Self::get_named_person_snapshot`].
+    pub fn get_named_person_snapshot_with_conn(
+        conn: &Connection,
+    ) -> Result<std::collections::HashMap<i64, String>, String> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT f.id, p.name FROM faces f \
+                 JOIN persons p ON p.id = f.person_id \
+                 WHERE p.name IS NOT NULL AND p.name NOT LIKE 'Person %'",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<std::collections::HashMap<_, _>, _>>()
+            .map_err(|e| e.to_string())?;
+        Ok(rows)
+    }
+
     /// Reset all face assignments and delete all persons (for re-clustering)
     pub fn reset_all_assignments() -> Result<(), String> {
         let conn = open_conn()?;
@@ -10752,16 +10779,30 @@ impl Face {
         Ok(result)
     }
 
-    /// Get all image file IDs that haven't been processed for faces yet
-    /// Returns: Vec<(id, file_path, width, height)>
-    pub fn get_unprocessed_image_files() -> Result<Vec<(i64, String, i64, i64)>, String> {
+    /// Get image/RAW file IDs that haven't been processed for faces yet
+    /// Returns: Vec<(id, file_path, width, height, orientation, file_type)>
+    ///
+    /// RAW (file_type = 3) is included: its thumbnails are generated from the
+    /// oriented decoder preview, so detection can eat them like JPG thumbs.
+    /// Videos (file_type = 2) stay excluded — no frame extraction exists.
+    pub fn get_unprocessed_image_files()
+    -> Result<Vec<(i64, String, i64, i64, i32, i64)>, String> {
         let conn = open_conn()?;
+        Self::get_unprocessed_image_files_with_conn(&conn)
+    }
+
+    /// Testable variant of [`Self::get_unprocessed_image_files`] on an
+    /// existing connection.
+    pub fn get_unprocessed_image_files_with_conn(
+        conn: &Connection,
+    ) -> Result<Vec<(i64, String, i64, i64, i32, i64)>, String> {
         let mut stmt = conn
             .prepare(
-                "SELECT a.id, f.path || '/' || a.name as file_path, a.width, a.height
-                 FROM afiles a 
+                "SELECT a.id, f.path || '/' || a.name as file_path, a.width, a.height,
+                        COALESCE(a.e_orientation, 1), a.file_type
+                 FROM afiles a
                  JOIN afolders f ON a.folder_id = f.id
-                 WHERE a.file_type = 1 
+                 WHERE a.file_type IN (1, 3)
                    AND (a.has_faces IS NULL OR a.has_faces = 0)
                    AND a.width IS NOT NULL AND a.height IS NOT NULL
                  ORDER BY a.id",
@@ -10770,7 +10811,14 @@ impl Face {
 
         let files = stmt
             .query_map([], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
             })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
@@ -13739,5 +13787,96 @@ mod thumbnail_read_tests {
         let found = AThumb::image_bytes_on(&conn, 1, "default", &root).unwrap();
         assert_eq!(found.as_deref(), Some(jpeg().as_slice()));
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod face_pipeline_fix_tests {
+    use super::*;
+
+    fn face_queue_fixture() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE afolders(id INTEGER PRIMARY KEY, path TEXT);
+             INSERT INTO afolders VALUES(1, '/photos');
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, folder_id INTEGER, name TEXT,
+               width INTEGER, height INTEGER, file_type INTEGER, has_faces INTEGER,
+               e_orientation INTEGER);
+             -- image, unprocessed
+             INSERT INTO afiles VALUES(1,1,'a.jpg',4000,3000,1,0,1);
+             -- image, faces already found
+             INSERT INTO afiles VALUES(2,1,'b.jpg',4000,3000,1,1,1);
+             -- image, scanned without faces
+             INSERT INTO afiles VALUES(3,1,'c.jpg',4000,3000,1,2,1);
+             -- video, never eligible
+             INSERT INTO afiles VALUES(4,1,'d.mov',1920,1080,2,0,NULL);
+             -- RAW, unprocessed -> must be included now
+             INSERT INTO afiles VALUES(5,1,'e.cr2',4290,2856,3,0,6);
+             -- RAW, NULL orientation -> coalesced to 1
+             INSERT INTO afiles VALUES(6,1,'f.cr2',4290,2856,3,NULL,NULL);
+             -- image without dims -> excluded
+             INSERT INTO afiles VALUES(7,1,'g.jpg',NULL,NULL,1,0,1);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn face_queue_includes_raw_and_excludes_videos_and_processed() {
+        let conn = face_queue_fixture();
+        let files = Face::get_unprocessed_image_files_with_conn(&conn).unwrap();
+        let ids: Vec<(i64, i32, i64)> = files
+            .into_iter()
+            .map(|(id, _path, _w, _h, orientation, file_type)| (id, orientation, file_type))
+            .collect();
+        assert_eq!(
+            ids,
+            vec![(1, 1, 1), (5, 6, 3), (6, 1, 3)],
+            "images + RAWs pending; processed/video/dimensionless excluded"
+        );
+    }
+
+    #[test]
+    fn cover_face_prefers_confidence_over_pure_size() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE persons(id INTEGER PRIMARY KEY, name TEXT);
+             INSERT INTO persons VALUES(1, 'x');
+             CREATE TABLE faces(id INTEGER PRIMARY KEY, person_id INTEGER, bbox TEXT);
+             -- big but low-confidence box
+             INSERT INTO faces VALUES(10, 1, '{\"x\":0,\"y\":0,\"width\":500,\"height\":500,\"confidence\":0.70}');
+             -- small but high-confidence box
+             INSERT INTO faces VALUES(11, 1, '{\"x\":0,\"y\":0,\"width\":120,\"height\":120,\"confidence\":0.95}');
+             -- biggest box, mid confidence: must NOT win by size alone
+             INSERT INTO faces VALUES(12, 1, '{\"x\":0,\"y\":0,\"width\":900,\"height\":900,\"confidence\":0.80}');",
+        )
+        .unwrap();
+        // no explicit cover -> highest confidence wins
+        assert_eq!(Person::select_cover_face_id(&conn, 1, None).unwrap(), Some(11));
+        // explicit cover that belongs to the person is honored
+        assert_eq!(Person::select_cover_face_id(&conn, 1, Some(10)).unwrap(), Some(10));
+        // explicit cover from another person falls back to best
+        conn.execute("UPDATE faces SET person_id = NULL WHERE id = 10", []).unwrap();
+        assert_eq!(Person::select_cover_face_id(&conn, 1, Some(10)).unwrap(), Some(11));
+        // person without faces -> None
+        conn.execute("INSERT INTO persons VALUES(2, 'y')", []).unwrap();
+        assert_eq!(Person::select_cover_face_id(&conn, 2, None).unwrap(), None);
+    }
+
+    #[test]
+    fn named_person_snapshot_keeps_only_user_names() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE persons(id INTEGER PRIMARY KEY, name TEXT);
+             INSERT INTO persons VALUES(1, 'Person 7'), (2, '董开源'), (3, NULL), (4, 'Person 1');
+             CREATE TABLE faces(id INTEGER PRIMARY KEY, person_id INTEGER, bbox TEXT, embedding BLOB);
+             INSERT INTO faces VALUES(1, 1, '{}', NULL), (2, 2, '{}', NULL), (3, 2, '{}', NULL),
+                                    (4, 3, '{}', NULL), (5, 4, '{}', NULL), (6, NULL, '{}', NULL);",
+        )
+        .unwrap();
+        let snapshot = Face::get_named_person_snapshot_with_conn(&conn).unwrap();
+        assert_eq!(snapshot.len(), 2);
+        assert_eq!(snapshot.get(&2).map(String::as_str), Some("董开源"));
+        assert_eq!(snapshot.get(&3).map(String::as_str), Some("董开源"));
     }
 }
