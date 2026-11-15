@@ -97,10 +97,16 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["N
 
 [target.'cfg(target_os = "windows")'.dependencies]
 clipboard-win = "5.4.1"
-windows = { version = "0.61.3", default-features = false, features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Globalization", "Win32_System_Com", "Win32_UI_Shell"] }
+windows = { version = "0.61.3", default-features = false, features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_Globalization", "Win32_System_Com", "Win32_System_Console", "Win32_UI_Shell"] }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
 devtools = ["tauri/devtools"]
+# Windows console subsystem opt-in: the default build (debug included) uses
+# the GUI subsystem so double-clicking the exe does not flash a console
+# window. Enable with `--features console` when stdout logs / panic output
+# need to be visible during development. NOT part of default (release must
+# stay GUI-subsystem).
+console = []

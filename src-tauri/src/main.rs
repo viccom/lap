@@ -1,6 +1,10 @@
-// Prevents additional console window on Windows in release, DO NOT REMOVE!!
+// Prevents additional console window on Windows, DO NOT REMOVE!!
+// The console is opt-in via the `console` feature: the default build (debug
+// included) uses the GUI subsystem so double-clicking the exe does not flash
+// a black console window; build with `--features console` to keep stdout /
+// panic output visible during development.
 #![cfg_attr(
-    all(not(debug_assertions), target_os = "windows"),
+    all(target_os = "windows", not(feature = "console")),
     windows_subsystem = "windows"
 )]
 
@@ -54,9 +58,58 @@ mod t_vl;
 mod t_vl_protocol;
 mod t_vl_tags;
 
+/// Runtime console opt-in for GUI-subsystem builds: setting `LAP_CONSOLE=1`
+/// (or `true`) in the environment allocates a console window and rewires
+/// stdout/stderr to it, so a shipped portable exe can show startup logs /
+/// panic output on demand without a rebuild. Default (variable unset) keeps
+/// the process windowless. Compiled out when the console subsystem itself is
+/// enabled via the `console` feature (the loader already made one).
+#[cfg(all(target_os = "windows", not(feature = "console")))]
+fn enable_console_if_requested() {
+    let requested = std::env::var_os("LAP_CONSOLE")
+        .map(|v| v == std::ffi::OsStr::new("1") || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+    if !requested {
+        return;
+    }
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
+    use windows::Win32::Storage::FileSystem::{
+        CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    };
+    use windows::Win32::System::Console::{
+        AllocConsole, SetConsoleOutputCP, SetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE,
+    };
+    unsafe {
+        if AllocConsole().is_err() {
+            return;
+        }
+        // UTF-8 output so the startup logs / panic text render correctly.
+        let _ = SetConsoleOutputCP(65001);
+        let conout: Vec<u16> = "CONOUT$\0".encode_utf16().collect();
+        // Rebind the std handles to the new console explicitly: AllocConsole
+        // only fills in handles that are currently invalid, and inherited
+        // pipes would otherwise keep swallowing the log output.
+        if let Ok(handle) = CreateFileW(
+            PCWSTR(conout.as_ptr()),
+            (GENERIC_READ | GENERIC_WRITE).0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES(0),
+            None,
+        ) {
+            let _ = SetStdHandle(STD_OUTPUT_HANDLE, handle);
+            let _ = SetStdHandle(STD_ERROR_HANDLE, handle);
+        }
+    }
+}
+
 /// The main function is the entry point for the Tauri application.
 #[tokio::main]
 async fn main() {
+    #[cfg(all(target_os = "windows", not(feature = "console")))]
+    enable_console_if_requested();
     std::panic::set_hook(Box::new(|panic_info| {
         eprintln!("Unhandled panic: {}", panic_info);
     }));
