@@ -912,6 +912,24 @@ pub fn run_face_indexing(
                 }
                 engine.process_image(&file_path)
             };
+            // RAW fallback: `image::open` cannot decode CR2/NEF/ARW/..., so
+            // without this every RAW failed in load_original and was marked
+            // has_faces=2 forever. LibRaw's preview (embedded JPEG first,
+            // display-oriented) is the detection source instead.
+            let load_raw_preview = |engine: &mut FaceEngine| -> Result<
+                (Vec<FaceData>, (u32, u32)),
+                String,
+            > {
+                if !crate::t_utils::content_readable(&file_path) {
+                    return Err("Skipped: the original is not local".to_string());
+                }
+                let preview = crate::t_libraw::get_raw_preview_image(
+                    &file_path,
+                    crate::t_raw_display::RawDisplayOptions::default(),
+                )?
+                .ok_or_else(|| "No RAW preview available".to_string())?;
+                engine.process_image_from_bytes(&preview)
+            };
             let (process_result, _used_thumb) = match thumb {
                 Ok(Some(thumb)) if thumb.thumb_data.is_some() => {
                     let thumb_bytes = thumb.thumb_data.as_ref().unwrap();
@@ -920,7 +938,13 @@ pub fn run_face_indexing(
                         Err(_) => (load_original(&mut engine), false),
                     }
                 }
-                _ => (load_original(&mut engine), false),
+                _ => {
+                    let mut result = load_original(&mut engine);
+                    if result.is_err() && file_type == 3 {
+                        result = load_raw_preview(&mut engine);
+                    }
+                    (result, false)
+                }
             };
 
             match process_result {
@@ -1188,10 +1212,23 @@ mod tests {
         engine.load_models_from_dir(&models_dir).expect("models load");
 
         let mut worst = f32::INFINITY;
+        // Same RAW fallback as the indexer, so CR2/NEF pairs can be tested.
+        let process_any = |engine: &mut FaceEngine, path: &str| {
+            engine
+                .process_image(path)
+                .or_else(|_| -> Result<(Vec<FaceData>, (u32, u32)), String> {
+                    let preview = crate::t_libraw::get_raw_preview_image(
+                        path,
+                        crate::t_raw_display::RawDisplayOptions::default(),
+                    )?
+                    .ok_or_else(|| "No RAW preview available".to_string())?;
+                    engine.process_image_from_bytes(&preview)
+                })
+        };
         for pair in spec.split(';').filter(|s| !s.trim().is_empty()) {
             let (pa, pb) = pair.split_once('|').expect("pair format: a|b");
-            let fa = engine.process_image(pa).unwrap_or_else(|e| panic!("{pa}: {e}")).0;
-            let fb = engine.process_image(pb).unwrap_or_else(|e| panic!("{pb}: {e}")).0;
+            let fa = process_any(&mut engine, pa).unwrap_or_else(|e| panic!("{pa}: {e}")).0;
+            let fb = process_any(&mut engine, pb).unwrap_or_else(|e| panic!("{pb}: {e}")).0;
             assert!(!fa.is_empty() && !fb.is_empty(), "no faces in {pa}/{pb}");
             let mut best = f32::NEG_INFINITY;
             for x in &fa {
@@ -1208,5 +1245,73 @@ mod tests {
             worst >= 0.45,
             "same-person best-pair cosine {worst:.3} below the cluster merge boundary 0.45"
         );
+    }
+
+    /// Diagnostic: dump per-face pre-gate stats (confidence, source size, blur
+    /// score) for gate calibration. Runs only with LAP_FACE_GATE_PROBE set to
+    /// `path1;path2`; faces are NOT filtered, so the output shows exactly what
+    /// each gate would have rejected.
+    #[test]
+    fn face_gate_probe_local() {
+        let Ok(spec) = std::env::var("LAP_FACE_GATE_PROBE") else {
+            eprintln!("LAP_FACE_GATE_PROBE not set; skipping");
+            return;
+        };
+        let models_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/models");
+        let mut engine = FaceEngine::new();
+        engine.load_models_from_dir(&models_dir).expect("models load");
+
+        for path in spec.split(';').filter(|s| !s.trim().is_empty()) {
+            let img = match image::open(path) {
+                Ok(i) => {
+                    let orientation = crate::t_image::get_image_orientation(path);
+                    crate::t_image::apply_orientation(i, orientation)
+                }
+                Err(open_err) => {
+                    // Same RAW fallback the indexer uses, so CR2/NEF can be probed.
+                    match crate::t_libraw::get_raw_preview_image(
+                        path,
+                        crate::t_raw_display::RawDisplayOptions::default(),
+                    ) {
+                        Ok(Some(bytes)) => match image::load_from_memory(&bytes) {
+                            Ok(i) => i,
+                            Err(e) => {
+                                eprintln!("== {path}: RAW preview decode failed: {e}");
+                                continue;
+                            }
+                        },
+                        _ => {
+                            eprintln!("== {path}: open failed: {open_err}; no RAW preview");
+                            continue;
+                        }
+                    }
+                }
+            };
+            let faces = match engine.detect_faces(&img) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("== {path}: detect failed: {e}");
+                    continue;
+                }
+            };
+            eprintln!(
+                "== {} ({}x{}) {} faces pre-gate",
+                path,
+                img.width(),
+                img.height(),
+                faces.len()
+            );
+            for f in &faces {
+                let blur = engine.calculate_blur_score(&img, f);
+                let pass = f.confidence >= t_common::MIN_CONFIDENCE
+                    && f.width >= t_common::MIN_FACE_SIZE
+                    && f.height >= t_common::MIN_FACE_SIZE
+                    && blur >= t_common::MIN_BLUR_SCORE;
+                eprintln!(
+                    "   conf={:.3} box={:.0}x{:.0} blur={:.1} pass={}",
+                    f.confidence, f.width, f.height, blur, pass
+                );
+            }
+        }
     }
 }

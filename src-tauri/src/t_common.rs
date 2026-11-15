@@ -140,20 +140,28 @@ pub const AI_TOKENIZER: &str = "tokenizer.json";
 pub const DETECTION_MODEL: &str = "det_500m.onnx"; // RetinaFace
 pub const EMBEDDING_MODEL: &str = "w600k_mbf.onnx"; // MobileFaceNet
 
-// Quality thresholds - Recommended Values
-pub const MIN_CONFIDENCE: f32 = 0.65; // 0.6-0.7 is standard. 0.65 balances precision/recall.
+// Quality thresholds
+/// Face confidence floor, store-side. Calibrated 2026-11-15 on this library:
+/// real back-row faces in a scanned class photo measure 0.61-0.63 and distant
+/// phone-photo faces 0.60-0.63, so the previous 0.65 rejected genuine faces.
+/// 0.60 equals the detector's own NMS threshold, so quality control now rests
+/// on the source-pixel size gate plus the aligned embedding, not on score.
+pub const MIN_CONFIDENCE: f32 = 0.60;
 // pub const MIN_FACE_RATIO: f32 = 0.0; // Disabled. Rely on absolute pixel size instead (better for high-res photos).
 /// Minimum face size in SOURCE-image pixels (the image detection ran on —
 /// thumbnail or original). The alignment warp samples that image, so embedding
 /// quality is bound by the real face size. Faces below this embed noise and
 /// used to become singleton garbage persons.
 pub const MIN_FACE_SIZE: f32 = 90.0; // 80-112px is minimum for good recognition. 90.0 is a safe high-quality baseline.
-/// Laplacian-variance blur floor, measured on the face crop normalized to a
-/// 256px long side (see `calculate_blur_score`). Empirically on this library:
-/// soft background faces score ~15-25, usable faces ~130-450 — 100 separates
-/// them with margin. The old absolute 200 was calibrated per-resolution and
-/// rejected nearly everything detected via full-size originals.
-pub const MIN_BLUR_SCORE: f32 = 100.0; // Below 100 is usually blurry.
+/// Anti-mush floor for the Laplacian-variance blur score (crop measured at a
+/// 256px long side, never upscaled — see `calculate_blur_score`). This is NOT
+/// a quality filter anymore: on a scan-heavy library the clearest front-row
+/// faces measure 45-76 while pre-fix garbage sat at 15-25, and the bands
+/// overlap, so the score cannot separate real from garbage. The floor only
+/// rejects literal motion mush; alignment-fixed embeddings keep the rest
+/// honest. (The earlier 100 was calibrated on sharp digital close-ups and
+/// rejected nearly every scanned-print face.)
+pub const MIN_BLUR_SCORE: f32 = 20.0;
 
 // Clustering Constants
 pub const K_NEIGHBORS: usize = 80; // Prune edges to Top-K (K-NN)
