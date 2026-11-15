@@ -674,6 +674,11 @@
                 :disabled="vlRunsLoading"
                 @click="loadVlRuns()"
               >{{ $t('settings.vl.tasks_refresh') }}</button>
+              <button
+                class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-error"
+                :disabled="vlRunsLoading || vlRuns.length === 0"
+                @click="clearFinishedVlRuns()"
+              >{{ $t('settings.vl.clear_finished') }}</button>
             </div>
             <div v-if="vlRuns.length === 0" class="text-xs text-base-content/30 px-1">{{ $t('settings.vl.runs_empty') }}</div>
             <div v-else class="max-h-[60vh] overflow-y-auto flex flex-col gap-1 px-1">
@@ -689,6 +694,12 @@
                       runStateChipClass(run.state),
                     ]"
                   >{{ $t(runStateLabelKey(run.state)) }}</span>
+                  <span
+                    :class="[
+                      'px-1.5 h-5 inline-flex items-center rounded-box text-[10px] font-semibold tracking-[0.08em] border cursor-default shrink-0',
+                      run.source === 'scheduled' ? 'border-secondary/40 text-secondary' : 'border-base-content/15 text-base-content/40',
+                    ]"
+                  >{{ $t(run.source === 'scheduled' ? 'settings.vl.run_source_scheduled' : 'settings.vl.run_source_manual') }}</span>
                   <div class="min-w-0 flex-1 flex flex-col">
                     <div class="truncate">
                       <span class="text-base-content/70">{{ run.libraryName || run.libraryId }}</span>
@@ -702,6 +713,16 @@
                       <template v-if="run.skipped"> · {{ $t('vl.skipped') }} {{ run.skipped }}</template>
                     </div>
                   </div>
+                  <button
+                    v-if="canRetryVlRun(run)"
+                    class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content shrink-0"
+                    @click="retryVlRunById(String(run.runId))"
+                  >{{ $t('settings.vl.run_retry') }}</button>
+                  <button
+                    v-if="isTerminalRunState(run.state)"
+                    class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-error shrink-0"
+                    @click="deleteVlRunById(run)"
+                  >{{ $t('settings.vl.run_delete') }}</button>
                   <button
                     v-if="run.state === 'queued' || run.state === 'running'"
                     class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content shrink-0"
@@ -762,6 +783,62 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <!-- VL scheduled tasks (queued file sets with a fire time) -->
+          <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+            <div class="flex items-center gap-2 text-base-content/30">
+              <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.vl.tasks_queue_title') }}</span>
+              <span class="text-xs">{{ vlTasksLoading ? $t('tooltip.loading') : `${vlTasks.length.toLocaleString()}` }}</span>
+            </div>
+            <div v-if="vlTasks.length === 0" class="text-xs text-base-content/30 px-1">{{ $t('settings.vl.tasks_queue_empty') }}</div>
+            <div v-else class="max-h-[40vh] overflow-y-auto flex flex-col gap-1 px-1">
+              <div
+                v-for="task in vlTasks"
+                :key="task.id"
+                class="flex flex-col gap-1 rounded-box border border-base-content/5 bg-base-100/40 px-2 py-1 text-xs"
+              >
+                <div class="flex items-center gap-2">
+                  <span
+                    :class="[
+                      'px-1.5 h-5 inline-flex items-center rounded-box text-[10px] font-semibold tracking-[0.08em] border cursor-default shrink-0',
+                      taskStateChipClass(task.state),
+                    ]"
+                  >{{ $t(taskStateLabelKey(task.state)) }}</span>
+                  <span class="font-mono shrink-0">{{ task.date }} {{ task.time }}</span>
+                  <span class="text-base-content/70 truncate">{{ $t('settings.vl.task_files', { count: (task.fileCount || 0).toLocaleString() }) }}</span>
+                  <span class="text-base-content/40 truncate">· {{ task.templateName }}</span>
+                  <span v-if="task.libraryName" class="text-base-content/30 truncate">· {{ task.libraryName }}</span>
+                  <span v-if="task.force" class="text-base-content/40 shrink-0">· {{ $t('vl.force_rerun') }}</span>
+                  <template v-if="editingTaskId === String(task.id)">
+                    <input v-model="editTaskDate" type="date" class="input input-xs rounded-box bg-base-100 border border-base-content/20 w-32 ml-auto" />
+                    <input v-model="editTaskTime" type="time" class="input input-xs rounded-box bg-base-100 border border-base-content/20 w-24" />
+                    <button
+                      class="btn btn-xs btn-primary rounded-box shrink-0"
+                      :disabled="editTaskSaving"
+                      @click="saveVlTaskTime(String(task.id))"
+                    >{{ $t('settings.vl.task_save') }}</button>
+                    <button
+                      class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 shrink-0"
+                      @click="editingTaskId = null"
+                    >{{ $t('msgbox.cancel') }}</button>
+                  </template>
+                  <template v-else>
+                    <button
+                      v-if="task.state !== 'fired'"
+                      class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content shrink-0 ml-auto"
+                      @click="startEditVlTask(task)"
+                    >{{ $t('settings.vl.task_edit_time') }}</button>
+                    <button
+                      class="btn btn-xs rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-error shrink-0"
+                      @click="removeVlTask(String(task.id))"
+                    >{{ $t('settings.vl.schedule_remove') }}</button>
+                  </template>
+                </div>
+                <div v-if="task.error" class="text-error">{{ task.error }}</div>
+              </div>
+            </div>
+            <div class="text-[10px] text-base-content/30 px-1">{{ $t('settings.vl.tasks_queue_hint') }}</div>
           </div>
         </div>
 
@@ -1062,8 +1139,8 @@ import {
   listenImageSearchModelDownloadProgress,
 } from '@/common/api';
 import { formatFileSize, isLinux, isMac, SCALE_VALUES } from '@/common/utils';
-import { VL_SETTINGS_TAB, VL_TASKS_TAB, resolveApiKeyInput, modelLabel, normalizeProtocol, partitionModels, normalizeMaxConcurrency, runStateLabelKey, formatDuration, callSucceeded } from '@/common/vlLogic';
-import { getVlConfig, setVlConfig, listVlModels, listVlRuns, listVlRunCalls, cancelVlRun } from '@/common/vlApi';
+import { VL_SETTINGS_TAB, VL_TASKS_TAB, resolveApiKeyInput, modelLabel, normalizeProtocol, partitionModels, normalizeMaxConcurrency, runStateLabelKey, formatDuration, callSucceeded, taskStateLabelKey, taskStateChipClass } from '@/common/vlLogic';
+import { getVlConfig, setVlConfig, listVlModels, listVlRuns, listVlRunCalls, cancelVlRun, retryVlRun, deleteVlRun, clearVlRuns, listVlTasks, updateVlTaskTime, deleteVlTask } from '@/common/vlApi';
 import { useAppearance } from '@/composables/useAppearance';
 import { getShortcutLabels, ShortcutActionId, ShortcutPlatform } from '@/common/shortcuts';
 import { useToast } from '@/common/toast';
@@ -1272,6 +1349,116 @@ function cancelVlRunById(runId: string) {
   });
 }
 
+// --- run lifecycle: retry, delete, bulk clear ---
+
+/// Terminal runs accept history actions; live ones only cancel.
+function isTerminalRunState(state: any) {
+  return ['finished', 'cancelled', 'failed', 'interrupted'].includes(String(state ?? ''));
+}
+
+function canRetryVlRun(run: any) {
+  return isTerminalRunState(run?.state) && Number(run?.failed) > 0;
+}
+
+async function retryVlRunById(runId: string) {
+  try {
+    const newRunId = await retryVlRun(runId);
+    if (newRunId) {
+      toast.success(t('settings.vl.run_retry_started'));
+      void loadVlRuns();
+    }
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function deleteVlRunById(run: any) {
+  const runId = String(run?.runId ?? '');
+  if (!runId) return;
+  const confirmed = await ask(t('settings.vl.run_delete_confirm'), { title: t('settings.vl.run_delete'), kind: 'warning' });
+  if (!confirmed) return;
+  try {
+    await deleteVlRun(runId);
+    const open = new Set(vlRunDetailsOpen.value);
+    open.delete(runId);
+    vlRunDetailsOpen.value = open;
+    void loadVlRuns();
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function clearFinishedVlRuns() {
+  const confirmed = await ask(t('settings.vl.clear_finished_confirm'), { title: t('settings.vl.clear_finished'), kind: 'warning' });
+  if (!confirmed) return;
+  try {
+    const removed = await clearVlRuns();
+    toast.success(t('settings.vl.clear_finished_done', { count: removed }));
+    vlRunCalls.value = new Map();
+    vlRunCallsErrors.value = new Map();
+    vlRunDetailsOpen.value = new Set();
+    void loadVlRuns();
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
+// --- scheduled tasks (queued file sets with a fire time) ---
+
+const vlTasks = ref<any[]>([]);
+const vlTasksLoading = ref(false);
+const editingTaskId = ref<string | null>(null);
+const editTaskDate = ref('');
+const editTaskTime = ref('');
+const editTaskSaving = ref(false);
+
+async function loadVlTasks() {
+  vlTasksLoading.value = true;
+  try {
+    vlTasks.value = await listVlTasks();
+  } catch (error) {
+    console.error('Failed to list the image understanding tasks:', error);
+    vlTasks.value = [];
+  } finally {
+    vlTasksLoading.value = false;
+  }
+}
+
+function startEditVlTask(task: any) {
+  editingTaskId.value = String(task?.id ?? '');
+  editTaskDate.value = String(task?.date ?? '');
+  editTaskTime.value = String(task?.time ?? '02:30');
+}
+
+async function saveVlTaskTime(id: string) {
+  const date = String(editTaskDate.value || '').trim();
+  const time = String(editTaskTime.value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(time)) {
+    toast.error(t('settings.vl.schedule_invalid'));
+    return;
+  }
+  editTaskSaving.value = true;
+  try {
+    await updateVlTaskTime(id, time, date);
+    editingTaskId.value = null;
+    void loadVlTasks();
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  } finally {
+    editTaskSaving.value = false;
+  }
+}
+
+async function removeVlTask(id: string) {
+  try {
+    await deleteVlTask(id);
+    if (editingTaskId.value === id) editingTaskId.value = null;
+    void loadVlTasks();
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error));
+  }
+}
+
 /// The chip color of a persisted run state.
 function runStateChipClass(state: string) {
   switch (String(state ?? '').trim().toLowerCase()) {
@@ -1373,6 +1560,9 @@ onMounted(async () => {
         // are expanded.
         if (runId && vlRunDetailsOpen.value.has(runId)) void loadVlRunCalls(runId);
       }),
+      await listen('vl-tasks-changed', () => {
+        if (config.settings.tabIndex === VL_TASKS_TAB) void loadVlTasks();
+      }),
     ];
     syncVlRunsPolling();
   } catch {
@@ -1441,6 +1631,7 @@ watch(() => config.settings.tabIndex, (tabIndex) => {
     void loadVlConfig();
   } else if (tabIndex === VL_TASKS_TAB) {
     void loadVlRuns();
+    void loadVlTasks();
   }
   syncVlRunsPolling();
 });
@@ -2123,7 +2314,10 @@ onMounted(async () => {
   });
   await syncImageSearchModelStatus();
   if (config.settings.tabIndex === VL_SETTINGS_TAB) await loadVlConfig();
-  if (config.settings.tabIndex === VL_TASKS_TAB) await loadVlRuns();
+  if (config.settings.tabIndex === VL_TASKS_TAB) {
+    await loadVlRuns();
+    void loadVlTasks();
+  }
   applyWindowScale(Number(config.settings.scale || 1));
   dbStorageDir.value = (await getDbStorageDir()) || '';
   hasCustomDbStorage.value = await isUsingCustomDbStorage();

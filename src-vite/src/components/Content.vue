@@ -634,6 +634,33 @@
         <input v-model="vlAnalyzeForce" type="checkbox" class="checkbox checkbox-sm" />
         {{ $t('vl.force_rerun') }}
       </label>
+      <div class="space-y-1">
+        <label class="text-xs text-base-content/50">{{ $t('vl.run_mode') }}</label>
+        <div class="flex gap-3 text-xs">
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input v-model="vlAnalyzeSchedule" type="radio" :value="false" class="radio radio-xs" />
+            {{ $t('vl.run_mode_now') }}
+          </label>
+          <label class="flex items-center gap-1 cursor-pointer">
+            <input v-model="vlAnalyzeSchedule" type="radio" :value="true" class="radio radio-xs" />
+            {{ $t('vl.run_mode_schedule') }}
+          </label>
+        </div>
+      </div>
+      <div v-if="vlAnalyzeSchedule" class="flex items-center gap-2">
+        <label class="text-xs text-base-content/50 shrink-0" for="vl-schedule-date">{{ $t('vl.run_schedule_time') }}</label>
+        <input
+          id="vl-schedule-date"
+          v-model="vlAnalyzeDate"
+          type="date"
+          class="input input-sm w-36 bg-base-200/50"
+        />
+        <input
+          v-model="vlAnalyzeTime"
+          type="time"
+          class="input input-sm w-24 bg-base-200/50"
+        />
+      </div>
       <p v-if="vlTemplateOptions.length === 0" class="text-xs text-warning">{{ $t('vl.run_configure_first') }}</p>
       <div class="flex justify-end gap-2 pt-1">
         <button type="button" class="btn btn-sm" @click="showVlAnalyzeDialog = false">{{ $t('msgbox.cancel') }}</button>
@@ -642,7 +669,7 @@
           class="btn btn-sm btn-primary"
           :disabled="vlAnalyzeBusy || !vlAnalyzeTemplateId"
           @click="confirmVlAnalyze"
-        >{{ $t('vl.run_start') }}</button>
+        >{{ vlAnalyzeSchedule ? $t('vl.run_schedule') : $t('vl.run_start') }}</button>
       </div>
     </div>
   </div>
@@ -846,7 +873,7 @@ import { getShortcutLabel, matchesShortcut, ShortcutActionId, ShortcutPlatform, 
 import { getSmartTagById } from '@/common/smartTags';
 import { SEARCH_RESULT_LIMIT, describeMatches, normalizeSearchMode, planSearch } from '@/common/searchMode';
 import { aiSearchEmptyHint, dedupeGroups, orderFilesByHits, passesAiSearchFilters, planAiSearch, semanticScoreRange } from '@/common/aiSearch';
-import { runVlAnalysis, listVlTemplates } from '@/common/vlApi';
+import { runVlAnalysis, listVlTemplates, queueVlTask } from '@/common/vlApi';
 import { describeVlError, pickLatestVersions, templateLabel } from '@/common/vlLogic';
 import { QUERY_KIND, TITLE_KIND, planNavigationQuery } from '@/common/queryDispatch';
 import { handleVideoPlaybackShortcut, handleVideoEscapeShortcut } from '@/common/video';
@@ -8983,6 +9010,9 @@ const showVlAnalyzeDialog = ref(false);
 const vlAnalyzeFileIds = ref<number[]>([]);
 const vlAnalyzeTemplateId = ref<number>(0);
 const vlAnalyzeForce = ref(false);
+const vlAnalyzeSchedule = ref(false);
+const vlAnalyzeDate = ref('');
+const vlAnalyzeTime = ref('02:30');
 const vlTemplates = ref<any[]>([]);
 const vlAnalyzeBusy = ref(false);
 const vlActiveRunIds = new Set<string>();
@@ -9015,6 +9045,9 @@ async function openVlAnalyzeDialog(files: any[]) {
   if (ids.length === 0) return;
   vlAnalyzeFileIds.value = ids;
   vlAnalyzeForce.value = false;
+  vlAnalyzeSchedule.value = false;
+  vlAnalyzeDate.value = defaultVlScheduleDate();
+  vlAnalyzeTime.value = '02:30';
   showVlAnalyzeDialog.value = true;
   try {
     vlTemplates.value = await listVlTemplates();
@@ -9027,10 +9060,37 @@ async function openVlAnalyzeDialog(files: any[]) {
   }
 }
 
+/// The default schedule date is tomorrow: free-night windows are ahead, not
+/// behind, and a same-day default would expire the moment midnight passes.
+function defaultVlScheduleDate() {
+  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+}
+
 async function confirmVlAnalyze() {
   const templateId = Number(vlAnalyzeTemplateId.value);
   if (!templateId) {
     toast.error(t('vl.run_configure_first'));
+    return;
+  }
+  if (vlAnalyzeSchedule.value) {
+    const date = String(vlAnalyzeDate.value || '').trim();
+    const time = String(vlAnalyzeTime.value || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(time)) {
+      toast.error(t('vl.run_schedule_invalid'));
+      return;
+    }
+    vlAnalyzeBusy.value = true;
+    try {
+      await queueVlTask(vlAnalyzeFileIds.value, templateId, vlAnalyzeForce.value, time, date);
+      showVlAnalyzeDialog.value = false;
+      toast.success(t('vl.task_queued', { count: vlAnalyzeFileIds.value.length, time: `${date} ${time}` }));
+    } catch (error) {
+      toast.error(describeVlError(error));
+    } finally {
+      vlAnalyzeBusy.value = false;
+    }
     return;
   }
   vlAnalyzeBusy.value = true;

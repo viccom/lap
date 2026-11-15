@@ -4,18 +4,25 @@ import test from 'node:test';
 
 import {
   cancelVlRun,
+  clearVlRuns,
   createVlTemplate,
+  deleteVlTask,
   deleteVlTemplate,
+  deleteVlRun,
   getVlAnnotations,
   getVlCalls,
   getVlConfig,
   listVlModels,
   listVlRunCalls,
   listVlRuns,
+  listVlTasks,
   listVlTemplates,
+  queueVlTask,
+  retryVlRun,
   runVlAnalysis,
   setVlConfig,
   updateVlTemplate,
+  updateVlTaskTime,
 } from '../src/common/vlApi.js';
 import {
   buildResultEntries,
@@ -391,4 +398,49 @@ test('every locale carries the image understanding keys', async () => {
     }
     assert.deepEqual(Object.keys(messages.vl.field).sort(), Object.keys(english.vl.field).sort());
   }
+});
+
+test('run lifecycle commands carry the run id verbatim and return counts', async () => {
+  const retry = recorder('new-run-id');
+  const returned = await retryVlRun('0b2f17f8-1111-4bbb-8ccc-000000000001', retry.invoker);
+  assert.equal(returned, 'new-run-id');
+  assert.equal(retry.calls[0].command, 'retry_vl_run');
+  assert.equal(retry.calls[0].args.runId, '0b2f17f8-1111-4bbb-8ccc-000000000001');
+
+  const remove = recorder(null);
+  await deleteVlRun('0b2f17f8-1111-4bbb-8ccc-000000000002', remove.invoker);
+  assert.equal(remove.calls[0].command, 'delete_vl_run');
+  assert.equal(remove.calls[0].args.runId, '0b2f17f8-1111-4bbb-8ccc-000000000002');
+
+  const clear = recorder(4);
+  assert.equal(await clearVlRuns(clear.invoker), 4);
+  assert.equal(clear.calls[0].command, 'clear_vl_runs');
+});
+
+test('task queue commands normalize the payload and address tasks by id', async () => {
+  const queue = recorder({ id: 't1', state: 'pending' });
+  const task = await queueVlTask(['12', 13, null], '3', true, '02:30', '2026-11-16', queue.invoker);
+  assert.equal(task.id, 't1');
+  assert.equal(queue.calls[0].command, 'queue_vl_task');
+  assert.deepEqual(queue.calls[0].args, {
+    fileIds: [12, 13],
+    templateId: 3,
+    force: true,
+    time: '02:30',
+    date: '2026-11-16',
+  });
+
+  const list = recorder([{ id: 't1' }]);
+  assert.equal((await listVlTasks(list.invoker)).length, 1);
+  assert.equal(list.calls[0].command, 'list_vl_tasks');
+
+  const update = recorder(null);
+  await updateVlTaskTime('t1', '03:00', '2026-11-17', update.invoker);
+  assert.equal(update.calls[0].command, 'update_vl_task_time');
+  assert.deepEqual(update.calls[0].args, { id: 't1', time: '03:00', date: '2026-11-17' });
+
+  const remove = recorder(null);
+  await deleteVlTask('t1', remove.invoker);
+  assert.equal(remove.calls[0].command, 'delete_vl_task');
+  assert.equal(remove.calls[0].args.id, 't1');
 });

@@ -142,6 +142,89 @@ export async function cancelVlRun(runId, invoker = invoke) {
   }
 }
 
+/// Retry the failed files of one run as a fresh run; returns the new run id.
+export async function retryVlRun(runId, invoker = invoke) {
+  try {
+    return await invoker('retry_vl_run', { runId: String(runId ?? '') });
+  } catch (error) {
+    fail('retry the image understanding run', error);
+  }
+}
+
+/// Delete one terminal run together with its call evidence.
+export async function deleteVlRun(runId, invoker = invoke) {
+  try {
+    await invoker('delete_vl_run', { runId: String(runId ?? '') });
+    return true;
+  } catch (error) {
+    fail('delete the image understanding run', error);
+  }
+}
+
+/// Delete every terminal run across all libraries; returns the removed count.
+export async function clearVlRuns(invoker = invoke) {
+  try {
+    const count = await invoker('clear_vl_runs', {});
+    return Number(count) || 0;
+  } catch (error) {
+    fail('clear the finished image understanding runs', error);
+  }
+}
+
+// scheduled tasks (queued file sets that fire at a fixed time)
+
+/// Queue a task: the picked files plus the template, firing at `date time`.
+export async function queueVlTask(fileIds, templateId, force, time, date, invoker = invoke) {
+  const ids = (Array.isArray(fileIds) ? fileIds : [])
+    .map(id => Number(id))
+    .filter(id => Number.isFinite(id) && id > 0);
+  try {
+    return await invoker('queue_vl_task', {
+      fileIds: ids,
+      templateId: Number(templateId) || 0,
+      force: force === true,
+      time: String(time ?? ''),
+      date: String(date ?? ''),
+    });
+  } catch (error) {
+    fail('queue the image understanding task', error);
+  }
+}
+
+/// The queued tasks of every library.
+export async function listVlTasks(invoker = invoke) {
+  try {
+    const tasks = await invoker('list_vl_tasks', {});
+    return Array.isArray(tasks) ? tasks : [];
+  } catch (error) {
+    fail('list the image understanding tasks', error);
+  }
+}
+
+/// Move a queued task to a new date and time (revives expired/failed ones).
+export async function updateVlTaskTime(id, time, date, invoker = invoke) {
+  try {
+    await invoker('update_vl_task_time', {
+      id: String(id ?? ''),
+      time: String(time ?? ''),
+      date: String(date ?? ''),
+    });
+    return true;
+  } catch (error) {
+    fail('reschedule the image understanding task', error);
+  }
+}
+
+/// Remove a queued task.
+export async function deleteVlTask(id, invoker = invoke) {
+  try {
+    await invoker('delete_vl_task', { id: String(id ?? '') });
+    return true;
+  } catch (error) {
+    fail('delete the image understanding task', error);
+  }
+}
+
 /// The annotations of one file, newest first.
 export async function getVlAnnotations(fileId, invoker = invoke) {
   try {

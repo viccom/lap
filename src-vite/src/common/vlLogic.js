@@ -359,3 +359,21 @@ export function findTemplateVersion(templates, templateId, templateVersion) {
   if (exact) return exact;
   return templates.find(template => Number(template?.id) === id) ?? null;
 }
+
+/// The i18n key of a queued-task state chip.
+export function taskStateLabelKey(state) {
+  const known = ['pending', 'fired', 'expired', 'failed'];
+  return known.includes(String(state ?? ''))
+    ? `settings.vl.task_state_${String(state)}`
+    : 'settings.vl.task_state_pending';
+}
+
+/// The chip color of a queued-task state.
+export function taskStateChipClass(state) {
+  switch (String(state ?? '')) {
+    case 'pending': return 'border-warning/40 text-warning';
+    case 'fired': return 'border-success/40 text-success';
+    case 'failed': return 'border-error/40 text-error';
+    default: return 'border-base-content/20 text-base-content/60';
+  }
+}
