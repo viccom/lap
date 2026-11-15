@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import ts from 'typescript';
 import { computed, markRaw, ref } from 'vue';
 
-const menuSource = fs.readFileSync(new URL('../src/common/fileMenu.ts', import.meta.url), 'utf8');
-const locale = JSON.parse(fs.readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8'));
-const availability = fs.readFileSync(new URL('../src/common/availability.ts', import.meta.url), 'utf8');
+const menuSource = fs.readFileSync(new URL('../src/common/fileMenu.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const locale = JSON.parse(fs.readFileSync(new URL('../src/locales/en.json', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
+const availability = fs.readFileSync(new URL('../src/common/availability.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const requiresOriginalAction = new Function(ts.transpile(availability.slice(availability.indexOf('const originalActions')).replace(/export /g, '')) + ';return requiresOriginalAction;')();
 const icons = Object.fromEntries([...new Set(menuSource.match(/\bIcon\w+/g))].map(name => [name, {}]));
 const menuCode = ts.transpile(menuSource.replace(/^import[\s\S]*?from ['"][^'"]+['"];?\n/gm, '').replace(/export /g, ''), { target: ts.ScriptTarget.ES2022 });
@@ -40,7 +40,7 @@ test('single and selection menus offer XMP save without an overwrite-import acti
   }
 });
 
-const content = fs.readFileSync(new URL('../src/components/Content.vue', import.meta.url), 'utf8');
+const content = fs.readFileSync(new URL('../src/components/Content.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const actionCode = content.slice(content.indexOf("    'save-xmp': async () => {"), content.indexOf("    'favorite':", content.indexOf("    'save-xmp': async () => {")));
 test('XMP save sends the complete selection and library identity, reporting partial failure', async () => {
   const requests = [], messages = [];
@@ -60,7 +60,7 @@ test('XMP save sends the complete selection and library identity, reporting part
   assert.deepEqual(requests[1], [[10], 'library-a']);
 });
 
-const apiSource = fs.readFileSync(new URL('../src/common/api.js', import.meta.url), 'utf8');
+const apiSource = fs.readFileSync(new URL('../src/common/api.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const transferStart = apiSource.indexOf('export function renameFile(');
 const transferEnd = apiSource.indexOf('// delete a file\n', transferStart);
 assert.ok(transferStart >= 0 && transferEnd > transferStart);
@@ -163,7 +163,7 @@ test('content rename displays the backend reason and keeps the dialog open', asy
 });
 
 test('file info rename reports the backend reason without changing catalog fields', async () => {
-  const source = fs.readFileSync(new URL('../src/components/FileInfo.vue', import.meta.url), 'utf8');
+  const source = fs.readFileSync(new URL('../src/components/FileInfo.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   const start = source.indexOf('const finishRename = async');
   const end = source.indexOf('function formatGeoLocation', start);
   assert.ok(start >= 0 && end > start);

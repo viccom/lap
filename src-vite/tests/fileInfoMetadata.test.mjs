@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { compile, computed, createSSRApp, ref, reactive } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 
-const source = await readFile(new URL('../src/components/FileInfo.vue', import.meta.url), 'utf8');
+const source = await readFile(new URL('../src/components/FileInfo.vue', import.meta.url), 'utf8').then(s => s.replace(/\r\n/g, '\n'));
 
 test('searchable source metadata displays the indexed values, including empty values', () => {
   const start = source.indexOf('const sourceKeys =');

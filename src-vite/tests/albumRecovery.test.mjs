@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import ts from 'typescript';
 import { reactive } from 'vue';
 
-const read = path => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
+const read = path => fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const compile = source => ts.transpile(source.replace(/^import .*;\n/gm, '').replace(/export /g, ''), { target: ts.ScriptTarget.ES2022 });
 function fixture() {
   const libConfig = { _libraryId: 'smb-test' };

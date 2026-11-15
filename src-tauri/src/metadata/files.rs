@@ -1062,7 +1062,11 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        // A file manager or another action adds a JPEG after the snapshot.
+        // A file manager or another action adds a JPEG after the snapshot. The
+        // cache stamps directory mtimes, and Windows coalesces writes into the
+        // same ~15.6ms tick, so the injected change must land in a later tick
+        // than the snapshot stamp to be observable.
+        std::thread::sleep(std::time::Duration::from_millis(25));
         f.write("source/a.jpg", b"jpeg");
         with_transfer_cache(Some(batch), |cache| {
             let guard = Guard::with_cache([(&*old, &*new)], Operation::Move, cache)?;
@@ -1088,12 +1092,16 @@ mod tests {
             Ok(())
         })
         .unwrap();
+        // Same filesystem-tick rule as above: the orphan must postdate the
+        // snapshot stamp.
+        std::thread::sleep(std::time::Duration::from_millis(25));
         let orphan = f.write("target/a.xmp", b"unrelated metadata");
         with_transfer_cache(Some(batch), |cache| {
             assert_eq!(cache.conflicts([(&*old, &*new)])?, vec![orphan.clone()]);
             Ok(())
         })
         .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(25));
         fs::remove_file(orphan).unwrap();
         f.write("source/a.xmp", b"new metadata");
         with_transfer_cache(Some(batch), |cache| {

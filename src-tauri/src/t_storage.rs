@@ -124,11 +124,29 @@ pub fn get_current_db_path() -> Result<String, String> {
 }
 
 fn checkpoint_db(path: &Path) -> Result<(), String> {
-    if !path
-        .try_exists()
-        .map_err(|e| format!("Failed to inspect database '{}': {}", path.display(), e))?
-    {
-        return Ok(());
+    match path.try_exists() {
+        Ok(true) => {}
+        Ok(false) => {
+            // Windows folds "a file used as a directory" (ERROR_PATH_NOT_FOUND) into
+            // NotFound, so a malformed path reports as simply missing here. Confirm
+            // the parent looks like a directory before treating the database as
+            // absent; a broken parent stays an error instead of a silent skip.
+            let parent_usable = path.parent().is_some_and(|p| p.is_dir() || !p.exists());
+            if !parent_usable {
+                return Err(format!(
+                    "Invalid database path '{}': parent is not a directory",
+                    path.display()
+                ));
+            }
+            return Ok(());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to inspect database '{}': {}",
+                path.display(),
+                e
+            ));
+        }
     }
 
     let conn = rusqlite::Connection::open(path)

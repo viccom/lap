@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { reactive, ref, watch, nextTick, effectScope } from 'vue';
 import ts from 'typescript';
 
-const source = readFileSync(new URL('../src/components/Content.vue', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/components/Content.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 function between(start, end) {
   const a = source.indexOf(start);
   const b = source.indexOf(end, a);
@@ -18,7 +18,7 @@ const code = [
   between('watch([fileList, contentReady]', 'function clearLoadedSelectionFlags()'),
   between('function refreshContentFromSelectionChange()', 'onMounted(() => {'),
   between('function restoreInitialSelectionIfNeeded()', '\nonBeforeUnmount(() => {'),
-  between('/// watch for file list changes', '\nwatch(\n  () => ['),
+  between('/// watch for query-context changes', '\n/// watch for file list changes'),
   'async function loadStartupSelection() {' + between('const appConfig = await getAppConfig();',
     "  window.addEventListener('keydown', handleLocalKeyDown);") + '}',
 ].join('\n');
