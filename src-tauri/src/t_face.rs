@@ -470,6 +470,10 @@ impl FaceEngine {
     ) -> Result<(Vec<FaceData>, (u32, u32)), String> {
         let img = image::load_from_memory(image_bytes)
             .map_err(|e| format!("Failed to load image from memory: {}", e))?;
+        // Thumbnail blobs may carry EXIF orientation; orient them as the file
+        // path does so both detection sources stay in display space.
+        let orientation = crate::t_image::get_orientation_from_bytes(image_bytes);
+        let img = crate::t_image::apply_orientation(img, orientation);
         self.process_dynamic_image(&img)
     }
 
@@ -503,8 +507,20 @@ impl FaceEngine {
                 continue;
             }
 
-            // Get embedding for quality face
-            let embedding = self.get_face_embedding(img, &face)?;
+            // Get embedding for quality face. A single face failing to embed
+            // (e.g. a degenerate alignment) must not discard the other faces
+            // this file already yielded — skip just that one.
+            let embedding = match self.get_face_embedding(img, &face) {
+                Ok(embedding) => embedding,
+                Err(e) => {
+                    eprintln!(
+                        "Skipping one face of a {}x{} image: {e}",
+                        img.width(),
+                        img.height()
+                    );
+                    continue;
+                }
+            };
             results.push(FaceData {
                 bbox: face,
                 embedding,
@@ -1189,6 +1205,57 @@ mod tests {
             for x in 0..112 {
                 assert_eq!(out.get_pixel(x, y), img.get_pixel(x, y), "at {x},{y}");
             }
+        }
+    }
+
+    #[test]
+    fn aligned_crop_maps_arbitrary_landmarks_onto_the_template() {
+        // Put five distinct marker blobs at arbitrary (scaled + translated)
+        // positions in a large canvas, pass those positions as the landmarks,
+        // and check the warp places each template landmark back onto its
+        // marker. This proves the alignment actually straightens a face that
+        // sits off-centre, not just that the identity case is a no-op.
+        // Place the five landmarks as an EXACT similarity image of the template
+        // (scale 2.5, ~23° rotation, translated). Only then does the 4-DOF fit
+        // have zero residual, so each template coordinate must map back onto
+        // its own marker. (Arbitrary points would leave residuals and the
+        // assertion would be wrong, not the code.)
+        let scale = 2.5f32;
+        let theta = 0.4f32;
+        let (c, sn) = (theta.cos(), theta.sin());
+        let src: [(f32, f32); 5] = ALIGN_TEMPLATE_112.map(|(x, y)| {
+            (
+                scale * (c * x - sn * y) + 120.0,
+                scale * (sn * x + c * y) + 90.0,
+            )
+        });
+        let colors: [[u8; 3]; 5] = [
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [255, 255, 0],
+            [255, 0, 255],
+        ];
+        let mut img = image::RgbImage::from_pixel(700, 700, image::Rgb([20, 20, 20]));
+        for ((cx, cy), color) in src.iter().zip(colors.iter()) {
+            let (cx, cy) = (*cx, *cy);
+            for dy in -3i32..=3 {
+                for dx in -3i32..=3 {
+                    let x = (cx as i32 + dx) as u32;
+                    let y = (cy as i32 + dy) as u32;
+                    img.put_pixel(x, y, image::Rgb(*color));
+                }
+            }
+        }
+        let out = aligned_face_crop(&DynamicImage::ImageRgb8(img), &src).unwrap();
+        assert_eq!(out.dimensions(), (112, 112));
+        for (i, (tx, ty)) in ALIGN_TEMPLATE_112.iter().enumerate() {
+            let px = out.get_pixel(tx.round() as u32, ty.round() as u32).0;
+            assert_eq!(
+                px, colors[i],
+                "template landmark {i} at ({tx},{ty}) sampled {px:?}, expected {:?}",
+                colors[i]
+            );
         }
     }
 

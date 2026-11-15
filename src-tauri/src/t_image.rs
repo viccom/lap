@@ -348,9 +348,14 @@ pub fn get_image_orientation(file_path: &str) -> i32 {
         }
         Err(_) => return 1,
     };
+    get_orientation_from_bytes(&data)
+}
 
+/// EXIF orientation of in-memory image bytes (thumbnail blobs). Mirrors the
+/// file-based resolution above so in-memory decodes can be oriented too.
+pub(crate) fn get_orientation_from_bytes(data: &[u8]) -> i32 {
     // 1. Try modern logic
-    if let Some(exif) = read_exif_from_bytes_permissive(&data) {
+    if let Some(exif) = read_exif_from_bytes_permissive(data) {
         let orient = exif
             .get_field(Tag::Orientation, In::PRIMARY)
             .or_else(|| exif.fields().find(|f| f.tag == Tag::Orientation))
@@ -364,7 +369,7 @@ pub fn get_image_orientation(file_path: &str) -> i32 {
 
     // 2. Industry Fallback: Binary Scan
     // This handles K800i and other phones with broken IFD chains
-    scan_orientation_binary(&data).unwrap_or(1)
+    scan_orientation_binary(data).unwrap_or(1)
 }
 
 pub(crate) fn apply_orientation(img: DynamicImage, orientation: i32) -> DynamicImage {
