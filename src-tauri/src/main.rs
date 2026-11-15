@@ -56,6 +56,7 @@ mod t_utils;
 mod t_video;
 mod t_vl;
 mod t_vl_protocol;
+mod t_vl_schedule;
 mod t_vl_tags;
 
 /// Runtime console opt-in for GUI-subsystem builds: setting `LAP_CONSOLE=1`
@@ -214,6 +215,10 @@ async fn main() {
                 }
             }
             t_startup::mark(&_app.handle(), "setup-ready");
+
+            // Scheduled VL runs tick in the background for as long as the
+            // app lives; see t_vl_schedule.rs.
+            t_vl_schedule::spawn_scheduler(_app.handle().clone());
 
             // Open devtools in development mode
             // #[cfg(debug_assertions)] // only include this block in debug builds
@@ -520,6 +525,13 @@ async fn main() {
             t_vl::list_vl_models,
             t_vl::list_vl_runs,
             t_vl::list_vl_run_calls,
+            t_vl::retry_vl_run,
+            t_vl::delete_vl_run,
+            t_vl::clear_vl_runs,
+            t_vl_schedule::queue_vl_task,
+            t_vl_schedule::list_vl_tasks,
+            t_vl_schedule::update_vl_task_time,
+            t_vl_schedule::delete_vl_task,
             // exact search
             t_fts::search_fts,
             t_fts::fts_reindex,

@@ -102,6 +102,45 @@ pub(crate) fn ensure_runs_schema(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// v28 — one row per queued image-understanding task.
+///
+/// A task is a user-defined unit of work: the exact file set picked in the
+/// browser plus the template, with the local time it should fire at. The
+/// scheduler moves it from `pending` to `fired` (a run exists then) or to
+/// `expired`/`failed` when the day or the fire went wrong.
+pub(crate) const TASKS_SCHEMA_SQL: &str = "
+    CREATE TABLE IF NOT EXISTS vl_tasks (
+        id TEXT PRIMARY KEY,
+        template_id INTEGER NOT NULL,
+        file_ids TEXT NOT NULL,
+        force INTEGER NOT NULL DEFAULT 0,
+        time TEXT NOT NULL,
+        date TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'pending',
+        run_id TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_vl_tasks_state ON vl_tasks(state, date, time);
+";
+
+/// The v28 schema, applied defensively like the v27 one: fixtures without
+/// vl_runs simply skip the source column (their run rows never existed).
+pub(crate) fn ensure_tasks_schema(conn: &Connection) -> Result<(), String> {
+    conn.execute_batch(TASKS_SCHEMA_SQL)
+        .map_err(|e| format!("creating vl_tasks failed: {e}"))?;
+    if table_has_column(conn, "vl_runs", "run_id")?
+        && !table_has_column(conn, "vl_runs", "source")?
+    {
+        conn.execute(
+            "ALTER TABLE vl_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'",
+            [],
+        )
+        .map_err(|e| format!("adding vl_runs.source failed: {e}"))?;
+    }
+    Ok(())
+}
+
 struct Migration {
     version: i32,
     description: &'static str,
@@ -303,6 +342,11 @@ fn get_migrations() -> Vec<Migration> {
         Migration {
             version: 27,
             description: "Persisted image understanding runs and call grouping",
+            sql: "",
+        },
+        Migration {
+            version: 28,
+            description: "Queued image understanding tasks and the run source tag",
             sql: "",
         },
     ]
@@ -789,6 +833,9 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
             } else if migration.version == 27 {
                 ensure_runs_schema(conn)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
+            } else if migration.version == 28 {
+                ensure_tasks_schema(conn)
+                    .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
             } else if !migration.sql.trim().is_empty() {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
@@ -885,7 +932,7 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 
@@ -940,7 +987,7 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 
@@ -1109,7 +1156,7 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 }
@@ -1145,7 +1192,7 @@ mod fts_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 
@@ -1171,7 +1218,7 @@ mod fts_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 }
@@ -1229,7 +1276,7 @@ mod album_filter_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 
@@ -1254,7 +1301,7 @@ mod album_filter_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 
@@ -1282,7 +1329,7 @@ mod album_filter_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            27
+            28
         );
     }
 }

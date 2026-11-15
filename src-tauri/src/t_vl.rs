@@ -98,7 +98,8 @@ pub struct VlGatewayConfig {
     pub embed_source: String,
     /// The cloud embedding model; only used when `embed_source` is `cloud`.
     pub embed_model: String,
-    /// How many runs may execute at the same time.
+    /// How many LLM requests may be in flight at once, across all runs. It
+    /// also caps how many runs execute simultaneously (queue slots).
     pub max_concurrency: usize,
 }
 
@@ -136,6 +137,13 @@ pub struct VlRunStatus {
     /// window patches exactly these files instead of refreshing everything.
     #[serde(default)]
     pub succeeded_file_ids: Vec<i64>,
+    /// Who started the run: `manual` (a click) or `scheduled` (a queued task).
+    #[serde(default = "default_run_source")]
+    pub source: String,
+}
+
+fn default_run_source() -> String {
+    "manual".to_string()
 }
 
 /// Storage operations the orchestrator needs. Implemented by the SQLite
@@ -634,6 +642,8 @@ pub struct VlRunRecord {
     pub error: Option<String>,
     pub started_at: i64,
     pub finished_at: Option<i64>,
+    /// `manual` or `scheduled`; v28 column, defaults to manual.
+    pub source: String,
 }
 
 impl From<&VlRunStatus> for VlRunRecord {
@@ -656,6 +666,7 @@ impl From<&VlRunStatus> for VlRunRecord {
             error: status.error.clone(),
             started_at: 0,
             finished_at: None,
+            source: status.source.clone(),
         }
     }
 }
@@ -663,7 +674,7 @@ impl From<&VlRunStatus> for VlRunRecord {
 const RUN_COLUMNS: &str =
     "run_id, library_id, library_name, template_id, template_version, template_name,
      force, state, total, processed, succeeded, failed, skipped, current_file_id,
-     error, started_at, finished_at";
+     error, started_at, finished_at, source";
 
 fn run_record_from_row(row: &rusqlite::Row) -> Result<VlRunRecord, rusqlite::Error> {
     Ok(VlRunRecord {
@@ -684,6 +695,8 @@ fn run_record_from_row(row: &rusqlite::Row) -> Result<VlRunRecord, rusqlite::Err
         error: row.get(14)?,
         started_at: row.get(15)?,
         finished_at: row.get(16)?,
+        // v28 column; databases migrated before it read the row default.
+        source: row.get(17)?,
     })
 }
 
@@ -691,8 +704,8 @@ fn insert_run_row(conn: &Connection, record: &VlRunRecord) -> Result<(), String>
     conn.execute(
         "INSERT INTO vl_runs(run_id, library_id, library_name, template_id, template_version,
             template_name, force, state, total, processed, succeeded, failed, skipped,
-            current_file_id, error, started_at)
-         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+            current_file_id, error, started_at, source)
+         VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             record.run_id,
             record.library_id,
@@ -709,7 +722,8 @@ fn insert_run_row(conn: &Connection, record: &VlRunRecord) -> Result<(), String>
             record.skipped as i64,
             record.current_file_id,
             record.error,
-            record.started_at
+            record.started_at,
+            record.source
         ],
     )
     .map_err(|e| e.to_string())?;
@@ -2669,6 +2683,7 @@ pub fn get_vl_config() -> Result<VlConfigView, String> {
 /// Store the gateway settings. `api_key` of `None` keeps the stored key.
 #[tauri::command]
 pub fn set_vl_config(
+    state: tauri::State<'_, VlState>,
     gateway_url: String,
     api_key: Option<String>,
     model: String,
@@ -2678,7 +2693,7 @@ pub fn set_vl_config(
     protocol: String,
     max_concurrency: i64,
 ) -> Result<VlConfigView, String> {
-    set_config(
+    let view = set_config(
         &gateway_url,
         api_key,
         &model,
@@ -2687,7 +2702,11 @@ pub fn set_vl_config(
         &embed_model,
         &protocol,
         max_concurrency,
-    )
+    )?;
+    // Apply the new ceiling to live dispatching immediately; runs already
+    // executing keep their acquired permits until they complete.
+    state.set_call_permits(effective_max_concurrency(max_concurrency));
+    Ok(view)
 }
 
 /// Every template version, newest version of a name first.
@@ -2752,6 +2771,7 @@ pub fn run_vl_analysis(
         cancel_flags: state.cancel_flags.clone(),
         queue: state.queue.clone(),
         in_flight: state.in_flight.clone(),
+        call_permits: state.call_permits.clone(),
     };
     start_run(&app_handle, &owned, file_ids, template_id, force)
 }
@@ -2800,6 +2820,199 @@ pub fn cancel_vl_run(
         }
         None => Err(format!("未找到运行 {run_id}")),
     }
+}
+
+/// Retry the failed files of one run as a fresh run against the same library
+/// and template. Failed files carry no annotation, so `force` stays off.
+#[tauri::command]
+pub fn retry_vl_run(
+    app_handle: tauri::AppHandle,
+    state: tauri::State<'_, VlState>,
+    run_id: String,
+) -> Result<String, String> {
+    let owned = VlState {
+        runs: state.runs.clone(),
+        cancel_flags: state.cancel_flags.clone(),
+        queue: state.queue.clone(),
+        in_flight: state.in_flight.clone(),
+        call_permits: state.call_permits.clone(),
+    };
+    retry_run(&app_handle, &owned, &run_id)
+}
+
+/// Delete one run and its call evidence from the history. Live runs must be
+/// cancelled first — deleting the row under a working run would orphan its
+/// evidence writes.
+#[tauri::command]
+pub fn delete_vl_run(state: tauri::State<'_, VlState>, run_id: String) -> Result<(), String> {
+    // A run this process still works on must be cancelled, not deleted.
+    if let Some(status) = state.run_status(&run_id)
+        && (status.state == "queued" || status.state == "running")
+    {
+        return Err("任务仍在排队或执行中，请先取消".to_string());
+    }
+    let Some(db_path) = locate_run_db_path(&run_id) else {
+        return Err(format!("未找到运行 {run_id}"));
+    };
+    let conn = crate::t_sqlite::open_conn_for_library(&db_path)?;
+    let removed = delete_run_row(&conn, &run_id)?;
+    if removed == 0 {
+        return Err(format!("未找到运行 {run_id}"));
+    }
+    Ok(())
+}
+
+/// Delete every finished, cancelled, failed or interrupted run across all
+/// configured libraries; live runs stay. Returns how many runs went away.
+#[tauri::command]
+pub fn clear_vl_runs() -> Result<u64, String> {
+    let config = crate::t_config::load_app_config()?;
+    let mut total: u64 = 0;
+    for library in &config.libraries {
+        let Ok(db_path) = crate::t_storage::get_library_db_path(&library.id) else {
+            continue;
+        };
+        if !std::path::Path::new(&db_path).exists() {
+            continue;
+        }
+        let Ok(conn) = crate::t_sqlite::open_readwrite_at(&db_path) else {
+            continue;
+        };
+        match clear_terminal_run_rows(&conn) {
+            Ok(count) => total += count as u64,
+            Err(e) => eprintln!("VL run history: clearing {} failed: {e}", library.id),
+        }
+    }
+    Ok(total)
+}
+
+/// The database of the library owning `run_id`, if any configured library
+/// has it. Mirrors the lookup of `list_vl_run_calls`.
+fn locate_run_db_path(run_id: &str) -> Option<String> {
+    let config = crate::t_config::load_app_config().ok()?;
+    for library in &config.libraries {
+        let Ok(db_path) = crate::t_storage::get_library_db_path(&library.id) else {
+            continue;
+        };
+        if !std::path::Path::new(&db_path).exists() {
+            continue;
+        }
+        let Ok(conn) = crate::t_sqlite::open_readwrite_at(&db_path) else {
+            continue;
+        };
+        let owned = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM vl_runs WHERE run_id = ?1)",
+                params![run_id],
+                |row| row.get::<_, bool>(0),
+            )
+            .optional();
+        if matches!(owned, Ok(Some(true))) {
+            return Some(db_path);
+        }
+    }
+    None
+}
+
+/// Retry: locate the owning library, collect the failed file ids and start a
+/// fresh run for them.
+fn retry_run(
+    app_handle: &tauri::AppHandle,
+    state: &VlState,
+    run_id: &str,
+) -> Result<String, String> {
+    let config = crate::t_config::load_app_config()?;
+    for library in &config.libraries {
+        let Ok(db_path) = crate::t_storage::get_library_db_path(&library.id) else {
+            continue;
+        };
+        if !std::path::Path::new(&db_path).exists() {
+            continue;
+        };
+        let Ok(conn) = crate::t_sqlite::open_readwrite_at(&db_path) else {
+            continue;
+        };
+        let template_id: Option<i64> = conn
+            .query_row(
+                "SELECT template_id FROM vl_runs WHERE run_id = ?1",
+                params![run_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let Some(template_id) = template_id else {
+            continue;
+        };
+        let failed = failed_file_ids(&conn, run_id)?;
+        if failed.is_empty() {
+            return Err("该任务没有失败的文件".to_string());
+        }
+        // Files may have left the library since; ids must all resolve.
+        let check = crate::t_sqlite::open_conn_for_library(&db_path)?;
+        validate_run_files(&check, &failed)?;
+        let context = LibraryContext {
+            library_id: library.id.clone(),
+            library_name: library.name.clone(),
+            db_path,
+        };
+        return start_run_for_library(
+            app_handle,
+            state,
+            &context,
+            failed,
+            template_id,
+            false,
+            "manual",
+        );
+    }
+    Err(format!("未找到运行 {run_id}"))
+}
+
+/// The distinct files of a run whose gateway call ended in `error`.
+fn failed_file_ids(conn: &Connection, run_id: &str) -> Result<Vec<i64>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT file_id FROM vl_calls
+             WHERE run_id = ?1 AND status = 'error'
+             ORDER BY file_id",
+        )
+        .map_err(|e| e.to_string())?;
+    let ids = stmt
+        .query_map(params![run_id], |row| row.get::<_, i64>(0))
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    Ok(ids)
+}
+
+/// Delete one run row; its calls follow through the v27 `ON DELETE CASCADE`.
+/// Rows still marked queued/running are refused — even stale ones from a
+/// crashed process keep their evidence until they are reconciled.
+fn delete_run_row(conn: &Connection, run_id: &str) -> Result<usize, String> {
+    let live: Option<bool> = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM vl_runs WHERE run_id = ?1
+             AND state IN ('queued','running'))",
+            params![run_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if live == Some(true) {
+        return Err("任务仍在排队或执行中，请先取消".to_string());
+    }
+    conn.execute("DELETE FROM vl_runs WHERE run_id = ?1", params![run_id])
+        .map_err(|e| e.to_string())
+}
+
+/// Delete the terminal run rows of one library database.
+fn clear_terminal_run_rows(conn: &Connection) -> Result<usize, String> {
+    conn.execute(
+        "DELETE FROM vl_runs
+         WHERE state IN ('finished','cancelled','failed','interrupted')",
+        [],
+    )
+    .map_err(|e| e.to_string())
 }
 
 // ----------------------------------------------------------------------------
@@ -3059,16 +3272,57 @@ impl Drop for ActiveSlot {
 
 /// State of the queued runs. Only the runs of this process live here; every
 /// finished run is also persisted in its library database.
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct VlState {
     pub runs: Arc<Mutex<HashMap<String, VlRunStatus>>>,
     pub cancel_flags: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     pub queue: Arc<VlQueue>,
     pub in_flight: Arc<InFlight>,
+    /// The global pool of LLM-call permits: at most `max_concurrency`
+    /// gateway requests are in flight at once, across all runs. The pool is
+    /// replaced (not resized) on config changes; permits of the old pool are
+    /// released by their tasks and simply vanish.
+    pub call_permits: Arc<Mutex<Arc<tokio::sync::Semaphore>>>,
+}
+
+impl Default for VlState {
+    fn default() -> Self {
+        VlState {
+            runs: Arc::new(Mutex::new(HashMap::new())),
+            cancel_flags: Arc::new(Mutex::new(HashMap::new())),
+            queue: Arc::new(VlQueue::default()),
+            in_flight: Arc::new(InFlight::default()),
+            call_permits: Arc::new(Mutex::new(Arc::new(tokio::sync::Semaphore::new(
+                VL_MAX_CONCURRENCY_DEFAULT,
+            )))),
+        }
+    }
 }
 
 impl VlState {
-    fn new_run(&self, library_id: &str, total: usize) -> Result<(String, Arc<AtomicBool>), String> {
+    /// Swap the permit pool for one sized `limit` (clamped to the setting's
+    /// bounds). In-flight calls keep permits of the old pool, so the new
+    /// limit governs everything dispatched afterwards.
+    pub fn set_call_permits(&self, limit: usize) {
+        let limit = limit.clamp(1, VL_MAX_CONCURRENCY_LIMIT);
+        if let Ok(mut pool) = self.call_permits.lock() {
+            *pool = Arc::new(tokio::sync::Semaphore::new(limit));
+        }
+    }
+
+    fn call_permits(&self) -> Arc<tokio::sync::Semaphore> {
+        self.call_permits
+            .lock()
+            .ok()
+            .and_then(|pool| Some(pool.clone()))
+            .unwrap_or_else(|| Arc::new(tokio::sync::Semaphore::new(VL_MAX_CONCURRENCY_DEFAULT)))
+    }
+    fn new_run(
+        &self,
+        library_id: &str,
+        total: usize,
+        source: &str,
+    ) -> Result<(String, Arc<AtomicBool>), String> {
         let run_id = uuid::Uuid::new_v4().to_string();
         let cancel = Arc::new(AtomicBool::new(false));
         let status = VlRunStatus {
@@ -3078,6 +3332,7 @@ impl VlState {
             // it up; the UI shows "排队中" in the meantime.
             state: "queued".to_string(),
             total,
+            source: source.to_string(),
             ..Default::default()
         };
         self.prune_finished_runs();
@@ -3166,7 +3421,7 @@ impl VlState {
 /// per-library autoincrement, so ids loaded from another library (a lab
 /// window that outlived a library switch) would silently annotate whatever
 /// file happens to carry the same id here.
-fn validate_run_files(conn: &Connection, file_ids: &[i64]) -> Result<(), String> {
+pub(crate) fn validate_run_files(conn: &Connection, file_ids: &[i64]) -> Result<(), String> {
     let mut seen = HashSet::new();
     let distinct: Vec<i64> = file_ids
         .iter()
@@ -3197,6 +3452,22 @@ pub fn start_run(
     template_id: i64,
     force: bool,
 ) -> Result<String, String> {
+    let library = current_library_context()?;
+    start_run_for_library(app_handle, state, &library, file_ids, template_id, force, "manual")
+}
+
+/// Queue an analysis run against an explicit library. The retry path and the
+/// scheduler use this so they stay independent of the library the UI shows;
+/// `source` records who started it (`manual` / `scheduled`, v28 column).
+pub fn start_run_for_library(
+    app_handle: &tauri::AppHandle,
+    state: &VlState,
+    library: &LibraryContext,
+    file_ids: Vec<i64>,
+    template_id: i64,
+    force: bool,
+    source: &str,
+) -> Result<String, String> {
     if file_ids.is_empty() {
         return Err("未选择要理解的文件".to_string());
     }
@@ -3207,7 +3478,6 @@ pub fn start_run(
             VlProtocol::Anthropic => "图片理解网关未配置，请先设置网关地址与 API Key".to_string(),
         });
     }
-    let library = current_library_context()?;
     let store = LibraryBoundStore {
         db_path: library.db_path.clone(),
     };
@@ -3223,8 +3493,9 @@ pub fn start_run(
     }
 
     state.queue.set_max(config.max_concurrency);
+    state.set_call_permits(config.max_concurrency);
 
-    let (run_id, _cancel) = state.new_run(&library.library_id, file_ids.len())?;
+    let (run_id, _cancel) = state.new_run(&library.library_id, file_ids.len(), source)?;
     let record = VlRunRecord {
         run_id: run_id.clone(),
         library_id: library.library_id.clone(),
@@ -3243,6 +3514,7 @@ pub fn start_run(
         error: None,
         started_at: now_ts(),
         finished_at: None,
+        source: source.to_string(),
     };
     let inserted = crate::t_sqlite::open_conn_for_library(&library.db_path)
         .and_then(|conn| insert_run_row(&conn, &record));
@@ -3330,14 +3602,6 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
     let db_path_for_supervisor = db_path.clone();
 
     let worker = tauri::async_runtime::spawn(async move {
-        let store = LibraryBoundStore {
-            db_path: library.db_path.clone(),
-        };
-        let source = LibraryBoundSource {
-            db_path: library.db_path.clone(),
-            library_id: library.library_id.clone(),
-        };
-
         // The run left the queue; the UI now sees it as running.
         state.update_run(&run_id, |status| {
             status.state = "running".to_string();
@@ -3371,64 +3635,39 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
             }
         };
 
-        for file_id in file_ids {
-            if cancel.load(Ordering::SeqCst) {
-                break;
-            }
-            state.update_run(&run_id, |status| {
-                status.current_file_id = Some(file_id);
+        // The files of one run are analyzed with bounded concurrency: the
+        // configured limit is the number of LLM requests in flight at once,
+        // across all runs (global permit pool below).
+        let progress_app = app_handle.clone();
+        let emit_progress: Arc<dyn Fn(&VlRunStatus) + Send + Sync> = Arc::new(move |status| {
+            let _ = progress_app.emit("vl-analysis-progress", status.clone());
+        });
+        let tags_app = app_handle.clone();
+        let emit_tags_changed: Arc<dyn Fn() + Send + Sync> =
+            Arc::new(move || {
+                let _ = tags_app.emit("tags-changed", ());
             });
-            persist_progress(&state, &library.db_path, &run_id);
-            let _ = app_handle.emit("vl-analysis-progress", status_payload(&state, &run_id));
-
-            match analyze_file(
-                &store,
-                &source,
-                &client,
-                &config,
-                file_id,
-                &template,
-                force,
-                Some(&run_id),
-                &state.in_flight,
-            )
-            .await
-            {
-                Ok(VlFileOutcome::Skipped) => {
-                    state.update_run(&run_id, |status| {
-                        status.processed += 1;
-                        status.skipped += 1;
-                    });
-                }
-                Ok(VlFileOutcome::Annotated { tags, .. }) => {
-                    state.update_run(&run_id, |status| {
-                        status.processed += 1;
-                        status.succeeded += 1;
-                        status.succeeded_file_ids.push(file_id);
-                    });
-                    // A result that carried tags changed the tag tree; every
-                    // tag panel reloads on this event.
-                    if tags > 0 {
-                        let _ = app_handle.emit("tags-changed", ());
-                    }
-                }
-                Ok(VlFileOutcome::Failed { .. }) => {
-                    state.update_run(&run_id, |status| {
-                        status.processed += 1;
-                        status.failed += 1;
-                    });
-                }
-                Err(error) => {
-                    eprintln!("VL analysis failed for file {}: {}", file_id, error);
-                    state.update_run(&run_id, |status| {
-                        status.processed += 1;
-                        status.failed += 1;
-                    });
-                }
-            }
-            persist_progress(&state, &library.db_path, &run_id);
-            let _ = app_handle.emit("vl-analysis-progress", status_payload(&state, &run_id));
-        }
+        process_run_files(
+            &state,
+            &library,
+            Arc::new(LibraryBoundStore {
+                db_path: library.db_path.clone(),
+            }),
+            Arc::new(LibraryBoundSource {
+                db_path: library.db_path.clone(),
+                library_id: library.library_id.clone(),
+            }),
+            run_id.clone(),
+            file_ids,
+            &template,
+            force,
+            &config,
+            &client,
+            &cancel,
+            emit_progress,
+            emit_tags_changed,
+        )
+        .await;
 
         let final_state = if cancel.load(Ordering::SeqCst) {
             "cancelled"
@@ -3464,6 +3703,121 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
             pump_queue(&supervisor_handle, &supervisor_state);
         }
     });
+}
+
+/// Analyze the files of one run with bounded concurrency.
+///
+/// Two ceilings cooperate: at most `fanout` futures are alive per run (the
+/// same configured limit, bounding memory and event noise), and every LLM
+/// call holds one permit of the global pool, so the configured limit is the
+/// number of gateway requests in flight at once across all runs. Cancellation
+/// is cooperative: no new file is dispatched once the flag is set, calls
+/// already in flight finish and are counted.
+async fn process_run_files(
+    state: &VlState,
+    library: &LibraryContext,
+    store: Arc<dyn VlStore>,
+    source: Arc<dyn VlSource>,
+    run_id: String,
+    file_ids: Vec<i64>,
+    template: &VlTemplate,
+    force: bool,
+    config: &VlGatewayConfig,
+    client: &reqwest::Client,
+    cancel: &AtomicBool,
+    emit_progress: Arc<dyn Fn(&VlRunStatus) + Send + Sync>,
+    emit_tags_changed: Arc<dyn Fn() + Send + Sync>,
+) {
+    let permits = state.call_permits();
+    let fanout = config.max_concurrency.clamp(1, VL_MAX_CONCURRENCY_LIMIT);
+    let mut tasks: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
+    let mut remaining = file_ids.into_iter();
+    loop {
+        // Dispatch while there is room and the run was not cancelled.
+        while tasks.len() < fanout && !cancel.load(Ordering::SeqCst) {
+            let Some(file_id) = remaining.next() else {
+                break;
+            };
+            // Dispatch-time progress: the UI sees which file is up next.
+            state.update_run(&run_id, |status| {
+                status.current_file_id = Some(file_id);
+            });
+            persist_progress(state, &library.db_path, &run_id);
+            emit_progress(&status_payload(state, &run_id));
+            // A permit may only become available once another call lands;
+            // awaiting here never deadlocks because the tasks below run on
+            // their own and release their permits on completion.
+            let permit = match permits.clone().acquire_owned().await {
+                Ok(permit) => permit,
+                Err(_) => break,
+            };
+            let task_state = state.clone();
+            let task_store = store.clone();
+            let task_source = source.clone();
+            let task_client = client.clone();
+            let task_config = config.clone();
+            let task_template = template.clone();
+            let task_run_id = run_id.clone();
+            let task_db_path = library.db_path.clone();
+            let task_emit = emit_progress.clone();
+            let task_emit_tags = emit_tags_changed.clone();
+            tasks.spawn(async move {
+                let _permit = permit;
+                let outcome = analyze_file(
+                    task_store.as_ref(),
+                    task_source.as_ref(),
+                    &task_client,
+                    &task_config,
+                    file_id,
+                    &task_template,
+                    force,
+                    Some(&task_run_id),
+                    &task_state.in_flight,
+                )
+                .await;
+                match outcome {
+                    Ok(VlFileOutcome::Skipped) => {
+                        task_state.update_run(&task_run_id, |status| {
+                            status.processed += 1;
+                            status.skipped += 1;
+                        });
+                    }
+                    Ok(VlFileOutcome::Annotated { tags, .. }) => {
+                        task_state.update_run(&task_run_id, |status| {
+                            status.processed += 1;
+                            status.succeeded += 1;
+                            status.succeeded_file_ids.push(file_id);
+                        });
+                        // A result that carried tags changed the tag tree;
+                        // every tag panel reloads on this event.
+                        if tags > 0 {
+                            task_emit_tags();
+                        }
+                    }
+                    Ok(VlFileOutcome::Failed { .. }) => {
+                        task_state.update_run(&task_run_id, |status| {
+                            status.processed += 1;
+                            status.failed += 1;
+                        });
+                    }
+                    Err(error) => {
+                        eprintln!("VL analysis failed for file {}: {}", file_id, error);
+                        task_state.update_run(&task_run_id, |status| {
+                            status.processed += 1;
+                            status.failed += 1;
+                        });
+                    }
+                }
+                persist_progress(&task_state, &task_db_path, &task_run_id);
+                task_emit(&status_payload(&task_state, &task_run_id));
+            });
+        }
+        if tasks.is_empty() {
+            break;
+        }
+        // Reap one finished task; the dispatch arm above refills the slot.
+        let _ = tasks.join_next().await;
+    }
 }
 
 /// Move one run into its terminal state everywhere: the in-memory status, the
@@ -3542,6 +3896,7 @@ mod tests {
             .unwrap();
             conn.execute_batch(VL_SCHEMA_SQL).unwrap();
             crate::t_migration::ensure_runs_schema(&conn).unwrap();
+        crate::t_migration::ensure_tasks_schema(&conn).unwrap();
             // The annotations reach the search, so the store carries the index.
             conn.execute_batch(crate::t_fts::FTS_SCHEMA_SQL).unwrap();
             // The AI tags land in the tag tree; the store carries those tables too.
@@ -4439,6 +4794,90 @@ mod tests {
                 heads: Arc::new(Mutex::new(Vec::new())),
             }
         }
+
+        /// A concurrent mock for concurrency-ceiling tests: every request is
+        /// answered after `delay_ms`, in its own task, while `current` tracks
+        /// how many are being processed at once and `peak` its maximum.
+        pub struct TrackedGateway {
+            pub url: String,
+            pub requests: Arc<AtomicUsize>,
+            pub current: Arc<AtomicUsize>,
+            pub peak: Arc<AtomicUsize>,
+        }
+
+        pub async fn spawn_tracked(delay_ms: u64) -> TrackedGateway {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let requests = Arc::new(AtomicUsize::new(0));
+            let current = Arc::new(AtomicUsize::new(0));
+            let peak = Arc::new(AtomicUsize::new(0));
+            let (counter, now, top) = (requests.clone(), current.clone(), peak.clone());
+            tokio::spawn(async move {
+                while let Ok((stream, _)) = listener.accept().await {
+                    let (counter, now, top) = (counter.clone(), now.clone(), top.clone());
+                    tokio::spawn(async move {
+                        counter.fetch_add(1, Ordering::SeqCst);
+                        let mut stream = stream;
+                        let mut buffer = vec![0u8; 64 * 1024];
+                        // Read headers and body so the client accepts the reply.
+                        let read = match stream.read(&mut buffer).await {
+                            Ok(read) => read,
+                            Err(_) => return,
+                        };
+                        let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+                        if let Some(index) = request.find("\r\n\r\n") {
+                            let mut length = 0usize;
+                            for line in request[..index].lines() {
+                                if let Some((name, value)) = line.split_once(':')
+                                    && name.trim().eq_ignore_ascii_case("content-length")
+                                {
+                                    length = value.trim().parse().unwrap_or(0);
+                                }
+                            }
+                            let mut payload = request[index + 4..].to_string();
+                            while payload.len() < length {
+                                let mut more = vec![0u8; 64 * 1024];
+                                let Ok(read) = stream.read(&mut more).await else {
+                                    break;
+                                };
+                                if read == 0 {
+                                    break;
+                                }
+                                payload.push_str(&String::from_utf8_lossy(&more[..read]));
+                            }
+                        }
+                        let active = now.fetch_add(1, Ordering::SeqCst) + 1;
+                        let mut seen = top.load(Ordering::SeqCst);
+                        while active > seen {
+                            match top.compare_exchange(
+                                seen,
+                                active,
+                                Ordering::SeqCst,
+                                Ordering::SeqCst,
+                            ) {
+                                Ok(_) => break,
+                                Err(actual) => seen = actual,
+                            }
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        now.fetch_sub(1, Ordering::SeqCst);
+                        let body = r#"{"content":[{"type":"text","text":"{\"caption\":\"a cat\"}"}],"id":"m1","model":"test-model","stop_reason":"end_turn","usage":{"input_tokens":71,"output_tokens":205}}"#;
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                    });
+                }
+            });
+            TrackedGateway {
+                url: format!("http://{address}"),
+                requests,
+                current,
+                peak,
+            }
+        }
     }
 
     fn test_request() -> VlRequest {
@@ -5327,7 +5766,7 @@ mod tests {
     // ----- command registration -----
 
     /// The commands this module contributes to the Tauri handler.
-    const VL_COMMANDS: [&str; 14] = [
+    const VL_COMMANDS: [&str; 17] = [
         "get_vl_config",
         "set_vl_config",
         "list_vl_templates",
@@ -5342,6 +5781,9 @@ mod tests {
         "list_vl_run_calls",
         "list_vl_models",
         "rerank_search_with_llm",
+        "retry_vl_run",
+        "delete_vl_run",
+        "clear_vl_runs",
     ];
 
     #[test]
@@ -5657,6 +6099,7 @@ mod tests {
         .unwrap();
         conn.execute_batch(VL_SCHEMA_SQL).unwrap();
         crate::t_migration::ensure_runs_schema(&conn).unwrap();
+        crate::t_migration::ensure_tasks_schema(&conn).unwrap();
         conn.execute_batch(crate::t_fts::FTS_SCHEMA_SQL).unwrap();
         conn
     }
@@ -5683,6 +6126,7 @@ mod tests {
             error: None,
             started_at: 111,
             finished_at: None,
+            source: "manual".to_string(),
         }
     }
 
@@ -6177,6 +6621,101 @@ mod tests {
         let named: VlCall = serde_json::from_value(value).unwrap();
         assert_eq!(named.file_name.as_deref(), Some("a.jpg"));
     }
+
+    #[tokio::test]
+    async fn run_files_respect_the_global_concurrency_ceiling() {
+        // Six files, ceiling 2: at most two gateway requests may be processed
+        // at once. The test pins the hard invariant (peak <= ceiling); the
+        // "it actually runs in parallel" half is verified against the real
+        // gateway in the portable smoke, not by timing assertions here.
+        let store = MemStore::new();
+        store
+            .conn
+            .lock()
+            .unwrap()
+            .execute_batch("INSERT INTO afiles VALUES(3,'c.jpg',0),(4,'d.jpg',0),(5,'e.jpg',0),(6,'f.jpg',0);")
+            .unwrap();
+        let template = analysis_template(&store);
+        let state = VlState::default();
+        state.set_call_permits(2);
+        let (run_id, _cancel) = state.new_run("lib-test", 6, "manual").unwrap();
+        // vl_calls.run_id references vl_runs; the row normally comes from
+        // start_run, which this test bypasses to drive the loop directly.
+        {
+            let conn = store.conn.lock().unwrap();
+            insert_run_row(
+                &conn,
+                &VlRunRecord {
+                    run_id: run_id.clone(),
+                    library_id: "lib-test".to_string(),
+                    library_name: "Test".to_string(),
+                    template_id: template.id,
+                    template_version: template.version,
+                    template_name: template.name.clone(),
+                    force: false,
+                    state: "running".to_string(),
+                    total: 6,
+                    processed: 0,
+                    succeeded: 0,
+                    failed: 0,
+                    skipped: 0,
+                    current_file_id: None,
+                    error: None,
+                    started_at: now_ts(),
+                    finished_at: None,
+                    source: "manual".to_string(),
+                },
+            )
+            .unwrap();
+        }
+        let gateway = mock::spawn_tracked(120).await;
+
+        let db_path = std::env::temp_dir().join(format!(
+            "vl-peak-{}.db",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let conn = Connection::open(&db_path).unwrap();
+        crate::t_migration::ensure_runs_schema(&conn).unwrap();
+        crate::t_migration::ensure_tasks_schema(&conn).unwrap();
+        conn.close().unwrap();
+
+        let library = LibraryContext {
+            library_id: "lib-test".to_string(),
+            library_name: "Test".to_string(),
+            db_path: db_path.to_string_lossy().into_owned(),
+        };
+        let client = reqwest::Client::new();
+        let config = test_config(&gateway.url);
+        let emit: Arc<dyn Fn(&VlRunStatus) + Send + Sync> = Arc::new(|_| {});
+        let emit_tags: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});
+
+        process_run_files(
+            &state,
+            &library,
+            Arc::new(store),
+            Arc::new(StubSource),
+            run_id.clone(),
+            vec![1, 2, 3, 4, 5, 6],
+            &template,
+            false,
+            &config,
+            &client,
+            &AtomicBool::new(false),
+            emit,
+            emit_tags,
+        )
+        .await;
+
+        assert_eq!(gateway.requests.load(Ordering::SeqCst), 6);
+        let peak = gateway.peak.load(Ordering::SeqCst);
+        assert!(peak <= 2, "peak in-flight {peak} exceeded the ceiling of 2");
+        let status = state.run_status(&run_id).unwrap();
+        assert_eq!(status.processed, 6);
+        assert_eq!(status.succeeded, 6);
+        assert_eq!(status.skipped, 0);
+        assert_eq!(status.failed, 0);
+        let _ = std::fs::remove_file(&db_path);
+    }
 }
 
 #[cfg(test)]
@@ -6300,5 +6839,124 @@ mod run_files_validation_tests {
         let mut with_stranger = ids;
         with_stranger.push(601);
         assert!(validate_run_files(&conn, &with_stranger).is_err());
+    }
+}
+
+#[cfg(test)]
+mod run_lifecycle_tests {
+    use super::*;
+
+    fn conn_with_runs() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "PRAGMA foreign_keys=ON;
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL, has_tags INTEGER DEFAULT 0);
+             INSERT INTO afiles VALUES(1,'a.jpg',0),(2,'b.jpg',0),(3,'c.jpg',0);",
+        )
+        .unwrap();
+        conn.execute_batch(crate::t_migration::VL_SCHEMA_SQL).unwrap();
+        crate::t_migration::ensure_runs_schema(&conn).unwrap();
+        crate::t_migration::ensure_tasks_schema(&conn).unwrap();
+        conn
+    }
+
+    fn record(run_id: &str, state: &str) -> VlRunRecord {
+        VlRunRecord {
+            run_id: run_id.to_string(),
+            library_id: "lib".to_string(),
+            library_name: "L".to_string(),
+            template_id: 1,
+            template_version: 1,
+            template_name: "t".to_string(),
+            force: false,
+            state: state.to_string(),
+            total: 3,
+            processed: 3,
+            succeeded: 1,
+            failed: 2,
+            skipped: 0,
+            current_file_id: None,
+            error: None,
+            started_at: 1,
+            finished_at: Some(2),
+            source: "manual".to_string(),
+        }
+    }
+
+    fn insert_call(conn: &Connection, file_id: i64, status: &str, run_id: &str) {
+        conn.execute(
+            "INSERT INTO vl_calls(file_id, template_id, template_version, prompt_actual, status, run_id, created_at)
+             VALUES(?1, 1, 1, 'p', ?2, ?3, 1)",
+            params![file_id, status, run_id],
+        )
+        .unwrap();
+    }
+
+    fn run_call_count(conn: &Connection, run_id: &str) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM vl_calls WHERE run_id = ?1",
+            params![run_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn retry_collects_only_the_failed_files_of_a_run() {
+        let conn = conn_with_runs();
+        insert_run_row(&conn, &record("r1", "finished")).unwrap();
+        insert_call(&conn, 1, "ok", "r1");
+        insert_call(&conn, 2, "error", "r1");
+        insert_call(&conn, 3, "error", "r1");
+        // A failed call of another run must not leak into the retry set.
+        insert_run_row(&conn, &record("r2", "finished")).unwrap();
+        insert_call(&conn, 1, "error", "r2");
+
+        assert_eq!(failed_file_ids(&conn, "r1").unwrap(), vec![2, 3]);
+        assert_eq!(failed_file_ids(&conn, "r2").unwrap(), vec![1]);
+        assert_eq!(failed_file_ids(&conn, "missing").unwrap(), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn delete_removes_a_terminal_run_with_its_calls_and_refuses_live_rows() {
+        let conn = conn_with_runs();
+        insert_run_row(&conn, &record("done", "finished")).unwrap();
+        insert_call(&conn, 1, "ok", "done");
+        insert_call(&conn, 2, "error", "done");
+        assert_eq!(run_call_count(&conn, "done"), 2);
+
+        assert_eq!(delete_run_row(&conn, "done").unwrap(), 1);
+        assert_eq!(run_call_count(&conn, "done"), 0, "calls must cascade away");
+        assert_eq!(delete_run_row(&conn, "done").unwrap(), 0, "second delete is a no-op");
+
+        insert_run_row(&conn, &record("live", "running")).unwrap();
+        let err = delete_run_row(&conn, "live").unwrap_err();
+        assert!(err.contains("先取消"), "live rows refuse deletion: {err}");
+        insert_run_row(&conn, &record("waiting", "queued")).unwrap();
+        assert!(delete_run_row(&conn, "waiting").is_err());
+    }
+
+    #[test]
+    fn clear_removes_only_terminal_runs() {
+        let conn = conn_with_runs();
+        for (id, state) in [
+            ("f", "finished"),
+            ("c", "cancelled"),
+            ("x", "failed"),
+            ("i", "interrupted"),
+            ("q", "queued"),
+            ("r", "running"),
+        ] {
+            insert_run_row(&conn, &record(id, state)).unwrap();
+        }
+        assert_eq!(clear_terminal_run_rows(&conn).unwrap(), 4);
+        let remaining: Vec<String> = conn
+            .prepare("SELECT run_id FROM vl_runs ORDER BY run_id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(remaining, vec!["q".to_string(), "r".to_string()]);
     }
 }
