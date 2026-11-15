@@ -896,8 +896,9 @@ pub fn run_face_indexing(
 
             current += 1;
 
-            // Optimization: Try to use thumbnail first
-            // We need to know if we used a thumbnail to scale the bbox
+            // Hydrated thumbnail (blob or cache-file bytes via AThumb::fetch);
+            // only used as the LAST detection source — see the priority note
+            // below.
             let thumb = t_sqlite::AThumb::fetch(file_id);
             // Reading the online-only original would download it; retry once it is local.
             if !matches!(&thumb, Ok(Some(t)) if t.thumb_data.is_some())
@@ -930,22 +931,26 @@ pub fn run_face_indexing(
                 .ok_or_else(|| "No RAW preview available".to_string())?;
                 engine.process_image_from_bytes(&preview)
             };
-            let (process_result, _used_thumb) = match thumb {
-                Ok(Some(thumb)) if thumb.thumb_data.is_some() => {
-                    let thumb_bytes = thumb.thumb_data.as_ref().unwrap();
-                    match engine.process_image_from_bytes(thumb_bytes) {
-                        Ok(res) => (Ok(res), true),
-                        Err(_) => (load_original(&mut engine), false),
+            // Source priority: original → RAW preview → thumbnail. A thumbnail
+            // is a 512px letterbox, so a 300px face on a 4272px original shrinks
+            // to ~36px there and falls under the 90px source gate: indexing from
+            // thumbnails (which became the de-facto behavior for every file once
+            // AThumb::fetch started hydrating cache files into thumb_data)
+            // silently dropped nearly the whole library. Detect at full
+            // resolution first; the thumbnail stays as the last resort for rows
+            // the decoders cannot read (e.g. HEIC) or cloud-only originals that
+            // must not be downloaded.
+            let mut process_result = load_original(&mut engine);
+            if process_result.is_err() && file_type == 3 {
+                process_result = load_raw_preview(&mut engine);
+            }
+            if process_result.is_err() {
+                if let Ok(Some(thumb)) = thumb.as_ref() {
+                    if let Some(thumb_bytes) = thumb.thumb_data.as_ref() {
+                        process_result = engine.process_image_from_bytes(thumb_bytes);
                     }
                 }
-                _ => {
-                    let mut result = load_original(&mut engine);
-                    if result.is_err() && file_type == 3 {
-                        result = load_raw_preview(&mut engine);
-                    }
-                    (result, false)
-                }
-            };
+            }
 
             match process_result {
                 Ok((mut faces, (proc_w, proc_h))) => {
@@ -1294,6 +1299,11 @@ mod tests {
                     continue;
                 }
             };
+            // Mirror the indexer's exact call so Err-vs-empty is visible.
+            match engine.process_image(path) {
+                Ok((kept, _)) => eprintln!("   process_image kept={}", kept.len()),
+                Err(e) => eprintln!("   process_image ERR: {e}"),
+            }
             eprintln!(
                 "== {} ({}x{}) {} faces pre-gate",
                 path,
