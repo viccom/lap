@@ -313,7 +313,7 @@ pub fn apply_tags_to_files(
 }
 
 #[cfg(test)]
-mod contract_tests {
+pub(crate) mod contract_tests {
     //! The write surface had **no** test coverage, so a dropped or renamed
     //! argument would ship silently: the frontend sends a key the command no
     //! longer declares, and Tauri ignores it. These tests pin the arguments
@@ -434,8 +434,9 @@ mod contract_tests {
     }
 
     /// The signature of `name` in the command shell, as (injected, js-visible)
-    /// parameter names.
-    fn signature_of(source: &str, name: &str) -> Option<(Vec<String>, Vec<String>)> {
+    /// parameter names. Shared with the t_state de-injection guard, which
+    /// pins the same invariant for the heavy/admin surface.
+    pub(crate) fn signature_of(source: &str, name: &str) -> Option<(Vec<String>, Vec<String>)> {
         let needle = format!("fn {name}(");
         let start = source.find(&needle)?;
         let after = &source[start + needle.len()..];

@@ -259,4 +259,143 @@ mod tests {
         assert!(stages.contains("registry-test-stage"));
         assert_eq!(stages.len(), 1);
     }
+
+    /// The commands phase 2 batch 3 de-injected, with the exact arguments the
+    /// frontend still sends (camelCase). Grouped by the file that declares the
+    /// command; every entry must take **no** injected parameter — the heavy
+    /// and admin surface reads the process registry instead.
+    #[test]
+    fn de_injected_commands_stay_de_injected() {
+        use crate::t_write::contract_tests::signature_of;
+
+        fn assert_rows(file: &str, source: &str, rows: &[(&str, &[&str])]) {
+            for (name, expected_visible) in rows {
+                let (injected, visible) = signature_of(source, name)
+                    .unwrap_or_else(|| panic!("{name} disappeared from {file}"));
+                assert!(
+                    injected.is_empty(),
+                    "{name} ({file}) takes an injected parameter again: {injected:?}"
+                );
+                assert_eq!(
+                    visible, *expected_visible,
+                    "{name} ({file}) changed the arguments the frontend sends"
+                );
+            }
+        }
+
+        assert_rows(
+            "t_cmds.rs",
+            include_str!("t_cmds.rs"),
+            &[
+                ("change_db_storage_dir", &["newDir"]),
+                ("reset_db_storage_dir", &[]),
+                ("remove_library", &["id"]),
+                (
+                    "index_album",
+                    &[
+                        "albumId",
+                        "thumbnailSize",
+                        "rawDisplayOptions",
+                        "skipFilePath",
+                        "groupRawJpegPairs",
+                    ],
+                ),
+                (
+                    "sync_album_folder_mtimes",
+                    &["albumId", "folderId", "folderPath", "groupRawJpegPairs"],
+                ),
+                ("refresh_album_subfolders", &["albumId", "folderPath"]),
+                (
+                    "import_and_organize",
+                    &[
+                        "albumId",
+                        "sourcePath",
+                        "destinationPath",
+                        "layout",
+                        "completedPaths",
+                    ],
+                ),
+                ("cancel_import_and_organize", &[]),
+                ("check_ai_status", &[]),
+                ("get_image_search_model_status", &[]),
+                ("set_image_search_model", &["model"]),
+                ("generate_embedding", &["fileId", "libraryId"]),
+                ("search_similar_images", &["params", "libraryId"]),
+                ("index_faces", &["clusterEpsilon"]),
+                ("cancel_face_index", &[]),
+                ("is_face_indexing", &[]),
+                (
+                    "dedup_start_scan",
+                    &[
+                        "params",
+                        "collectionId",
+                        "fileIds",
+                        "keepRules",
+                        "groupRawPairs",
+                    ],
+                ),
+                ("dedup_get_scan_status", &[]),
+                ("dedup_cancel_scan", &[]),
+                (
+                    "similar_start_scan",
+                    &[
+                        "scopeKey",
+                        "sourceVersion",
+                        "similarityThreshold",
+                        "params",
+                        "collectionId",
+                        "fileIds",
+                        "keepRules",
+                    ],
+                ),
+                ("similar_get_scan_status", &[]),
+                ("similar_cancel_scan", &[]),
+            ],
+        );
+        assert_rows(
+            "t_startup.rs",
+            include_str!("t_startup.rs"),
+            &[
+                ("record_startup_stage", &["stage"]),
+                ("get_ai_initialization_status", &[]),
+                ("finish_startup", &["model"]),
+            ],
+        );
+        assert_rows(
+            "t_video.rs",
+            include_str!("t_video.rs"),
+            &[
+                (
+                    "prepare_video",
+                    &["filePath", "playerId", "force", "requestId"],
+                ),
+                ("cancel_video_prepare", &["playerId", "requestId"]),
+                ("clear_video_cache", &[]),
+            ],
+        );
+        assert_rows(
+            "t_vl.rs",
+            include_str!("t_vl.rs"),
+            &[
+                (
+                    "set_vl_config",
+                    &[
+                        "gatewayUrl",
+                        "apiKey",
+                        "model",
+                        "rerankModel",
+                        "embedSource",
+                        "embedModel",
+                        "protocol",
+                        "maxConcurrency",
+                    ],
+                ),
+                ("run_vl_analysis", &["fileIds", "templateId", "force"]),
+                ("cancel_vl_run", &["runId"]),
+                ("retry_vl_run", &["runId"]),
+                ("delete_vl_run", &["runId"]),
+                ("list_vl_runs", &[]),
+            ],
+        );
+    }
 }
