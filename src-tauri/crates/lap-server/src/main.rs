@@ -175,6 +175,22 @@ mod tests {
             registered.len(),
             "whitelist + skip must partition the registry"
         );
+        // The §3.6 exposure axis must cover every bridged command exactly.
+        assert_eq!(
+            bridge_gen::EXPOSURES.len(),
+            bridge_gen::COMMANDS.len(),
+            "EXPOSURES must align with COMMANDS by index"
+        );
+        for (name, exposure) in bridge_gen::EXPOSURES {
+            assert!(
+                matches!(*exposure, "read" | "write" | "admin"),
+                "`{name}`: exposure `{exposure}` is not a network level"
+            );
+            assert!(
+                bridged.contains(name),
+                "`{name}` has an exposure but is not in COMMANDS"
+            );
+        }
         for name in &registered {
             assert!(
                 bridged.contains(name.as_str()) || skip.contains(name.as_str()),

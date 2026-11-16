@@ -306,6 +306,7 @@ def main() -> int:
 
     total = len(entries)
     names = ",\n    ".join(f'"{c["name"]}"' for c in bridge)
+    exposures = ",\n    ".join(f'("{c["name"]}", "{c["exposure"]}")' for c in bridge)
     imports = "\n".join(f"use {path};" for path in sorted(_imports))
     module_imports = "\n".join(f"use lap_core::{modname};" for modname in sorted(_modules))
     header = f"""\
@@ -327,6 +328,13 @@ use crate::bridge::{{
 #[allow(dead_code)]
 pub const COMMANDS: &[&str] = &[
     {names},
+];
+
+/// The §3.6 whitelist axis, aligned with COMMANDS by index: `read`/`write`
+/// need any valid token, `admin` needs the admin scope or a loopback source.
+#[allow(dead_code)]
+pub const EXPOSURES: &[(&str, &str)] = &[
+    {exposures},
 ];
 
 /// Dispatch one bridge call. Argument extraction follows the Tauri IPC
