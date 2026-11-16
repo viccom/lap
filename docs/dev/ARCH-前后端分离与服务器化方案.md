@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 1 已完成**（阶段 0 基线 Rust 561/0/9、前端 425/0；阶段 1 落地 `src-vite/src/common/transport/` 传输抽象，35 个文件改 import，媒体三函数走 `assetUrl()`，`capabilities()` 门控 C 类入口；前端 438/0、两传输 `pnpm build` 均 exit=0、Rust 561/0/9 不变；下一阶段 = 阶段 2 原地去 Tauri 化，未开始）
+状态：**阶段 2 批次 1 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫，43 emit / 9 path / 76 async 点位迁移，Rust 568/0/9、便携版冒烟通过；6 提交 `dd2bb08f`…`723a91bf` 已推送。后续 = 阶段 2 批次 2 写入面/重活面）
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -254,6 +254,17 @@ src-vite/                      一套前端，两种传输
 - 加边界守卫：源码扫描确认「核心模块列表里不出现 `tauri::`」，作为 CI/脚本检查。
 - **验收**：`cargo test --bin Lap` 与现有 mock 网关测试全绿；桌面端完整回归（库切换、搜索、缩略图、VL、任务队列）。
 - **回滚**：按模块提交，可逐个 revert；C 类与未迁移模块完全不动。
+
+**批次 1（基础设施 + 浏览闭环）· 已完成**（6 提交 `dd2bb08f`…`723a91bf`，已推送）：
+- **`EventSink`**（`t_events.rs`）：进程级 `OnceLock<Arc<dyn EventSink>>` + 20 个事件名常量；43 个核心 emit 点位改 `t_events::emit`（`t_menu` 的 3 个 `WebviewWindow` 事件留壳）；桌面壳装 `TauriEventSink`。事件名/载荷逐字不变。
+- **`PathsConfig`**（`t_paths.rs`）：把 9 处 `app.path()` 解析（models/ffmpeg/video cache）改由壳一次性 pin。**注意**：Tauri 的 `app_cache_dir()` 无 `.debug` 后缀、`t_config::get_app_cache_dir()` 有，故必须**逐字沿用壳的解析结果**、不可在 `t_paths` 重算（已在代码注释与提交信息记录）。
+- **`t_rt`**：自持一个进程级 tokio runtime，替代 `tauri::async_runtime` 的 76 处（61 spawn_blocking / 11 spawn / 4 block_on）。语义必须对齐——Tauri 用的是**独立** runtime，故 `spawn` 可从 `std::thread` 调、`block_on` 可嵌套；朴素 `tokio::spawn`/`Handle::block_on` 会 panic。
+- **命令体**：`t_cmds` 216 条里 **188 条本就是纯函数**；本轮清掉缩略图三命令（`get_file_thumb`/`_by_id`/`get_file_thumbs`）链路上已死的 `AppHandle`。浏览闭环的读取命令已无 Tauri 注入，**状态注册表本轮未引入**（重活/管理面才需要，留后续批）。
+- **边界守卫**（`t_paths.rs` 测试）：26 个已迁移模块 `include_str!` 扫描「不得出现 `tauri::`」（剥注释）；**已验证非空转**（注入 `tauri::AppHandle` 即红）。
+- **顺带修复**：`metadata::xmp` 的 `new_scan_rebuilds_index_without_directory_timestamp` 是**既有**并发 flake（phase-1 HEAD 实测 4/10 失败、串行 6/6 绿），根因=进程级 `SIDECAR_REVISION` 被兄弟模块测试并发 bump；加测试专用锁修掉（`5bf3a233`）。
+- **验收证据**：`cargo test --bin Lap` **568/0/9**（561 基线 + 7 新测试），连续 8 轮全绿；便携版重建（subsystem=2、sha256 `8a2ac3c1…0c26a7`）冒烟 OK；真库 v18 / debug v28 integrity=ok。
+- **未做**：写入面与重活面的 `State<T>` 迁移、`t_cmds` 巨石按领域拆分——留阶段 2 后续批。
+
 
 ### 阶段 3 · 打包 `lap-core` + `lapd`（1–1.5 周）
 
