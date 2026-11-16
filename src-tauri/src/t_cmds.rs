@@ -24,6 +24,7 @@ use crate::t_sqlite::{
 };
 use crate::t_storage;
 use crate::t_utils;
+use crate::t_write;
 use crate::{t_ai, t_common, t_sqlite};
 
 use serde::{Deserialize, Serialize};
@@ -617,7 +618,7 @@ pub async fn check_album_accessibility(album_id: i64) -> Result<bool, String> {
 /// recount files for an album and return updated album
 #[tauri::command]
 pub fn recount_album(album_id: i64) -> Result<Album, String> {
-    Album::recount_album(album_id).map_err(|e| format!("Error while recounting album: {}", e))
+    t_write::recount_album(album_id)
 }
 
 #[tauri::command]
@@ -637,6 +638,8 @@ pub fn add_album(
     small_image_filter: i64,
     excluded_folders: Vec<String>,
 ) -> Result<Album, String> {
+    // Authorizing the directory with the platform's filesystem scope is a
+    // desktop-shell concern; the album itself is written by the core.
     t_utils::authorize_directory_scope(&app_handle, folder_path).map_err(|e| {
         format!(
             "Error while authorizing album folder '{}': {}",
@@ -644,20 +647,14 @@ pub fn add_album(
         )
     })?;
 
-    let album = Album::add_album_to_db(folder_path)?;
-    let id = album.id.ok_or("New album has no id")?;
-    if let Err(error) = Album::edit(
-        id,
+    t_write::add_album(
+        folder_path,
         &name,
         &description,
         file_types,
         small_image_filter,
         &excluded_folders,
-    ) {
-        let _ = Album::delete_from_db(id);
-        return Err(error);
-    }
-    Album::get_album_by_id(id)
+    )
 }
 
 /// edit an album
@@ -670,33 +667,15 @@ pub async fn edit_album(
     small_image_filter: i64,
     excluded_folders: Vec<String>,
 ) -> Result<usize, String> {
-    // Block new scans/syncs, then finish cancellation before changing the scope
-    // used by the running scan's sweep.
-    let old = Album::get_album_by_id(id)?;
-    let scope_changed = old.file_types != file_types
-        || old.excluded_folders != excluded_folders
-        || old.small_image_filter != small_image_filter;
-    let _scope_guard = scope_changed.then(|| t_utils::AlbumRemovalGuard::acquire(id));
-    if scope_changed {
-        crate::t_state::index_cancellation()
-            .0
-            .lock()
-            .unwrap()
-            .insert(id, true);
-        t_utils::wait_for_album_scan_end(id).await?;
-    }
-    let lock = t_utils::album_sync_lock(id);
-    let _guard = lock
-        .lock()
-        .map_err(|_| "Album sync lock poisoned".to_string())?;
-    Album::edit(
+    t_write::edit_album(
         id,
-        &name,
-        &description,
+        name,
+        description,
         file_types,
         small_image_filter,
-        &excluded_folders,
+        excluded_folders,
     )
+    .await
 }
 
 #[tauri::command]
@@ -719,44 +698,18 @@ pub async fn list_album_subfolders(path: String) -> Result<Vec<String>, String> 
 /// remove an album
 #[tauri::command]
 pub async fn remove_album(id: i64) -> Result<usize, String> {
-    let _removal_guard = t_utils::AlbumRemovalGuard::acquire(id);
-    crate::t_state::index_cancellation()
-        .0
-        .lock()
-        .unwrap()
-        .insert(id, true);
-    t_utils::wait_for_album_scan_end(id).await?;
-
-    let result = {
-        let album_sync_lock = t_utils::album_sync_lock(id);
-        let _album_sync_guard = album_sync_lock
-            .lock()
-            .map_err(|_| format!("Album sync lock poisoned: {}", id))?;
-        Album::delete_from_db(id)
-            .map_err(|e| format!("Error while removing album with id {}: {}", id, e))?
-    };
-    t_utils::release_album_sync_lock(id);
-
-    let library_id = crate::t_config::load_app_config()
-        .map(|c| c.current_library_id)
-        .unwrap_or_else(|_| "default".to_string());
-    if let Err(error) = crate::t_cache_storage::remove_album_cache(&library_id, id) {
-        eprintln!("Album {id} was removed, but its thumbnail cache could not be cleaned: {error}");
-    }
-
-    Ok(result)
+    t_write::remove_album(id).await
 }
 
 #[tauri::command]
 pub fn reorder_albums(items: Vec<AlbumDisplayOrder>) -> Result<usize, String> {
-    Album::reorder_display_order(items).map_err(|e| format!("Error while reordering albums: {}", e))
+    t_write::reorder_albums(items)
 }
 
 /// set album cover
 #[tauri::command]
 pub fn set_album_cover(id: i64, file_id: i64) -> Result<usize, String> {
-    Album::update_column(id, "cover_file_id", &file_id)
-        .map_err(|e| format!("Error while setting album cover: {}", e))
+    t_write::set_album_cover(id, file_id)
 }
 
 /// index album
@@ -1699,46 +1652,30 @@ pub fn get_collection_counts() -> Result<HashMap<i64, i64>, String> {
 
 #[tauri::command]
 pub fn create_collection(name: &str) -> Result<ACollection, String> {
-    ACollection::create(name).map_err(|e| format!("Error while creating collection: {}", e))
+    t_write::create_collection(name)
 }
 
 #[tauri::command]
 pub fn rename_collection(id: i64, name: &str) -> Result<usize, String> {
-    ACollection::rename(id, name).map_err(|e| format!("Error while renaming collection: {}", e))
+    t_write::rename_collection(id, name)
 }
 
 #[tauri::command]
 pub fn delete_collection(id: i64) -> Result<usize, String> {
-    ACollection::delete(id).map_err(|e| format!("Error while deleting collection: {}", e))
+    t_write::delete_collection(id)
 }
 
 #[tauri::command]
 pub fn reorder_collections(items: Vec<ACollectionOrder>) -> Result<usize, String> {
-    ACollection::reorder(items).map_err(|e| format!("Error while reordering collections: {}", e))
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CollectionAddResult {
-    pub added: usize,
-    pub skipped: usize,
-    pub added_file_ids: Vec<i64>,
-    pub skipped_file_ids: Vec<i64>,
+    t_write::reorder_collections(items)
 }
 
 #[tauri::command]
 pub fn add_files_to_collection(
     collection_id: i64,
     file_ids: Vec<i64>,
-) -> Result<CollectionAddResult, String> {
-    ACollection::add_files(collection_id, file_ids)
-        .map(|(added_file_ids, skipped_file_ids)| CollectionAddResult {
-            added: added_file_ids.len(),
-            skipped: skipped_file_ids.len(),
-            added_file_ids,
-            skipped_file_ids,
-        })
-        .map_err(|e| format!("Error while adding files to collection: {}", e))
+) -> Result<t_write::CollectionAddResult, String> {
+    t_write::add_files_to_collection(collection_id, file_ids)
 }
 
 #[tauri::command]
@@ -1746,8 +1683,7 @@ pub fn remove_files_from_collection(
     collection_id: i64,
     file_ids: Vec<i64>,
 ) -> Result<usize, String> {
-    ACollection::remove_files(collection_id, file_ids)
-        .map_err(|e| format!("Error while removing files from collection: {}", e))
+    t_write::remove_files_from_collection(collection_id, file_ids)
 }
 
 #[tauri::command]
@@ -1760,7 +1696,7 @@ pub fn get_collection_selection_counts(
 
 #[tauri::command]
 pub fn clear_collection(collection_id: i64) -> Result<usize, String> {
-    ACollection::clear(collection_id).map_err(|e| format!("Error while clearing collection: {}", e))
+    t_write::clear_collection(collection_id)
 }
 
 #[tauri::command]
@@ -3797,8 +3733,7 @@ pub fn get_folder_favorite(folder_path: &str) -> Result<bool, String> {
 /// set a folder's favorite status (true or false)
 #[tauri::command]
 pub fn set_folder_favorite(folder_id: i64, is_favorite: bool) -> Result<usize, String> {
-    AFolder::update_column(folder_id, "is_favorite", &is_favorite)
-        .map_err(|e| format!("Error while setting folder favorite: {}", e))
+    t_write::set_folder_favorite(folder_id, is_favorite)
 }
 
 /// get a folder's search exclusion status (true or false)
@@ -3820,60 +3755,32 @@ pub fn set_folder_search_excluded(
     folder_path: &str,
     is_excluded: bool,
 ) -> Result<usize, String> {
-    let folder = AFolder::add_to_db(album_id, folder_path)
-        .map_err(|e| format!("Error while ensuring folder in DB: {}", e))?;
-    let folder_id = folder
-        .id
-        .ok_or_else(|| "Folder was saved without an id".to_string())?;
-    AFolder::update_column(folder_id, "is_excluded_from_search", &is_excluded)
-        .map_err(|e| format!("Error while setting folder search exclusion: {}", e))
+    t_write::set_folder_search_excluded(album_id, folder_path, is_excluded)
 }
 
 /// set a file's favorite status (true or false)
 #[tauri::command]
 pub fn set_file_favorite(file_id: i64, is_favorite: bool) -> Result<usize, String> {
-    AFile::update_column(file_id, "is_favorite", &is_favorite)
-        .map_err(|e| format!("Error while setting file favorite: {}", e))
+    t_write::set_file_favorite(file_id, is_favorite)
 }
 
 /// set a file's rating (0-5)
 #[tauri::command]
 pub fn set_file_rating(file_id: i64, rating: i32) -> Result<usize, String> {
-    let clamped = rating.clamp(0, 5);
-    AFile::update_column(file_id, "rating", &clamped)
-        .map_err(|e| format!("Error while setting file rating: {}", e))
+    t_write::set_file_rating(file_id, rating)
 }
 
 /// Set a file's culling status (0: unreviewed, 1: pick, 2: reject).
 #[tauri::command]
 pub fn set_file_culling_flag(file_id: i64, culling_flag: i32) -> Result<usize, String> {
-    let clamped = culling_flag.clamp(0, 2);
-    AFile::update_column(file_id, "culling_flag", &clamped)
-        .map_err(|e| format!("Error while setting file culling flag: {}", e))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BatchFileMetadataUpdate {
-    pub file_ids: Vec<i64>,
-    pub is_favorite: Option<bool>,
-    pub rating: Option<i32>,
-    pub culling_flag: Option<i32>,
-    pub rotate_delta: Option<i32>,
-    pub comment: Option<String>,
+    t_write::set_file_culling_flag(file_id, culling_flag)
 }
 
 #[tauri::command]
-pub fn batch_update_file_metadata(params: BatchFileMetadataUpdate) -> Result<usize, String> {
-    AFile::batch_update_metadata(
-        &params.file_ids,
-        params.is_favorite,
-        params.rating,
-        params.culling_flag,
-        params.rotate_delta,
-        params.comment.as_deref(),
-    )
-    .map_err(|e| format!("Error while updating file metadata: {}", e))
+pub fn batch_update_file_metadata(
+    params: t_write::BatchFileMetadataUpdate,
+) -> Result<usize, String> {
+    t_write::batch_update_file_metadata(params)
 }
 
 // xmp
@@ -3924,7 +3831,7 @@ pub fn get_tag_subtree_info(tag_id: i64) -> Result<crate::t_tags::SubtreeInfo, S
 
 #[tauri::command]
 pub fn move_tag(tag_id: i64, parent_id: Option<i64>) -> Result<(), String> {
-    ATag::move_tag(tag_id, parent_id)
+    t_write::move_tag(tag_id, parent_id)
 }
 
 /// get all tags
@@ -3947,19 +3854,19 @@ pub fn get_tag_name(tag_id: i64) -> Result<String, String> {
 /// create a new tag
 #[tauri::command]
 pub fn create_tag(name: &str, parent_id: Option<i64>) -> Result<ATag, String> {
-    ATag::add(name, parent_id).map_err(|e| format!("Error while creating tag: {}", e))
+    t_write::create_tag(name, parent_id)
 }
 
 /// rename a tag
 #[tauri::command]
 pub fn rename_tag(tag_id: i64, new_name: &str) -> Result<usize, String> {
-    ATag::rename(tag_id, new_name).map_err(|e| format!("Error while renaming tag: {}", e))
+    t_write::rename_tag(tag_id, new_name)
 }
 
 /// delete a tag
 #[tauri::command]
 pub fn delete_tag(tag_id: i64) -> Result<usize, String> {
-    ATag::delete(tag_id).map_err(|e| format!("Error while deleting tag: {}", e))
+    t_write::delete_tag(tag_id)
 }
 
 /// get all tags for a specific file
@@ -3972,15 +3879,13 @@ pub fn get_tags_for_file(file_id: i64) -> Result<Vec<ATag>, String> {
 /// add a tag to a file
 #[tauri::command]
 pub fn add_tag_to_file(file_id: i64, tag_id: i64) -> Result<(), String> {
-    ATag::add_tag_to_file(file_id, tag_id)
-        .map_err(|e| format!("Error while adding tag to file: {}", e))
+    t_write::add_tag_to_file(file_id, tag_id)
 }
 
 /// remove a tag from a file
 #[tauri::command]
 pub fn remove_tag_from_file(file_id: i64, tag_id: i64) -> Result<usize, String> {
-    ATag::remove_tag_from_file(file_id, tag_id)
-        .map_err(|e| format!("Error while removing tag from file: {}", e))
+    t_write::remove_tag_from_file(file_id, tag_id)
 }
 
 #[tauri::command]
@@ -3995,8 +3900,7 @@ pub fn apply_tags_to_files(
     add_tag_ids: Vec<i64>,
     remove_tag_ids: Vec<i64>,
 ) -> Result<Vec<ATagFileState>, String> {
-    ATag::apply_to_files(&file_ids, &add_tag_ids, &remove_tag_ids)
-        .map_err(|e| format!("Error while applying tags to files: {}", e))
+    t_write::apply_tags_to_files(file_ids, add_tag_ids, remove_tag_ids)
 }
 
 // calendar

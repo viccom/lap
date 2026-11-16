@@ -118,10 +118,12 @@ mod tests {
         "t_paths.rs",
         "t_raw_display.rs",
         "t_rt.rs",
+        "t_state.rs",
         "t_storage.rs",
         "t_tags.rs",
         "t_vl_protocol.rs",
         "t_vl_tags.rs",
+        "t_write.rs",
     ];
 
     /// The exact sources, in the same order as `TAURI_FREE_MODULES`.
@@ -149,10 +151,12 @@ mod tests {
         include_str!("t_paths.rs"),
         include_str!("t_raw_display.rs"),
         include_str!("t_rt.rs"),
+        include_str!("t_state.rs"),
         include_str!("t_storage.rs"),
         include_str!("t_tags.rs"),
         include_str!("t_vl_protocol.rs"),
         include_str!("t_vl_tags.rs"),
+        include_str!("t_write.rs"),
     ];
 
     /// The boundary guard from the serverization plan (§2): a module that has
