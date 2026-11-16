@@ -214,7 +214,7 @@
 
 import { isOriginalStorageUnavailable, isOriginalUnavailable, setAlbumAccessibility, resetFileAccessibility } from '@/common/availability';
 import { ref, watch, computed, onMounted, onUnmounted, reactive } from 'vue';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getCurrentWebviewWindow } from '@/common/transport/window.js';
 import { emit, listen } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';

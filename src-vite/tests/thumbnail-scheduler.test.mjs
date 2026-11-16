@@ -373,9 +373,11 @@ test('thumbnail decoding failures request one repair for protocol and base64 cac
     const calls = [];
     const thumbnailSrc = { value: src };
     const build = new Function('thumbnailSrc', 'getThumbUrl', 'props', 'config', 'isThumbnailLoaded',
+      'transportMode', 'signedAssetUrl',
       `let thumbnailRetryCount = 0; ${source.slice(start, end)}; return retryThumbnail;`);
     const retry = build(thumbnailSrc, (...args) => { calls.push(args); return 'thumb://localhost/lib/1?t=123'; },
-      { file: { id: 1, modified_at: 2 } }, { settings: { thumbnailSize: 512 } }, { value: true });
+      { file: { id: 1, modified_at: 2 } }, { settings: { thumbnailSize: 512 } }, { value: true },
+      'tauri', async (u) => u);
     retry(); retry();
     assert.equal(calls.length, 1);
     assert.match(thumbnailSrc.value, /repair=true/);

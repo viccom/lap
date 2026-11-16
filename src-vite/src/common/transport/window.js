@@ -22,7 +22,8 @@ class BrowserWindowStub {
   label = 'main';
   async show() {}
   async hide() {}
-  async close() {}
+  async close() { window.close(); } // browsers ignore scripted close on non-opener tabs
+  async setFocus() { window.focus(); }
   async listen() { return () => {}; }
   async onCloseRequested() { return () => {}; }
   async setSize() {}
@@ -30,6 +31,18 @@ class BrowserWindowStub {
   async minimize() {}
   async toggleMaximize() {}
   async startDragging() {}
+  // Fullscreen maps to the browser Fullscreen API (phase 4).
+  async isFullscreen() { return Boolean(document.fullscreenElement); }
+  async setFullscreen(on) {
+    try {
+      if (on && !document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else if (!on && document.fullscreenElement) await document.exitFullscreen();
+    } catch { /* user gesture / policy may refuse */ }
+  }
+  async isMaximized() { return false; }
+  async setResizable() {}
+  async maximize() {}
+  async unmaximize() {}
 }
 
 let cached = null;

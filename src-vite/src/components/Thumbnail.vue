@@ -247,6 +247,7 @@ import ContextMenu from '@/components/ContextMenu.vue';
 import { isOriginalUnavailable } from '@/common/availability';
 import { isCloudOnlyFile } from '@/common/api';
 import { useFileMenuItems } from '@/common/fileMenu';
+import { transportMode, signedAssetUrl } from '@/common/transport';
 
 import { 
   IconMore,
@@ -365,6 +366,16 @@ watch(
     thumbnailSrc.value = String(src || '');
     isThumbnailLoaded.value = false;
     thumbnailRetryCount = 0;
+    // Web client (phase 4): lapd requires an HMAC signature on media URLs.
+    // getThumbUrl yields the raw path; mint it here and swap the src so the
+    // <img> reloads with the signed URL. Desktop keeps its custom-scheme URL.
+    if (transportMode === 'http' && thumbnailSrc.value.startsWith('/api/thumb/')) {
+      void signedAssetUrl(thumbnailSrc.value).then((signed) => {
+        if (signed && thumbnailSrc.value.startsWith('/api/thumb/')) {
+          thumbnailSrc.value = signed;
+        }
+      }).catch(() => { /* keep the raw URL; the img error path handles it */ });
+    }
   },
   { immediate: true },
 );
@@ -384,7 +395,12 @@ function retryThumbnail() {
   thumbnailRetryCount++;
   isThumbnailLoaded.value = false;
   const retryUrl = getThumbUrl(props.file.id, true, config.settings.thumbnailSize, Number(props.file.modified_at || 0));
-  thumbnailSrc.value = `${retryUrl}${retryUrl.includes('?') ? '&' : '?'}repair=true`;
+  const withRepair = `${retryUrl}${retryUrl.includes('?') ? '&' : '?'}repair=true`;
+  if (transportMode === 'http') {
+    void signedAssetUrl(withRepair).then((signed) => { if (signed) thumbnailSrc.value = signed; }).catch(() => {});
+  } else {
+    thumbnailSrc.value = withRepair;
+  }
 }
 
 // Robust ResizeObserver setup using watch to handle v-if

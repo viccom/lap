@@ -152,8 +152,12 @@ export function createHttpTransport({
   // The signature binds path+query+device; mint in batches of ≤50 and refresh
   // before the 600s TTL. Raw->signed map keeps callers' URLs unchanged.
   const SIGN_TTL_MS = 9 * 60 * 1000; // mint at 9min, before the 10min expiry
+  const SIGN_BATCH = 50; // server cap per /api/media/sign request
   const signedCache = new Map(); // rawUrl -> { url, expiresAt }
-  let signInFlight = null;
+  // Microtask-batched queue: every signedAssetUrl call in the same tick is
+  // collected and minted together (a grid mounts dozens of thumbnails at once).
+  let pendingRaw = new Set();
+  let flushPromise = null;
 
   async function signBatch(rawUrls) {
     const res = await fetchImpl(`${baseUrl}/api/media/sign`, {
@@ -177,22 +181,39 @@ export function createHttpTransport({
     });
   }
 
-  function queueSign(raw) {
-    // Coalesce concurrent mints into one request.
-    if (signInFlight) return signInFlight;
-    const pending = [...new Set([...signedCache.keys(), raw].filter(
-      (u) => !signedCache.get(u) || signedCache.get(u).expiresAt <= Date.now(),
-    ))];
-    if (!pending.length) return Promise.resolve();
-    signInFlight = signBatch(pending).finally(() => { signInFlight = null; });
-    return signInFlight;
+  async function flushSignQueue() {
+    while (pendingRaw.size) {
+      const batch = [...pendingRaw].slice(0, SIGN_BATCH);
+      batch.forEach((u) => pendingRaw.delete(u));
+      try {
+        await signBatch(batch);
+      } catch {
+        // Failed URLs stay uncached; a later call retries them.
+      }
+    }
+  }
+
+  function scheduleFlush() {
+    if (!flushPromise) {
+      // Defer one microtask so all same-tick callers join the first batch.
+      flushPromise = Promise.resolve().then(flushSignQueue).finally(() => {
+        flushPromise = null;
+        // URLs added while the last batch was in flight need another pass.
+        if (pendingRaw.size) scheduleFlush();
+      });
+    }
+    return flushPromise;
   }
 
   async function signedAssetUrl(raw) {
     if (!raw) return '';
     const cached = signedCache.get(raw);
     if (cached && cached.expiresAt > Date.now()) return cached.url;
-    await queueSign(raw);
+    pendingRaw.add(raw);
+    // scheduleFlush returns a promise covering all batches queued up to and
+    // including this URL; once it resolves the cache has our entry (or the
+    // request failed, in which case we return '' and the img error path shows).
+    await scheduleFlush();
     return signedCache.get(raw)?.url ?? '';
   }
 

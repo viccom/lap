@@ -7,6 +7,7 @@
     "dev": "vite --config vite.config.js",
     "dev:clean": "vite --config vite.config.js --force",
     "build": "vite build",
+    "build:http": "node scripts/build-web.mjs",
     "test:xmp": "node --test tests/xmpWriteback.test.mjs tests/cloudFileRefresh.test.mjs",
     "test:drop": "node --experimental-vm-modules --test tests/external-drop.test.mjs tests/external-drag.test.mjs",
     "test:startup": "node --experimental-vm-modules --test tests/startup.test.mjs",

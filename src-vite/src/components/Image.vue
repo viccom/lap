@@ -195,7 +195,7 @@
 
 <script setup lang="ts">
 import { ref, shallowRef, triggerRef, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
-import { invoke } from '@/common/transport';
+import { invoke, transportMode, signedAssetUrl } from '@/common/transport';
 import { useUIStore } from '@/stores/uiStore';
 import { config, libConfig } from '@/common/config';
 import { SIDEBAR, GESTURE_LOCK_THRESHOLD, HORIZONTAL_NAV_THRESHOLD, MOUSE_DRAG_NAV_THRESHOLD } from '@/common/constants';
@@ -788,7 +788,10 @@ function loadImageResource(filePath?: string) {
     return cached;
   }
 
-  const loadPromise = new Promise<{ src: string; naturalWidth: number; naturalHeight: number }>((resolve, reject) => {
+  // async executor is intentional: Web media URLs need an awaited HMAC
+  // signature before img.src assignment (phase 4). resolve/reject still gate
+  // the cached promise correctly.
+  const loadPromise = new Promise<{ src: string; naturalWidth: number; naturalHeight: number }>(async (resolve, reject) => {
     let src = '';
 
     const img = new Image();
@@ -829,6 +832,9 @@ function loadImageResource(filePath?: string) {
         reject(new Error(`Failed to resolve RAW/TIFF preview source: ${filePath}`));
         return;
       }
+      if (transportMode === 'http') {
+        try { src = await signedAssetUrl(src); } catch { /* keep raw; img.onerror handles it */ }
+      }
       img.src = src;
       return;
     }
@@ -839,6 +845,24 @@ function loadImageResource(filePath?: string) {
       preloadCache.delete(filePath);
       reject(error);
       return;
+    }
+
+    // Web client (phase 4): arbitrary file paths have no browser endpoint.
+    // lapd serves originals strictly by DB file_id with an HMAC signature.
+    if (transportMode === 'http') {
+      if (!props.fileId) {
+        preloadCache.delete(filePath);
+        reject(new Error('No file_id for Web original'));
+        return;
+      }
+      const raw = `/api/original/${props.fileId}${props.fileVersion > 0 ? `?v=${props.fileVersion}` : ''}`;
+      try {
+        src = await signedAssetUrl(raw);
+      } catch (e) {
+        preloadCache.delete(filePath);
+        reject(e);
+        return;
+      }
     }
 
     if (!src) {

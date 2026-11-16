@@ -196,6 +196,24 @@ test('http transport: signedAssetUrl mints via /api/media/sign and caches', asyn
   assert.deepEqual(calls[0].body.urls, ['/api/thumb/default/1?size=256']);
 });
 
+test('http transport: concurrent signedAssetUrl calls coalesce into one batch', async () => {
+  const batches = [];
+  const t = createHttpTransport({
+    fetchImpl: async (_url, opts) => {
+      const urls = JSON.parse(opts.body).urls;
+      batches.push(urls);
+      return { ok: true, status: 200, json: async () => ({ urls: urls.map(u => `${u}&sig=s&dev=1`) }) };
+    },
+  });
+  const raws = Array.from({ length: 8 }, (_, i) => `/api/thumb/default/${i}`);
+  const signed = await Promise.all(raws.map((u) => t.signedAssetUrl(u)));
+  assert.equal(signed.length, 8);
+  assert.ok(signed.every((u) => u.includes('sig=s')));
+  // All 8 landed in a single /api/media/sign request.
+  assert.equal(batches.length, 1);
+  assert.equal(batches[0].length, 8);
+});
+
 test('migrated files import the transport seam, not @tauri-apps core/event', () => {
   // Guard: a file that still imports core/event directly would keep calling
   // Tauri under VITE_LAP_TRANSPORT=http, defeating the phase-1 contract.
