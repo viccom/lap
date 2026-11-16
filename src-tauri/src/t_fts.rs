@@ -742,7 +742,7 @@ fn search_exclusion_available(conn: &Connection) -> Result<bool, String> {
 /// on the window thread a synchronous command would use.
 #[tauri::command]
 pub async fn search_fts(query: String, limit: Option<i64>) -> Result<Vec<FtsHit>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let conn = crate::t_sqlite::open_conn()?;
         search(&conn, &query, limit.unwrap_or(FTS_DEFAULT_LIMIT))
     })
@@ -755,7 +755,7 @@ pub async fn search_fts(query: String, limit: Option<i64>) -> Result<Vec<FtsHit>
 /// UI thread.
 #[tauri::command]
 pub async fn fts_reindex() -> Result<usize, String> {
-    tauri::async_runtime::spawn_blocking(reindex_all)
+    crate::t_rt::spawn_blocking(reindex_all)
         .await
         .map_err(|e| format!("FTS reindex task failed: {e}"))?
 }

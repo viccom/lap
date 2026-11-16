@@ -740,7 +740,7 @@ pub fn embed_status() -> Result<EmbedStatusView, String> {
 /// window thread a synchronous command runs on.
 #[tauri::command]
 pub async fn rebuild_caption_embeds() -> Result<(usize, usize), String> {
-    tauri::async_runtime::spawn_blocking(rebuild_caption_embeds_blocking)
+    crate::t_rt::spawn_blocking(rebuild_caption_embeds_blocking)
         .await
         .map_err(|e| format!("the rebuild task failed: {e}"))?
 }
@@ -769,7 +769,7 @@ pub async fn search_captions(
     threshold: Option<f32>,
     limit: Option<i64>,
 ) -> Result<Vec<CaptionHit>, String> {
-    tauri::async_runtime::spawn_blocking(move || search_captions_blocking(query, threshold, limit))
+    crate::t_rt::spawn_blocking(move || search_captions_blocking(query, threshold, limit))
         .await
         .map_err(|e| format!("the search task failed: {e}"))?
 }

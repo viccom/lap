@@ -122,7 +122,7 @@ pub fn finish_startup(app: AppHandle, model: i64) {
         return;
     }
     let library_id = crate::t_config::current_library_id().ok();
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         // A missing optional multilingual pack should not prevent vision indexing.
         let model = if model == 1 && !t_ai::AiEngine::is_multilingual_model_available() {
             0

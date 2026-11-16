@@ -124,7 +124,7 @@ pub async fn start_file_drag(
         .send(format!("Preparing:{request_id}"))
         .map_err(|e| e.to_string())?;
     let preview = normalize_drag_preview(&preview)?;
-    let paths = tauri::async_runtime::spawn_blocking(move || validate_paths(paths))
+    let paths = crate::t_rt::spawn_blocking(move || validate_paths(paths))
         .await
         .map_err(|e| e.to_string())??;
     let (tx, rx) = tokio::sync::oneshot::channel();

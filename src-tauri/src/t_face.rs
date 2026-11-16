@@ -883,7 +883,7 @@ pub fn run_face_indexing(
         progress.phase = "indexing".to_string();
     }
 
-    tauri::async_runtime::spawn(async move {
+    crate::t_rt::spawn(async move {
         // 1. Initialization
         let reset_status = || {
             if let Ok(mut running) = status_token.lock() {

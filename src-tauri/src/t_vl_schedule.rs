@@ -77,7 +77,7 @@ pub fn task_is_expired(date: &str, now_date: &str) -> bool {
 pub fn spawn_scheduler(app_handle: tauri::AppHandle) {
     let state: tauri::State<'_, VlState> = app_handle.state();
     let state = state.inner().clone();
-    tauri::async_runtime::spawn(async move {
+    crate::t_rt::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(TICK_SECS)).await;
             if let Err(e) = run_due_tasks(&app_handle, &state) {

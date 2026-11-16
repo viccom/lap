@@ -19,7 +19,7 @@ pub struct AfArea {
 
 #[tauri::command]
 pub async fn get_af_areas(file_path: String) -> Result<Vec<AfArea>, String> {
-    tauri::async_runtime::spawn_blocking(move || read(&file_path))
+    crate::t_rt::spawn_blocking(move || read(&file_path))
         .await
         .map_err(|e| e.to_string())
 }

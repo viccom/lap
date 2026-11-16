@@ -294,7 +294,7 @@ pub fn get_thumbnail_cache_location() -> Result<crate::t_cache_storage::CacheLoc
 #[tauri::command]
 pub async fn get_thumbnail_cache_migration_count()
 -> Result<u64, crate::t_cache_storage::CacheChangeError> {
-    tauri::async_runtime::spawn_blocking(crate::t_cache_storage::migration_file_count)
+    crate::t_rt::spawn_blocking(crate::t_cache_storage::migration_file_count)
         .await
         .map_err(|e| e.to_string())?
 }
@@ -309,7 +309,7 @@ pub async fn change_thumbnail_cache_location(
 ) -> Result<crate::t_cache_storage::CacheChangeResult, crate::t_cache_storage::CacheChangeError> {
     ensure_db_storage_change_allowed(&status_state)?;
     let operation = crate::t_cache_storage::MigrationOperation::begin(operation_id)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let _guard = cache_migration_library_guard(&operation.cancellation)?;
         crate::t_cache_storage::change(
             new_dir,
@@ -390,7 +390,7 @@ pub async fn change_db_storage_dir(
     status_state: State<'_, t_face::FaceIndexingStatus>,
 ) -> Result<t_storage::DbStorageChangeResult, String> {
     ensure_db_storage_change_allowed(&status_state)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let _guard = FILE_REFRESH_LIBRARY_LOCK
             .write()
             .map_err(|e| e.to_string())?;
@@ -409,7 +409,7 @@ pub async fn reset_db_storage_dir(
     status_state: State<'_, t_face::FaceIndexingStatus>,
 ) -> Result<t_storage::DbStorageChangeResult, String> {
     ensure_db_storage_change_allowed(&status_state)?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let _guard = FILE_REFRESH_LIBRARY_LOCK
             .write()
             .map_err(|e| e.to_string())?;
@@ -471,7 +471,7 @@ pub async fn remove_library(
             "该图库还有正在运行的图片理解任务（{run_id}），请先取消或等待其完成"
         ));
     }
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let _guard = FILE_REFRESH_LIBRARY_LOCK
             .write()
             .map_err(|e| e.to_string())?;
@@ -493,7 +493,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
     // The blocking task reports whether the target library turned out to be corrupt, deciding from
     // create_db's returned error itself rather than re-reading the process-global flag afterwards
     // (which a concurrent switch could resolve against a different library).
-    let corrupted = tauri::async_runtime::spawn_blocking(move || -> Result<bool, String> {
+    let corrupted = crate::t_rt::spawn_blocking(move || -> Result<bool, String> {
         let _guard = FILE_REFRESH_LIBRARY_LOCK
             .write()
             .map_err(|e| e.to_string())?;
@@ -513,7 +513,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
         return Ok(());
     }
     t_utils::restore_album_scopes(&app_handle)?;
-    tauri::async_runtime::spawn_blocking(|| -> Result<(), String> {
+    crate::t_rt::spawn_blocking(|| -> Result<(), String> {
         let mut albums = Album::get_all_albums()
             .map_err(|e| format!("Error while checking albums after switching library: {}", e))?;
         t_utils::refresh_all_album_accessibility(&mut albums);
@@ -528,7 +528,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
 /// get library statistics
 #[tauri::command]
 pub async fn get_library_info(id: String) -> Result<LibraryInfo, String> {
-    tauri::async_runtime::spawn_blocking(move || t_config::get_library_info(&id))
+    crate::t_rt::spawn_blocking(move || t_config::get_library_info(&id))
         .await
         .map_err(|e| format!("Failed to join library info task: {}", e))?
 }
@@ -620,7 +620,7 @@ pub fn get_album(album_id: i64) -> Result<Album, String> {
 #[tauri::command]
 pub async fn check_album_accessibility(album_id: i64) -> Result<bool, String> {
     let library_id = t_config::current_library_id()?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let (mut album, generation) = with_current_library(&library_id, || {
             let album = Album::get_album_by_id(album_id)
                 .map_err(|e| format!("Error while checking album accessibility: {}", e))?;
@@ -721,7 +721,7 @@ pub async fn edit_album(
 
 #[tauri::command]
 pub async fn list_album_subfolders(path: String) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let mut names = Vec::new();
         for entry in std::fs::read_dir(path).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -790,7 +790,7 @@ pub fn index_album(
     state.0.lock().unwrap().insert(album_id, false);
     let cancellation_token = state.0.clone();
 
-    tauri::async_runtime::spawn(async move {
+    crate::t_rt::spawn(async move {
         if let Err(e) = t_utils::index_album_worker(
             &app_handle,
             cancellation_token,
@@ -913,7 +913,7 @@ pub async fn count_folder(
     excluded_folders: Option<Vec<String>>,
     small_image_filter: Option<i64>,
 ) -> Result<(u64, u64, u64, u64, u64, u64, u64), String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         if !t_utils::directory_accessible(&path) {
             return Err("Folder is unavailable".to_string());
         }
@@ -1682,7 +1682,7 @@ pub async fn get_query_file_ids(params: QueryParams) -> Result<Vec<i64>, String>
 pub async fn get_library_visible_counts(
     id: Option<String>,
 ) -> Result<t_sqlite::LibraryVisibleCounts, String> {
-    tauri::async_runtime::spawn_blocking(move || AFile::get_library_visible_counts(id.as_deref()))
+    crate::t_rt::spawn_blocking(move || AFile::get_library_visible_counts(id.as_deref()))
         .await
         .map_err(|e| format!("Failed to join library count task: {}", e))?
         .map_err(|e| format!("Error while getting library visible counts: {}", e))
@@ -1929,7 +1929,7 @@ pub async fn sync_album_folder_mtimes(
     group_raw_jpeg_pairs: bool,
 ) -> Result<crate::t_utils::FolderMtimeSyncResult, String> {
     let sync_app_handle = app_handle.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || {
+    let result = crate::t_rt::spawn_blocking(move || {
         crate::t_utils::sync_single_folder(
             &sync_app_handle,
             album_id,
@@ -1956,7 +1956,7 @@ pub async fn refresh_album_subfolders(
     album_id: i64,
     folder_path: String,
 ) -> Result<(), String> {
-    let migrations = tauri::async_runtime::spawn_blocking(move || {
+    let migrations = crate::t_rt::spawn_blocking(move || {
         t_utils::refresh_album_subfolders(album_id, &folder_path)
     })
     .await
@@ -2039,7 +2039,7 @@ pub async fn preview_batch_rename(
     file_ids: Vec<i64>,
     options: crate::t_batch_rename::RenameOptions,
 ) -> Result<crate::t_batch_rename::RenamePreview, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         with_current_library(&library_id, || {
             crate::t_batch_rename::preview(&file_ids, &options)
         })
@@ -2055,7 +2055,7 @@ pub async fn batch_rename_files(
     options: crate::t_batch_rename::RenameOptions,
     expected: Vec<crate::t_batch_rename::RenameItem>,
 ) -> Result<crate::t_batch_rename::RenamePreview, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         with_current_library(&library_id, || {
             crate::t_batch_rename::execute(&file_ids, &options, &expected)
         })
@@ -2452,7 +2452,7 @@ pub async fn import_file(
     library_id: Option<String>,
 ) -> Result<Option<AFile>, String> {
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         with_current_library(&library_id, || {
             // Validate the source is a supported type *before* copying.
             t_utils::get_file_type(&file_path)
@@ -2515,7 +2515,7 @@ pub fn import_and_organize(
         import.running = true;
     }
     let cancellation = state.0.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let result = t_utils::import_and_organize(
             album_id,
             &source_path,
@@ -2645,7 +2645,7 @@ async fn import_url_inner(
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
     let dest_folder = folder_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let new_path = original_name
             .and_then(|name| {
                 t_utils::save_downloaded_bytes_with_name(&bytes, &mime, &name, &dest_folder)
@@ -2740,7 +2740,7 @@ pub async fn import_file_bytes(
         return Err("Dropped file is empty".to_string());
     }
     let dest_folder = folder_path.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let new_path = t_utils::save_bytes_with_name(&bytes, &name, &dest_folder)
             .ok_or_else(|| "Failed to save dropped file".to_string())?;
         let file_type = t_utils::get_file_type(&new_path).ok_or_else(|| {
@@ -3058,7 +3058,7 @@ pub async fn batch_delete_files(
     files: Vec<BatchDeleteFile>,
     permanently: bool,
 ) -> Result<BatchDeleteResult, String> {
-    tauri::async_runtime::spawn_blocking(move || delete_files_grouped(files, permanently))
+    crate::t_rt::spawn_blocking(move || delete_files_grouped(files, permanently))
         .await
         .map_err(|e| format!("Failed to run batch delete: {}", e))?
 }
@@ -3213,7 +3213,7 @@ pub fn edit_file_comment(file_id: i64, comment: &str) -> Result<usize, String> {
 pub async fn clean_unused_thumbnail_cache(
     library_id: Option<String>,
 ) -> Result<t_sqlite::ThumbnailCacheCleanupResult, String> {
-    tauri::async_runtime::spawn_blocking(move || AThumb::clean_unused_cache(library_id.as_deref()))
+    crate::t_rt::spawn_blocking(move || AThumb::clean_unused_cache(library_id.as_deref()))
         .await
         .map_err(|e| format!("Failed to join clean thumbnail cache task: {}", e))?
 }
@@ -3321,7 +3321,7 @@ pub async fn get_file_thumbs(
     force_regenerate: bool,
 ) -> Result<Vec<Option<AThumb>>, String> {
     let library = t_config::current_library_id()?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         with_current_library(&library, || {
             let ids: Vec<_> = files
                 .iter()
@@ -3422,7 +3422,7 @@ pub async fn get_file_metadata_details(
     if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
         return Err("Metadata request cancelled".into());
     }
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         if cancelled.load(std::sync::atomic::Ordering::Relaxed) {
             return Err("Metadata request cancelled".into());
         }
@@ -3633,7 +3633,7 @@ pub async fn change_video_thumbnail(
         .acquire_owned()
         .await
         .map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         with_current_library(&library_id, || {
             let file = AFile::get_file_info(file_id)?.ok_or("File not found")?;
             if file.file_type != Some(2) {
@@ -3670,7 +3670,7 @@ pub async fn refresh_selected_file_info(
         .acquire_owned()
         .await
         .map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         with_current_library(&library_id, || {
             let _index = crate::metadata::xmp::refresh_index_scope(batch_id, &library_id)?;
             let size = thumbnail_size.unwrap_or(512).clamp(64, 2048);
@@ -3702,7 +3702,7 @@ pub async fn index_cloud_file(
     thumbnail_size: u32,
     raw_display_options: RawDisplayOptions,
 ) -> Result<Option<FileRefreshResult>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let _guard = FILE_REFRESH_LIBRARY_LOCK.read().map_err(|e| e.to_string())?;
         if t_config::current_library_id()? != library_id {
             return Err("Library changed".to_string());
@@ -3764,7 +3764,7 @@ pub fn check_file_exists(file_path: &str) -> bool {
 /// Live cloud-only check (the catalog's flag can be stale); reads attributes only.
 #[tauri::command]
 pub async fn is_cloud_only_file(file_path: String) -> bool {
-    tauri::async_runtime::spawn_blocking(move || t_utils::is_cloud_only_path(&file_path))
+    crate::t_rt::spawn_blocking(move || t_utils::is_cloud_only_path(&file_path))
         .await
         .unwrap_or(false)
 }
@@ -3772,7 +3772,7 @@ pub async fn is_cloud_only_file(file_path: String) -> bool {
 /// Check readability without decoding or modifying the original.
 #[tauri::command]
 pub async fn check_file_accessibility(file_path: String) -> bool {
-    tauri::async_runtime::spawn_blocking(move || t_utils::file_accessible(&file_path))
+    crate::t_rt::spawn_blocking(move || t_utils::file_accessible(&file_path))
         .await
         .unwrap_or(false)
 }
@@ -3919,7 +3919,7 @@ pub async fn save_xmp_metadata(
     library_id: String,
     file_ids: Vec<i64>,
 ) -> Result<crate::metadata::xmp::BatchResult, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let _guard = FILE_REFRESH_LIBRARY_LOCK
             .read()
             .map_err(|e| e.to_string())?;
@@ -4094,7 +4094,7 @@ pub fn check_ai_status(state: State<t_ai::AiState>) -> String {
 pub async fn get_image_search_model_status(
     app_handle: AppHandle,
 ) -> Result<t_ai::ImageSearchModelStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         let state = app_handle.state::<t_ai::AiState>();
         let ai_engine = state.0.lock().map_err(|e| e.to_string())?;
         Ok(ai_engine.model_status())
@@ -4108,7 +4108,7 @@ pub async fn set_image_search_model(
     app_handle: AppHandle,
     model: i64,
 ) -> Result<t_ai::ImageSearchModelStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         crate::t_startup::ensure_ai(&app_handle, Some(model))?;
         let state = app_handle.state::<t_ai::AiState>();
         let ai_engine = state.0.lock().map_err(|e| e.to_string())?;
@@ -4136,7 +4136,7 @@ pub async fn generate_embedding(
     library_id: Option<String>,
 ) -> Result<String, String> {
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         crate::t_startup::ensure_ai(&app_handle, None)?;
         with_current_library(&library_id, || {
             AFile::generate_embedding(&app_handle.state::<t_ai::AiState>(), file_id)
@@ -4154,7 +4154,7 @@ pub async fn search_similar_images(
     library_id: Option<String>,
 ) -> Result<Vec<AFile>, String> {
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         crate::t_startup::ensure_ai(&app_handle, None)?;
         with_current_library(&library_id, || {
             AFile::search_similar_images(&app_handle.state::<t_ai::AiState>(), params)
@@ -4409,7 +4409,7 @@ pub fn dedup_set_keep(
 pub async fn dedup_delete(
     request: crate::t_dedup::DedupDeleteRequest,
 ) -> Result<crate::t_dedup::DedupDeleteResult, String> {
-    tauri::async_runtime::spawn_blocking(move || crate::t_dedup::delete(request))
+    crate::t_rt::spawn_blocking(move || crate::t_dedup::delete(request))
         .await
         .map_err(|e| format!("Failed to run dedup delete: {}", e))?
 }

@@ -2485,7 +2485,7 @@ pub fn start_folder_mtime_sync(app_handle: tauri::AppHandle) {
         .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
         .wrapping_add(1);
 
-    tauri::async_runtime::spawn_blocking(move || match sync_dirty_folders_by_mtime(generation) {
+    crate::t_rt::spawn_blocking(move || match sync_dirty_folders_by_mtime(generation) {
         Ok((result, tasks)) => {
             if !sync_generation_valid(generation) {
                 return;
@@ -3290,7 +3290,7 @@ fn should_process_synced_file(file: &AFile, file_type: i64, threshold: i64) -> b
 }
 
 fn schedule_synced_file_processing(app_handle: tauri::AppHandle, task: SyncedFileTask) {
-    tauri::async_runtime::spawn(async move {
+    crate::t_rt::spawn(async move {
         if album_removal_pending(task.album_id) {
             return;
         }
@@ -3299,7 +3299,7 @@ fn schedule_synced_file_processing(app_handle: tauri::AppHandle, task: SyncedFil
         let orientation = task.orientation;
         let file_id = task.file_id;
         let album_id = task.album_id;
-        let thumb_result = tauri::async_runtime::spawn_blocking(move || {
+        let thumb_result = crate::t_rt::spawn_blocking(move || {
             let album_sync_lock = album_sync_lock(album_id);
             let _album_sync_guard = match album_sync_lock.lock() {
                 Ok(guard) => guard,
@@ -3346,7 +3346,7 @@ fn schedule_synced_file_processing(app_handle: tauri::AppHandle, task: SyncedFil
         let app_handle_for_embedding = app_handle.clone();
         let file_path = task.file_path.clone();
         let album_id = task.album_id;
-        let _ = tauri::async_runtime::spawn_blocking(move || {
+        let _ = crate::t_rt::spawn_blocking(move || {
             let album_sync_lock = album_sync_lock(album_id);
             let _album_sync_guard = match album_sync_lock.lock() {
                 Ok(guard) => guard,
@@ -4373,7 +4373,7 @@ async fn process_thumbnail_task(
         .await
         .map_err(|e| e.to_string())?;
     let task_for_thumb = task.clone();
-    let thumb_ok = tauri::async_runtime::spawn_blocking(move || {
+    let thumb_ok = crate::t_rt::spawn_blocking(move || {
         let generated = crate::t_cmds::with_current_library(&task_for_thumb.library_id, || {
             crate::t_sqlite::AThumb::refresh_file_and_thumbnail(
                 task_for_thumb.file_id,
@@ -4436,7 +4436,7 @@ async fn process_thumbnail_task(
     let app_handle_for_embedding = app_handle.clone();
     let file_id = task.file_id;
     let file_path = task.file_path.clone();
-    let embedding_ok = tauri::async_runtime::spawn_blocking(move || {
+    let embedding_ok = crate::t_rt::spawn_blocking(move || {
         if let Err(error) = crate::t_startup::ensure_ai(&app_handle_for_embedding, None) {
             eprintln!("Failed to initialize AI for embedding: {}", error);
             return false;

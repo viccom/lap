@@ -26,7 +26,7 @@ pub fn init_video_http_server() {
     }
 
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
-    tauri::async_runtime::spawn(async move {
+    crate::t_rt::spawn(async move {
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", 0)).await {
             Ok(listener) => listener,
             Err(_) => {
@@ -48,7 +48,7 @@ pub fn init_video_http_server() {
             let Ok((stream, _)) = listener.accept().await else {
                 continue;
             };
-            tauri::async_runtime::spawn(async move {
+            crate::t_rt::spawn(async move {
                 let _ = handle_video_http_connection(stream).await;
             });
         }

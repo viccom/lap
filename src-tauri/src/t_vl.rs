@@ -3603,7 +3603,7 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
     let run_id_for_supervisor = run_id.clone();
     let db_path_for_supervisor = db_path.clone();
 
-    let worker = tauri::async_runtime::spawn(async move {
+    let worker = crate::t_rt::spawn(async move {
         // The run left the queue; the UI now sees it as running.
         state.update_run(&run_id, |status| {
             status.state = "running".to_string();
@@ -3693,7 +3693,7 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
     });
 
     // The supervisor waits on the join handle with the clones it kept above.
-    tauri::async_runtime::spawn(async move {
+    crate::t_rt::spawn(async move {
         if let Err(join_error) = worker.await {
             let message = format!("理解任务异常终止: {join_error}");
             finish_run(

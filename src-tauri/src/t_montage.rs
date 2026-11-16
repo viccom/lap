@@ -413,7 +413,7 @@ pub async fn render_montage(params: MontageParams) -> Result<Option<String>, Str
             item.rotate,
             params.raw_display_options,
         );
-        let thumbnail = tauri::async_runtime::spawn_blocking(move || {
+        let thumbnail = crate::t_rt::spawn_blocking(move || {
             let bytes = crate::t_sqlite::AThumb::cached_montage_bytes(
                 file_id,
                 &path,
@@ -437,7 +437,7 @@ pub async fn render_montage(params: MontageParams) -> Result<Option<String>, Str
                 item.rotate,
             ),
         };
-        canvas = tauri::async_runtime::spawn_blocking(move || {
+        canvas = crate::t_rt::spawn_blocking(move || {
             draw_item(&mut canvas, img, &item, border_color, shadow)
                 .map_err(|e| format!("{}: {}", item.path, e))?;
             Ok::<RgbaImage, String>(canvas)
@@ -447,7 +447,7 @@ pub async fn render_montage(params: MontageParams) -> Result<Option<String>, Str
     }
 
     if params.for_print {
-        return tauri::async_runtime::spawn_blocking(move || {
+        return crate::t_rt::spawn_blocking(move || {
             let mut bytes = std::io::Cursor::new(Vec::new());
             DynamicImage::ImageRgba8(canvas)
                 .write_to(&mut bytes, ImageFormat::Png)
@@ -458,7 +458,7 @@ pub async fn render_montage(params: MontageParams) -> Result<Option<String>, Str
         .map_err(|e| e.to_string())?;
     }
     let quality = params.quality.unwrap_or(80);
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::t_rt::spawn_blocking(move || {
         write_montage(canvas, &dest, &params.output_format, quality).map(|_| None)
     })
     .await

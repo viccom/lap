@@ -1466,7 +1466,7 @@ pub(crate) async fn load_oriented_image(
         let preview = get_generated_preview_bytes(file_path)
             .await?
             .ok_or_else(|| "Failed to resolve editable preview image".to_string())?;
-        tauri::async_runtime::spawn_blocking(move || {
+        crate::t_rt::spawn_blocking(move || {
             image::load_from_memory(&preview)
                 .map_err(|e| format!("Failed to decode editable preview image: {}", e))
         })
@@ -1474,7 +1474,7 @@ pub(crate) async fn load_oriented_image(
         .map_err(|e| format!("Failed to join decode task: {}", e))?
     } else {
         let path = file_path.to_string();
-        tauri::async_runtime::spawn_blocking(move || {
+        crate::t_rt::spawn_blocking(move || {
             let img = image::open(Path::new(&path)).map_err(|e| e.to_string())?;
             Ok(apply_orientation(img, orientation))
         })
@@ -1512,7 +1512,7 @@ async fn get_edited_image(params: &EditParams) -> Result<DynamicImage, String> {
     // the async executor (matches the project's spawn_blocking convention).
     if params.crop_angle != 0.0 {
         let angle = params.crop_angle;
-        img = tauri::async_runtime::spawn_blocking(move || rotate_arbitrary(img, angle))
+        img = crate::t_rt::spawn_blocking(move || rotate_arbitrary(img, angle))
             .await
             .map_err(|e| format!("Failed to join rotate task: {}", e))?;
     }
@@ -2108,7 +2108,7 @@ pub async fn get_raw_preview_cached(
         }
     }
     let cached = if let Some(disk) = disk.clone() {
-        tauri::async_runtime::spawn_blocking(move || read_raw_preview_disk(&disk))
+        crate::t_rt::spawn_blocking(move || read_raw_preview_disk(&disk))
             .await
             .map_err(|e| e.to_string())?
     } else {
@@ -2124,7 +2124,7 @@ pub async fn get_raw_preview_cached(
             .map_err(|e| e.to_string())?;
         check_active()?;
         let path = path.to_string();
-        tauri::async_runtime::spawn_blocking(move || {
+        crate::t_rt::spawn_blocking(move || {
             let _permit = permit;
             let result = get_raw_preview_with_source(&path, options, full_size)?;
             if options.embedded() || result.1 != "embedded" {
@@ -2223,7 +2223,7 @@ mod offline_preview_tests {
                     (data, source)
                 } else {
                     (
-                        tauri::async_runtime::block_on(get_file_image_bytes_cached(path, options))
+                        crate::t_rt::block_on(get_file_image_bytes_cached(path, options))
                             .unwrap(),
                         "tiff",
                     )
@@ -2287,7 +2287,7 @@ mod offline_preview_tests {
             t_libraw::get_raw_preview_image(&path, RawDisplayOptions::rendered_bright()).is_err()
         );
         let embedded = get_embedded_preview(&path).expect("embedded preview must be available");
-        let editing = tauri::async_runtime::block_on(get_generated_preview_bytes(&path))
+        let editing = crate::t_rt::block_on(get_generated_preview_bytes(&path))
             .unwrap()
             .unwrap();
         let image = image::load_from_memory(&editing).unwrap();
@@ -2298,7 +2298,7 @@ mod offline_preview_tests {
         );
         assert_eq!(editing, embedded);
         // Export/crop must decode the same oriented pixels as the editing preview.
-        let export = tauri::async_runtime::block_on(load_oriented_image(&path, 1)).unwrap();
+        let export = crate::t_rt::block_on(load_oriented_image(&path, 1)).unwrap();
         assert_eq!(export.to_rgb8(), image.to_rgb8());
     }
 

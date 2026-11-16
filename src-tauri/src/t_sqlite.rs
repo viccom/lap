@@ -9297,7 +9297,7 @@ impl AThumb {
         }
 
         let library_id = Self::get_current_library_id();
-        tauri::async_runtime::spawn(async move {
+        crate::t_rt::spawn(async move {
             let Ok(_generation_permit) =
                 thumb_background_generation_permits().acquire_owned().await
             else {
@@ -9305,7 +9305,7 @@ impl AThumb {
                 return;
             };
             let event_library = library_id.clone();
-            let generated = tauri::async_runtime::spawn_blocking(move || {
+            let generated = crate::t_rt::spawn_blocking(move || {
                 crate::t_cmds::with_current_library(&library_id, || {
                     let had_cache = Self::fetch_record(file_id)?.is_some();
                     let result = Self::get_or_create_thumb(

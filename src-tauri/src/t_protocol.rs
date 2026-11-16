@@ -150,10 +150,10 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
             let thumbnail_size = query.split('&').find_map(|p| p.strip_prefix("size=").and_then(|v| v.parse::<u32>().ok()))
                 .unwrap_or(512).clamp(64,2048);
             let repair = query.split('&').any(|p| p == "repair=true");
-            tauri::async_runtime::spawn(async move {
+            crate::t_rt::spawn(async move {
                 if !repair {
                     let lookup_library = library_id.clone();
-                    let cached = tauri::async_runtime::spawn_blocking(move || {
+                    let cached = crate::t_rt::spawn_blocking(move || {
                         crate::t_cmds::with_current_library(&lookup_library, || {
                             let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                             let path = file.file_path.as_deref().unwrap_or_default();
@@ -169,7 +169,7 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 let Ok(permit) = permits.acquire_owned().await else {
                     responder.respond(text_response(http::StatusCode::SERVICE_UNAVAILABLE, "thumbnail queue closed")); return;
                 };
-                let result = tauri::async_runtime::spawn_blocking(move || {
+                let result = crate::t_rt::spawn_blocking(move || {
                     let _permit = permit;
                     crate::t_cmds::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
@@ -220,10 +220,10 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
             }
 
             let library_id = path.trim_start_matches('/').split('/').next().unwrap_or("default").to_string();
-            tauri::async_runtime::spawn(async move {
+            crate::t_rt::spawn(async move {
                 // Scheme callbacks can run on the UI thread. Never wait for a
                 // library lock, configuration IO or SQLite there.
-                let lookup = tauri::async_runtime::spawn_blocking(move || {
+                let lookup = crate::t_rt::spawn_blocking(move || {
                     crate::t_cmds::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?
                             .ok_or_else(|| "File not found".to_string())?;
@@ -268,8 +268,8 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 if for_editing {
                     // Use exactly the same pixels (including decoder fallbacks)
                     // that get_edited_image applies the crop and adjustments to.
-                    let result = tauri::async_runtime::spawn_blocking(move || {
-                        tauri::async_runtime::block_on(t_image::get_generated_preview_bytes(&file_path))
+                    let result = crate::t_rt::spawn_blocking(move || {
+                        crate::t_rt::block_on(t_image::get_generated_preview_bytes(&file_path))
                     }).await;
                     responder.respond(match result {
                         Ok(Ok(Some(data))) => image_response(data),
