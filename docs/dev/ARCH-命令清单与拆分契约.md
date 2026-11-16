@@ -26,7 +26,7 @@
 ## 2. 统计
 
 - 命令总数：**253**
-- 拆分分类：A 纯内核 **197** · B 需适配 **40** · C 原生专属 **16**
+- 拆分分类：A 纯内核 **200** · B 需适配 **37** · C 原生专属 **16**
 - 暴露等级：只读 **110** · 写入 **87** · 管理员 **38** · 不暴露 **18**
 
 ## 3. 清单（按注册表分组）
@@ -83,12 +83,12 @@
 | 6 | `t_cmds::recount_album` | A 纯内核 | 管理员 |  |
 | 7 | `t_cmds::get_album_visible_counts` | A 纯内核 | 只读 |  |
 | 8 | `t_cmds::add_album` | B 需适配 | 管理员 | AppHandle |
-| 9 | `t_cmds::edit_album` | B 需适配 | 写入 | State |
-| 10 | `t_cmds::remove_album` | B 需适配 | 管理员 | State |
+| 9 | `t_cmds::edit_album` | A 纯内核 | 写入 |  |
+| 10 | `t_cmds::remove_album` | A 纯内核 | 管理员 |  |
 | 11 | `t_cmds::reorder_albums` | A 纯内核 | 写入 |  |
 | 12 | `t_cmds::set_album_cover` | A 纯内核 | 写入 |  |
-| 13 | `t_cmds::index_album` | B 需适配 | 管理员 | AppHandle/State |
-| 14 | `t_cmds::cancel_indexing` | B 需适配 | 写入 | State |
+| 13 | `t_cmds::index_album` | B 需适配 | 管理员 | AppHandle |
+| 14 | `t_cmds::cancel_indexing` | A 纯内核 | 写入 |  |
 | 15 | `t_cmds::get_index_recovery_info` | A 纯内核 | 只读 |  |
 | 16 | `t_cmds::clear_index_recovery_info` | A 纯内核 | 写入 |  |
 
