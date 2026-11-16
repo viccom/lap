@@ -277,3 +277,33 @@ pub async fn get_clipboard_import_data(
         .await
         .map_err(|_| "Clipboard read was cancelled".to_string())
 }
+
+/// Copy files (plus an optional preview image) to the OS clipboard.
+///
+/// Lives in the shell: only the pasteboard needs the `AppHandle` (Linux
+/// marshals the native clipboard call onto the main thread); the preview
+/// bytes come from the core's image pipeline.
+pub async fn copy_files_to_clipboard(
+    app_handle: &tauri::AppHandle,
+    file_paths: Vec<String>,
+) -> Result<usize, String> {
+    let file_paths = file_paths
+        .into_iter()
+        // The UI limits copying to 10 content items. RAW+JPEG pairs expand
+        // one item into two physical files, so retain both components.
+        .take(20)
+        .collect::<Vec<_>>();
+    if file_paths.is_empty() {
+        return Err("No valid files to copy".to_string());
+    }
+    // Do not silently copy only part of a RAW pair or multi-file selection.
+    if let Some(path) = file_paths
+        .iter()
+        .find(|path| !std::path::Path::new(path).is_file())
+    {
+        return Err(format!("File is unavailable: {}", path));
+    }
+    let preview = crate::t_image::clipboard_preview_png(&file_paths).await;
+    copy_files_and_image(app_handle, &file_paths, preview.as_deref()).await?;
+    Ok(file_paths.len())
+}

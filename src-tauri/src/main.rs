@@ -49,6 +49,7 @@ mod t_paths;
 mod t_tags;
 mod t_motion_photo;
 mod t_pasteboard;
+mod t_scopes;
 mod t_protocol;
 mod t_similar;
 mod t_sqlite;
@@ -212,7 +213,7 @@ async fn main() {
             t_video::init_video_cache();
 
             if !t_sqlite::is_database_corrupted() {
-                if let Err(e) = t_utils::restore_album_scopes(&_app.handle()) {
+                if let Err(e) = t_scopes::restore_album_scopes(&_app.handle()) {
                     eprintln!("Failed to restore asset scopes: {}", e);
                 }
             }

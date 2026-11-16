@@ -1334,7 +1334,7 @@ pub(crate) async fn get_generated_preview_bytes(
     Ok(None)
 }
 
-async fn clipboard_preview_png(file_paths: &[String]) -> Option<Vec<u8>> {
+pub async fn clipboard_preview_png(file_paths: &[String]) -> Option<Vec<u8>> {
     for file_path in file_paths {
         let file_type = t_utils::get_file_type(file_path).unwrap_or(0);
         if file_type != 1 && file_type != 3 {
@@ -1360,28 +1360,6 @@ async fn clipboard_preview_png(file_paths: &[String]) -> Option<Vec<u8>> {
         }
     }
     None
-}
-
-pub async fn copy_files_to_clipboard(
-    app_handle: &tauri::AppHandle,
-    file_paths: Vec<String>,
-) -> Result<usize, String> {
-    let file_paths = file_paths
-        .into_iter()
-        // The UI limits copying to 10 content items. RAW+JPEG pairs expand
-        // one item into two physical files, so retain both components.
-        .take(20)
-        .collect::<Vec<_>>();
-    if file_paths.is_empty() {
-        return Err("No valid files to copy".to_string());
-    }
-    // Do not silently copy only part of a RAW pair or multi-file selection.
-    if let Some(path) = file_paths.iter().find(|path| !Path::new(path).is_file()) {
-        return Err(format!("File is unavailable: {}", path));
-    }
-    let preview = clipboard_preview_png(&file_paths).await;
-    crate::t_pasteboard::copy_files_and_image(app_handle, &file_paths, preview.as_deref()).await?;
-    Ok(file_paths.len())
 }
 
 /// copy an edited image to clipboard

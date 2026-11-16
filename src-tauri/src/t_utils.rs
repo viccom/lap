@@ -23,7 +23,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::Manager;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use walkdir::WalkDir; // https://docs.rs/walkdir/2.5.0/walkdir/
@@ -750,26 +749,6 @@ mod win32_imports {
 
         pub fn SetFileAttributesW(lpFileName: *const u16, dwFileAttributes: u32) -> i32;
     }
-}
-
-pub fn authorize_directory_scope(
-    app_handle: &tauri::AppHandle,
-    dir_path: &str,
-) -> Result<(), String> {
-    app_handle
-        .state::<tauri::Scopes>()
-        .allow_directory(dir_path, true)
-        .map_err(|e| format!("Failed to authorize directory '{}': {}", dir_path, e))
-}
-
-pub fn restore_album_scopes(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    let albums = Album::get_all_albums()?;
-
-    for album in albums {
-        authorize_directory_scope(app_handle, &album.path)?;
-    }
-
-    Ok(())
 }
 
 fn normalize_external_app_name(name: &str) -> String {

@@ -15,6 +15,7 @@ use crate::t_face;
 use crate::t_image;
 use crate::t_montage;
 use crate::t_raw_display::RawDisplayOptions;
+use crate::t_scopes;
 use crate::t_similar;
 use crate::t_sqlite::{
     ACamera, ACollection, ACollectionOrder, ACollectionSelectionCount, AFile, AFileCollection,
@@ -22,6 +23,7 @@ use crate::t_sqlite::{
     AlbumDisplayOrder, GroupedQueryResult, ImageSearchParams, Person, PersonPage,
     PersonPageRequest, QueryParams, SmartQueryParams,
 };
+use crate::t_pasteboard;
 use crate::t_storage;
 use crate::t_utils;
 use crate::t_write;
@@ -466,7 +468,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
     if corrupted {
         return Ok(());
     }
-    t_utils::restore_album_scopes(&app_handle)?;
+    t_scopes::restore_album_scopes(&app_handle)?;
     crate::t_rt::spawn_blocking(|| -> Result<(), String> {
         let mut albums = Album::get_all_albums()
             .map_err(|e| format!("Error while checking albums after switching library: {}", e))?;
@@ -616,7 +618,7 @@ pub fn add_album(
 ) -> Result<Album, String> {
     // Authorizing the directory with the platform's filesystem scope is a
     // desktop-shell concern; the album itself is written by the core.
-    t_utils::authorize_directory_scope(&app_handle, folder_path).map_err(|e| {
+    t_scopes::authorize_directory_scope(&app_handle, folder_path).map_err(|e| {
         format!(
             "Error while authorizing album folder '{}': {}",
             folder_path, e
@@ -785,7 +787,7 @@ pub fn select_folder(
 ) -> Result<AFolder, String> {
     if !t_utils::directory_accessible(folder_path) {
         if let Some(renamed_path) = find_renamed_sibling_folder(album_id, folder_path)? {
-            t_utils::authorize_directory_scope(&app_handle, &renamed_path)
+            t_scopes::authorize_directory_scope(&app_handle, &renamed_path)
                 .map_err(|e| format!("Error while authorizing folder '{}': {}", renamed_path, e))?;
             let inode = t_utils::FileInfo::new(&renamed_path)
                 .ok()
@@ -803,7 +805,7 @@ pub fn select_folder(
         }
     }
 
-    t_utils::authorize_directory_scope(&app_handle, folder_path)
+    t_scopes::authorize_directory_scope(&app_handle, folder_path)
         .map_err(|e| format!("Error while authorizing folder '{}': {}", folder_path, e))?;
 
     AFolder::add_to_db(album_id, folder_path)
@@ -1894,7 +1896,7 @@ pub async fn copy_images(
     app_handle: tauri::AppHandle,
     file_paths: Vec<String>,
 ) -> Result<usize, String> {
-    t_image::copy_files_to_clipboard(&app_handle, file_paths).await
+    t_pasteboard::copy_files_to_clipboard(&app_handle, file_paths).await
 }
 
 /// Copy recorded paths as plain text, including paths to offline originals.
