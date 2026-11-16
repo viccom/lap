@@ -91,4 +91,102 @@ mod tests {
             assert!(resource_dir().is_err());
         }
     }
+
+    /// Modules that phase 2 has made Tauri-free and that must stay that way.
+    /// Each entry is a file beside this one; `include_str!` bakes its source
+    /// into the test so the scan is over the real text, not a runtime read.
+    const TAURI_FREE_MODULES: &[&str] = &[
+        "t_ai.rs",
+        "t_ai_png.rs",
+        "t_batch_rename.rs",
+        "t_cache_storage.rs",
+        "t_cluster.rs",
+        "t_common.rs",
+        "t_config.rs",
+        "t_embedded_jpeg.rs",
+        "t_events.rs",
+        "t_face.rs",
+        "t_heif.rs",
+        "t_http.rs",
+        "t_jpeg.rs",
+        "t_jxl.rs",
+        "t_lens.rs",
+        "t_libraw.rs",
+        "t_migration.rs",
+        "t_montage.rs",
+        "t_motion_photo.rs",
+        "t_paths.rs",
+        "t_raw_display.rs",
+        "t_rt.rs",
+        "t_storage.rs",
+        "t_tags.rs",
+        "t_vl_protocol.rs",
+        "t_vl_tags.rs",
+    ];
+
+    /// The exact sources, in the same order as `TAURI_FREE_MODULES`.
+    /// `include_str!` needs a literal path, so the list is spelled out.
+    const TAURI_FREE_SOURCES: &[&str] = &[
+        include_str!("t_ai.rs"),
+        include_str!("t_ai_png.rs"),
+        include_str!("t_batch_rename.rs"),
+        include_str!("t_cache_storage.rs"),
+        include_str!("t_cluster.rs"),
+        include_str!("t_common.rs"),
+        include_str!("t_config.rs"),
+        include_str!("t_embedded_jpeg.rs"),
+        include_str!("t_events.rs"),
+        include_str!("t_face.rs"),
+        include_str!("t_heif.rs"),
+        include_str!("t_http.rs"),
+        include_str!("t_jpeg.rs"),
+        include_str!("t_jxl.rs"),
+        include_str!("t_lens.rs"),
+        include_str!("t_libraw.rs"),
+        include_str!("t_migration.rs"),
+        include_str!("t_montage.rs"),
+        include_str!("t_motion_photo.rs"),
+        include_str!("t_paths.rs"),
+        include_str!("t_raw_display.rs"),
+        include_str!("t_rt.rs"),
+        include_str!("t_storage.rs"),
+        include_str!("t_tags.rs"),
+        include_str!("t_vl_protocol.rs"),
+        include_str!("t_vl_tags.rs"),
+    ];
+
+    /// The boundary guard from the serverization plan (§2): a module that has
+    /// been de-Tauri'd must not reach back into `tauri::`. This is what keeps
+    /// the migration one-directional — a new `tauri::` reference in any of
+    /// these files fails the suite instead of silently re-coupling the core.
+    ///
+    /// Line comments are stripped first so the doc comments that *describe* the
+    /// old `tauri::async_runtime` name (t_rt, t_paths) do not trip the check;
+    /// only a real code reference counts. The needle is assembled from parts so
+    /// this assertion's own text cannot match itself.
+    #[test]
+    fn migrated_core_modules_do_not_reference_tauri() {
+        assert_eq!(
+            TAURI_FREE_MODULES.len(),
+            TAURI_FREE_SOURCES.len(),
+            "module list and source list must stay in sync"
+        );
+        let needle = ["tauri", "::"].concat();
+        let use_needle = ["use ", "tauri"].concat();
+        for (name, source) in TAURI_FREE_MODULES.iter().zip(TAURI_FREE_SOURCES) {
+            let code: String = source
+                .lines()
+                .map(|line| match line.find("//") {
+                    Some(at) => &line[..at],
+                    None => line,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            assert!(
+                !code.contains(&needle) && !code.contains(&use_needle),
+                "{name} references tauri again; a migrated core module must stay Tauri-free"
+            );
+        }
+    }
 }
+
