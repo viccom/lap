@@ -52,6 +52,7 @@ mod t_pasteboard;
 mod t_protocol;
 mod t_similar;
 mod t_sqlite;
+mod t_state;
 mod t_storage;
 mod t_cache_storage;
 mod t_startup;
@@ -165,9 +166,6 @@ async fn main() {
         .manage(t_ai::AiState(std::sync::Mutex::new(t_ai::AiEngine::new())))
         .manage(t_face::FaceState(std::sync::Arc::new(
             std::sync::Mutex::new(t_face::FaceEngine::new()),
-        )))
-        .manage(t_cmds::IndexCancellation(std::sync::Arc::new(
-            std::sync::Mutex::new(std::collections::HashMap::new()),
         )))
         .manage(t_cmds::ImportCancellation(std::sync::Arc::new(std::sync::Mutex::new(
             t_cmds::ImportState::default(),

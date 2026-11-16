@@ -77,9 +77,9 @@ mod contract_tests {
                 "smallImageFilter",
                 "excludedFolders",
             ],
-            &["state"],
+            &[],
         ),
-        ("remove_album", &["id"], &["state"]),
+        ("remove_album", &["id"], &[]),
         ("reorder_albums", &["items"], &[]),
         ("set_album_cover", &["id", "fileId"], &[]),
     ];

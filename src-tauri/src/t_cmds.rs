@@ -45,8 +45,8 @@ use tauri::{AppHandle, Manager, State};
 // Serialize writes from the main window and separate viewer windows.
 static FILE_PATH_CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
 
-// cancellation token for indexing
-pub struct IndexCancellation(pub Arc<Mutex<HashMap<i64, bool>>>);
+// The index cancellation token lives in `t_state`, next to the other
+// process-level state the core owns.
 pub struct ImportCancellation(pub Arc<Mutex<ImportState>>);
 
 pub struct ImportState {
@@ -663,7 +663,6 @@ pub fn add_album(
 /// edit an album
 #[tauri::command]
 pub async fn edit_album(
-    state: State<'_, IndexCancellation>,
     id: i64,
     name: String,
     description: String,
@@ -679,7 +678,11 @@ pub async fn edit_album(
         || old.small_image_filter != small_image_filter;
     let _scope_guard = scope_changed.then(|| t_utils::AlbumRemovalGuard::acquire(id));
     if scope_changed {
-        state.0.lock().unwrap().insert(id, true);
+        crate::t_state::index_cancellation()
+            .0
+            .lock()
+            .unwrap()
+            .insert(id, true);
         t_utils::wait_for_album_scan_end(id).await?;
     }
     let lock = t_utils::album_sync_lock(id);
@@ -715,9 +718,13 @@ pub async fn list_album_subfolders(path: String) -> Result<Vec<String>, String> 
 
 /// remove an album
 #[tauri::command]
-pub async fn remove_album(state: State<'_, IndexCancellation>, id: i64) -> Result<usize, String> {
+pub async fn remove_album(id: i64) -> Result<usize, String> {
     let _removal_guard = t_utils::AlbumRemovalGuard::acquire(id);
-    state.0.lock().unwrap().insert(id, true);
+    crate::t_state::index_cancellation()
+        .0
+        .lock()
+        .unwrap()
+        .insert(id, true);
     t_utils::wait_for_album_scan_end(id).await?;
 
     let result = {
@@ -756,7 +763,6 @@ pub fn set_album_cover(id: i64, file_id: i64) -> Result<usize, String> {
 #[tauri::command]
 pub fn index_album(
     app_handle: tauri::AppHandle,
-    state: State<IndexCancellation>,
     album_id: i64,
     thumbnail_size: u32,
     raw_display_options: RawDisplayOptions,
@@ -764,8 +770,9 @@ pub fn index_album(
     group_raw_jpeg_pairs: bool,
 ) -> Result<(), String> {
     // Reset cancellation flag
-    state.0.lock().unwrap().insert(album_id, false);
-    let cancellation_token = state.0.clone();
+    let cancellation = crate::t_state::index_cancellation();
+    cancellation.0.lock().unwrap().insert(album_id, false);
+    let cancellation_token = cancellation.0.clone();
 
     crate::t_rt::spawn(async move {
         if let Err(e) = t_utils::index_album_worker(
@@ -787,8 +794,12 @@ pub fn index_album(
 
 /// cancel indexing
 #[tauri::command]
-pub fn cancel_indexing(state: State<IndexCancellation>, album_id: i64) -> Result<(), String> {
-    state.0.lock().unwrap().insert(album_id, true);
+pub fn cancel_indexing(album_id: i64) -> Result<(), String> {
+    crate::t_state::index_cancellation()
+        .0
+        .lock()
+        .unwrap()
+        .insert(album_id, true);
     Ok(())
 }
 
