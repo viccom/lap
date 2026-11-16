@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{Manager, State};
+use tauri::Manager;
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use walkdir::WalkDir; // https://docs.rs/walkdir/2.5.0/walkdir/
@@ -2480,7 +2480,7 @@ fn sync_generation_valid(generation: u64) -> bool {
     FOLDER_SYNC_GENERATION.load(std::sync::atomic::Ordering::SeqCst) == generation
 }
 
-pub fn start_folder_mtime_sync(app_handle: tauri::AppHandle) {
+pub fn start_folder_mtime_sync() {
     let generation = FOLDER_SYNC_GENERATION
         .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
         .wrapping_add(1);
@@ -2497,7 +2497,7 @@ pub fn start_folder_mtime_sync(app_handle: tauri::AppHandle) {
                 );
             }
             for task in tasks {
-                schedule_synced_file_processing(app_handle.clone(), task);
+                schedule_synced_file_processing(task);
             }
             if result.dirty_folder_count > 0 || result.new_folder_count > 0 {
                 crate::t_events::emit(
@@ -3071,7 +3071,6 @@ fn reconcile_raw_jpeg_pairs_after_album_index(
 
 /// Sync the opened folder, including cloud state changes that leave its mtime unchanged.
 pub fn sync_single_folder(
-    app_handle: &tauri::AppHandle,
     album_id: i64,
     folder_id: i64,
     folder_path: &str,
@@ -3201,7 +3200,7 @@ pub fn sync_single_folder(
         AFile::clear_raw_jpeg_pairs_in_folder(resolved_folder_id)?;
     }
     for task in outcome.tasks {
-        schedule_synced_file_processing(app_handle.clone(), task);
+        schedule_synced_file_processing(task);
     }
 
     let mtime = info.modified;
@@ -3289,7 +3288,7 @@ fn should_process_synced_file(file: &AFile, file_type: i64, threshold: i64) -> b
     matches!(file_type, 1 | 3) && !file.has_embedding.unwrap_or(false)
 }
 
-fn schedule_synced_file_processing(app_handle: tauri::AppHandle, task: SyncedFileTask) {
+fn schedule_synced_file_processing(task: SyncedFileTask) {
     crate::t_rt::spawn(async move {
         if album_removal_pending(task.album_id) {
             return;
@@ -3343,7 +3342,6 @@ fn schedule_synced_file_processing(app_handle: tauri::AppHandle, task: SyncedFil
             return;
         }
 
-        let app_handle_for_embedding = app_handle.clone();
         let file_path = task.file_path.clone();
         let album_id = task.album_id;
         let _ = crate::t_rt::spawn_blocking(move || {
@@ -3358,12 +3356,11 @@ fn schedule_synced_file_processing(app_handle: tauri::AppHandle, task: SyncedFil
             if !AFile::is_album_visible(task.file_id).unwrap_or(false) {
                 return;
             }
-            if let Err(error) = crate::t_startup::ensure_ai(&app_handle_for_embedding, None) {
+            if let Err(error) = crate::t_ai::ensure_ai(None) {
                 eprintln!("Failed to initialize AI for embedding: {}", error);
                 return;
             }
-            let ai_state: tauri::State<crate::t_ai::AiState> = app_handle_for_embedding.state();
-            if let Err(e) = AFile::generate_embedding(&ai_state, task.file_id) {
+            if let Err(e) = AFile::generate_embedding(crate::t_state::ai(), task.file_id) {
                 eprintln!("Failed to generate embedding for {}: {}", file_path, e);
             }
         })
@@ -4137,7 +4134,6 @@ struct ProgressTracker {
 
 impl ProgressTracker {
     fn new(
-        _app_handle: &tauri::AppHandle,
         album_id: i64,
         total: u64,
         search_total: u64,
@@ -4352,7 +4348,6 @@ fn index_single_file(
 }
 
 async fn process_thumbnail_task(
-    app_handle: tauri::AppHandle,
     task: ThumbnailTask,
     budget: ProcessingBudget,
     tracker: Arc<Mutex<ProgressTracker>>,
@@ -4433,16 +4428,14 @@ async fn process_thumbnail_task(
         .await
         .map_err(|e| format!("Failed to acquire embedding permit: {}", e))?;
 
-    let app_handle_for_embedding = app_handle.clone();
     let file_id = task.file_id;
     let file_path = task.file_path.clone();
     let embedding_ok = crate::t_rt::spawn_blocking(move || {
-        if let Err(error) = crate::t_startup::ensure_ai(&app_handle_for_embedding, None) {
+        if let Err(error) = crate::t_ai::ensure_ai(None) {
             eprintln!("Failed to initialize AI for embedding: {}", error);
             return false;
         }
-        let ai_state: State<crate::t_ai::AiState> = app_handle_for_embedding.state();
-        match crate::t_sqlite::AFile::generate_embedding(&ai_state, file_id) {
+        match crate::t_sqlite::AFile::generate_embedding(crate::t_state::ai(), file_id) {
             Ok(_) => true,
             Err(e) => {
                 eprintln!("Failed to generate embedding for {}: {}", file_path, e);
@@ -4468,7 +4461,6 @@ async fn process_thumbnail_task(
 }
 
 pub async fn index_album_worker(
-    app_handle: &tauri::AppHandle,
     cancellation_token: Arc<Mutex<HashMap<i64, bool>>>,
     album_id: i64,
     thumbnail_size: u32,
@@ -4575,7 +4567,6 @@ pub async fn index_album_worker(
 
     // 3. Emit start progress
     let tracker = Arc::new(Mutex::new(ProgressTracker::new(
-        app_handle,
         album_id,
         total_files,
         search_total,
@@ -4728,7 +4719,6 @@ pub async fn index_album_worker(
                     }
                     if let Some(task) = outcome.task {
                         thumbnail_join_set.spawn(process_thumbnail_task(
-                            app_handle.clone(),
                             task,
                             processing_budget.clone(),
                             tracker.clone(),

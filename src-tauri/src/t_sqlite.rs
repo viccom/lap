@@ -33,7 +33,6 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::State;
 use tokio::sync::Semaphore;
 use walkdir::WalkDir;
 
@@ -7755,7 +7754,7 @@ impl AFile {
     // --- AI Logic ---
 
     /// check ai status
-    pub fn check_ai_status(state: &State<t_ai::AiState>) -> String {
+    pub fn check_ai_status(state: &t_ai::AiState) -> String {
         match state.0.try_lock() {
             Ok(engine) if engine.is_loaded() => "AI Models Loaded".into(),
             Ok(_) => "AI Engine Initialized (Models Not Loaded)".into(),
@@ -7766,7 +7765,7 @@ impl AFile {
 
     /// get query embedding from search text or similar image id
     pub fn get_query_embedding(
-        state: &State<t_ai::AiState>,
+        state: &t_ai::AiState,
         params: &ImageSearchParams,
     ) -> Result<Option<Vec<f32>>, String> {
         if !params.search_text.is_empty() {
@@ -7787,7 +7786,7 @@ impl AFile {
 
     /// generate embedding for a file
     pub fn generate_embedding(
-        state: &State<t_ai::AiState>,
+        state: &t_ai::AiState,
         file_id: i64,
     ) -> Result<String, String> {
         // 1. Fetch file info to get path
@@ -7915,7 +7914,7 @@ impl AFile {
 
     /// search similar images
     pub fn search_similar_images(
-        state: &State<t_ai::AiState>,
+        state: &t_ai::AiState,
         params: ImageSearchParams,
     ) -> Result<Vec<Self>, String> {
         // 1. Determine Target Embedding

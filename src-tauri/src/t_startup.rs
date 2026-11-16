@@ -1,90 +1,18 @@
 //! Startup timing and work that is not needed to render the first window.
-use crate::{t_ai, t_sqlite, t_utils};
-use std::{
-    collections::HashSet,
-    sync::{
-        Mutex,
-        atomic::{AtomicBool, Ordering},
-    },
-    time::Instant,
-};
-use tauri::{AppHandle, Manager};
+//!
+//! The state itself (`StartupState`) and the AI warm-up (`t_ai::ensure_ai`)
+//! live in the process registry / `t_ai` so the core can reach them without a
+//! Tauri handle; this module keeps the desktop commands and the one-shot
+//! background bootstrap they trigger.
+use crate::{t_ai, t_sqlite, t_state, t_utils};
 
-pub struct StartupState {
-    started: Instant,
-    stages: Mutex<HashSet<String>>,
-    background_started: AtomicBool,
-    ai_status: Mutex<String>,
-}
-
-impl Default for StartupState {
-    fn default() -> Self {
-        Self {
-            started: Instant::now(),
-            stages: Mutex::new(HashSet::new()),
-            background_started: AtomicBool::new(false),
-            ai_status: Mutex::new("not-initialized".into()),
-        }
-    }
-}
-
-pub fn mark(app: &AppHandle, stage: &str) {
-    let state = app.state::<StartupState>();
-    if let Ok(mut stages) = state.stages.lock() {
-        if stages.insert(stage.into()) {
-            println!(
-                "[startup] {}: {} ms",
-                stage,
-                state.started.elapsed().as_millis()
-            );
-        }
-    }
-}
-
-fn initialize_models<T>(
-    engine: &Mutex<T>,
-    status: &Mutex<String>,
-    needs_load: impl FnOnce(&T) -> bool,
-    load: impl FnOnce(&mut T) -> Result<(), String>,
-) -> Result<(), String> {
-    let mut engine = engine.lock().map_err(|e| e.to_string())?;
-    if !needs_load(&engine) {
-        return Ok(());
-    }
-    *status.lock().map_err(|e| e.to_string())? = "loading".into();
-    let result = load(&mut engine);
-    *status.lock().map_err(|e| e.to_string())? = match &result {
-        Ok(()) => "ready".into(),
-        Err(error) => format!("failed: {}", error),
-    };
-    result
-}
-
-// Called from blocking workers. The engine mutex shares initialization with
-// early searches/indexing and prevents duplicate model loads.
-pub fn ensure_ai(app: &AppHandle, model: Option<i64>) -> Result<(), String> {
-    let state = app.state::<StartupState>();
-    let ai = app.state::<t_ai::AiState>();
-    initialize_models(
-        &ai.0,
-        &state.ai_status,
-        |engine| !engine.is_loaded() || model.is_some(),
-        |engine| {
-            mark(app, "ai-load-started");
-            // Text-model selection validates dimensions against the loaded vision
-            // model and can roll back to the default text model on failure.
-            engine.load_models()?;
-            if let Some(model) = model {
-                engine.set_text_model(t_ai::ImageSearchTextModel::from_i64(model))?;
-            }
-            mark(app, "ai-ready");
-            Ok(())
-        },
-    )
+/// Record a one-time startup stage in the process registry.
+pub fn mark(stage: &str) {
+    t_state::startup().mark(stage);
 }
 
 #[tauri::command]
-pub fn record_startup_stage(app: AppHandle, stage: String) {
+pub fn record_startup_stage(stage: String) {
     if matches!(
         stage.as_str(),
         "app-mounted"
@@ -93,13 +21,13 @@ pub fn record_startup_stage(app: AppHandle, stage: String) {
             | "library-state-ready"
             | "window-shown"
     ) {
-        mark(&app, &stage);
+        mark(&stage);
     }
 }
 
 #[tauri::command]
-pub fn get_ai_initialization_status(app: AppHandle) -> String {
-    app.state::<StartupState>()
+pub fn get_ai_initialization_status() -> String {
+    t_state::startup()
         .ai_status
         .lock()
         .map(|status| status.clone())
@@ -107,17 +35,16 @@ pub fn get_ai_initialization_status(app: AppHandle) -> String {
 }
 
 #[tauri::command]
-pub fn finish_startup(app: AppHandle, model: i64) {
-    mark(&app, "first-content-ready");
+pub fn finish_startup(model: i64) {
+    mark("first-content-ready");
     // Pin the bundled models dir for the optional-model fallback; before
     // this runs the executable directory serves (see t_config).
     if let Ok(resource) = crate::t_paths::resolve_resource("models") {
         crate::t_config::set_resource_models_dir(resource);
     }
-    if app
-        .state::<StartupState>()
+    if t_state::startup()
         .background_started
-        .swap(true, Ordering::SeqCst)
+        .swap(true, std::sync::atomic::Ordering::SeqCst)
     {
         return;
     }
@@ -129,7 +56,7 @@ pub fn finish_startup(app: AppHandle, model: i64) {
         } else {
             model
         };
-        if let Err(error) = ensure_ai(&app, Some(model)) {
+        if let Err(error) = t_ai::ensure_ai(Some(model)) {
             eprintln!("Failed to start AI Engine: {}", error);
             report_ai_dependency_error();
         }
@@ -142,7 +69,7 @@ pub fn finish_startup(app: AppHandle, model: i64) {
                 let mut albums = t_sqlite::Album::get_all_albums()?;
                 t_utils::refresh_all_album_accessibility_if_current(&mut albums, generation);
                 if generation == t_utils::album_accessibility_generation() {
-                    mark(&app, "album-accessibility-ready");
+                    mark("album-accessibility-ready");
                     crate::t_events::emit(
                         crate::t_events::names::ALBUMS_REFRESHED,
                         serde_json::json!({
@@ -150,7 +77,7 @@ pub fn finish_startup(app: AppHandle, model: i64) {
                         }),
                     );
                 }
-                t_utils::start_folder_mtime_sync(app.clone());
+                t_utils::start_folder_mtime_sync();
                 Ok(())
             });
         }
@@ -187,87 +114,5 @@ fn report_ai_dependency_error() {
                                 .status();
             // Browsing remains usable when optional AI dependencies are missing.
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{
-        sync::{Arc, Barrier},
-        thread,
-    };
-
-    #[test]
-    fn early_ai_requests_share_one_initialization() {
-        let engine = Arc::new(Mutex::new(false));
-        let status = Arc::new(Mutex::new("not-initialized".into()));
-        let loads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let barrier = Arc::new(Barrier::new(8));
-        let workers: Vec<_> = (0..8)
-            .map(|_| {
-                let (engine, status, loads, barrier) = (
-                    engine.clone(),
-                    status.clone(),
-                    loads.clone(),
-                    barrier.clone(),
-                );
-                thread::spawn(move || {
-                    barrier.wait();
-                    initialize_models(
-                        &engine,
-                        &status,
-                        |loaded| !loaded,
-                        |loaded| {
-                            assert_eq!(*status.lock().unwrap(), "loading");
-                            loads.fetch_add(1, Ordering::SeqCst);
-                            *loaded = true;
-                            Ok(())
-                        },
-                    )
-                    .unwrap();
-                })
-            })
-            .collect();
-        for worker in workers {
-            worker.join().unwrap();
-        }
-        assert_eq!(loads.load(Ordering::SeqCst), 1);
-        assert_eq!(*status.lock().unwrap(), "ready");
-    }
-
-    #[test]
-    fn failed_initialization_can_retry_without_marking_models_ready() {
-        let engine = Mutex::new(false);
-        let status = Mutex::new("not-initialized".into());
-        assert!(
-            initialize_models(
-                &engine,
-                &status,
-                |loaded| !loaded,
-                |_| Err("missing model".into())
-            )
-            .is_err()
-        );
-        assert_eq!(*status.lock().unwrap(), "failed: missing model");
-        assert!(!*engine.lock().unwrap());
-        initialize_models(
-            &engine,
-            &status,
-            |loaded| !loaded,
-            |loaded| {
-                *loaded = true;
-                Ok(())
-            },
-        )
-        .unwrap();
-        assert_eq!(*status.lock().unwrap(), "ready");
-    }
-
-    #[test]
-    fn background_warmup_runs_once_across_window_remounts() {
-        let state = StartupState::default();
-        assert!(!state.background_started.swap(true, Ordering::SeqCst));
-        assert!(state.background_started.swap(true, Ordering::SeqCst));
     }
 }

@@ -34,7 +34,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 // Scoped refreshes and RAW thumbnail requests can open several connections.
 // Keep their library stable until all reads and writes have completed.
@@ -499,7 +499,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
     })
     .await
     .map_err(|e| format!("Failed to join album accessibility check: {}", e))??;
-    t_utils::start_folder_mtime_sync(app_handle);
+    t_utils::start_folder_mtime_sync();
     Ok(())
 }
 
@@ -715,7 +715,6 @@ pub fn set_album_cover(id: i64, file_id: i64) -> Result<usize, String> {
 /// index album
 #[tauri::command]
 pub fn index_album(
-    app_handle: tauri::AppHandle,
     album_id: i64,
     thumbnail_size: u32,
     raw_display_options: RawDisplayOptions,
@@ -729,7 +728,6 @@ pub fn index_album(
 
     crate::t_rt::spawn(async move {
         if let Err(e) = t_utils::index_album_worker(
-            &app_handle,
             cancellation_token,
             album_id,
             thumbnail_size,
@@ -1846,21 +1844,13 @@ pub fn get_folder_files(
 /// sync a single folder's mtime and DB records with the filesystem
 #[tauri::command]
 pub async fn sync_album_folder_mtimes(
-    app_handle: tauri::AppHandle,
     album_id: i64,
     folder_id: i64,
     folder_path: String,
     group_raw_jpeg_pairs: bool,
 ) -> Result<crate::t_utils::FolderMtimeSyncResult, String> {
-    let sync_app_handle = app_handle.clone();
     let result = crate::t_rt::spawn_blocking(move || {
-        crate::t_utils::sync_single_folder(
-            &sync_app_handle,
-            album_id,
-            folder_id,
-            &folder_path,
-            group_raw_jpeg_pairs,
-        )
+        crate::t_utils::sync_single_folder(album_id, folder_id, &folder_path, group_raw_jpeg_pairs)
     })
     .await
     .map_err(|e| format!("folder sync task failed: {}", e))??;
@@ -1876,7 +1866,6 @@ pub async fn sync_album_folder_mtimes(
 /// Refresh the subfolder tree below a folder without scanning its files.
 #[tauri::command]
 pub async fn refresh_album_subfolders(
-    _app_handle: tauri::AppHandle,
     album_id: i64,
     folder_path: String,
 ) -> Result<(), String> {
@@ -3972,17 +3961,14 @@ pub fn get_storage_file_info() -> Result<t_utils::FileInfo, String> {
 
 /// check ai status
 #[tauri::command]
-pub fn check_ai_status(state: State<t_ai::AiState>) -> String {
-    AFile::check_ai_status(&state)
+pub fn check_ai_status() -> String {
+    AFile::check_ai_status(crate::t_state::ai())
 }
 
 #[tauri::command]
-pub async fn get_image_search_model_status(
-    app_handle: AppHandle,
-) -> Result<t_ai::ImageSearchModelStatus, String> {
+pub async fn get_image_search_model_status() -> Result<t_ai::ImageSearchModelStatus, String> {
     crate::t_rt::spawn_blocking(move || {
-        let state = app_handle.state::<t_ai::AiState>();
-        let ai_engine = state.0.lock().map_err(|e| e.to_string())?;
+        let ai_engine = crate::t_state::ai().0.lock().map_err(|e| e.to_string())?;
         Ok(ai_engine.model_status())
     })
     .await
@@ -3991,13 +3977,11 @@ pub async fn get_image_search_model_status(
 
 #[tauri::command]
 pub async fn set_image_search_model(
-    app_handle: AppHandle,
     model: i64,
 ) -> Result<t_ai::ImageSearchModelStatus, String> {
     crate::t_rt::spawn_blocking(move || {
-        crate::t_startup::ensure_ai(&app_handle, Some(model))?;
-        let state = app_handle.state::<t_ai::AiState>();
-        let ai_engine = state.0.lock().map_err(|e| e.to_string())?;
+        t_ai::ensure_ai(Some(model))?;
+        let ai_engine = crate::t_state::ai().0.lock().map_err(|e| e.to_string())?;
         Ok(ai_engine.model_status())
     })
     .await
@@ -4017,15 +4001,14 @@ pub async fn cancel_multilingual_image_search_model_download() -> Result<(), Str
 /// generate embedding for a file
 #[tauri::command]
 pub async fn generate_embedding(
-    app_handle: AppHandle,
     file_id: i64,
     library_id: Option<String>,
 ) -> Result<String, String> {
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
     crate::t_rt::spawn_blocking(move || {
-        crate::t_startup::ensure_ai(&app_handle, None)?;
+        t_ai::ensure_ai(None)?;
         t_config::with_current_library(&library_id, || {
-            AFile::generate_embedding(&app_handle.state::<t_ai::AiState>(), file_id)
+            AFile::generate_embedding(crate::t_state::ai(), file_id)
         })
     })
     .await
@@ -4035,15 +4018,14 @@ pub async fn generate_embedding(
 // search similar images
 #[tauri::command]
 pub async fn search_similar_images(
-    app_handle: AppHandle,
     params: ImageSearchParams,
     library_id: Option<String>,
 ) -> Result<Vec<AFile>, String> {
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
     crate::t_rt::spawn_blocking(move || {
-        crate::t_startup::ensure_ai(&app_handle, None)?;
+        t_ai::ensure_ai(None)?;
         t_config::with_current_library(&library_id, || {
-            AFile::search_similar_images(&app_handle.state::<t_ai::AiState>(), params)
+            AFile::search_similar_images(crate::t_state::ai(), params)
                 .map_err(|e| format!("Error while searching similar images: {}", e))
         })
     })

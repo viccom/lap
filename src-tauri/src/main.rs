@@ -132,7 +132,9 @@ async fn main() {
         eprintln!("Unhandled panic: {}", panic_info);
     }));
 
-    let startup = t_startup::StartupState::default();
+    // Pin process-level state before anything reads it, so timing state (like
+    // StartupState::started) reflects process start (see t_state).
+    t_state::init_process_states();
     let builder = tauri::Builder::default();
     let builder = t_protocol::register_protocols(builder);
 
@@ -161,9 +163,7 @@ async fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(startup)
         .manage(t_video::VideoManager::default())
-        .manage(t_ai::AiState(std::sync::Mutex::new(t_ai::AiEngine::new())))
         .manage(t_face::FaceState(std::sync::Arc::new(
             std::sync::Mutex::new(t_face::FaceEngine::new()),
         )))
@@ -188,7 +188,7 @@ async fn main() {
         .manage(t_similar::SimilarState::default())
         .manage(t_vl::VlState::default())
         .setup(|_app| {
-            t_startup::mark(&_app.handle(), "setup-started");
+            t_startup::mark("setup-started");
             t_events::set_sink(std::sync::Arc::new(TauriEventSink(_app.handle().clone())));
             // Pin the directories the core needs so it never reaches for an
             // AppHandle (see t_paths). Seeded verbatim from Tauri so the
@@ -218,12 +218,12 @@ async fn main() {
             // wheel+ctrlKey events for touchpad pinch. Touchscreen pinch is still
             // handled by our pointer-event logic (with `touch-action: none`).
 
-            t_startup::mark(&_app.handle(), "database-started");
+            t_startup::mark("database-started");
             // Create the database on startup
             match t_sqlite::create_db() {
-                Ok(()) => t_startup::mark(&_app.handle(), "database-ready"),
+                Ok(()) => t_startup::mark("database-ready"),
                 Err(error) => {
-                    t_startup::mark(&_app.handle(), "database-failed");
+                    t_startup::mark("database-failed");
                     eprintln!("Failed to initialize database: {}", error);
                 }
             }
@@ -240,7 +240,7 @@ async fn main() {
                     eprintln!("Failed to restore asset scopes: {}", e);
                 }
             }
-            t_startup::mark(&_app.handle(), "setup-ready");
+            t_startup::mark("setup-ready");
 
             // Scheduled VL runs tick in the background for as long as the
             // app lives; see t_vl_schedule.rs.

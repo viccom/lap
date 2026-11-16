@@ -537,6 +537,53 @@ impl AiEngine {
 
 pub struct AiState(pub Mutex<AiEngine>);
 
+/// Shared single-initialization for a lazily loaded engine: flips `status`
+/// through loading/ready/failed while holding the engine mutex so concurrent
+/// callers block on one load instead of racing duplicate ones.
+fn initialize_models<T>(
+    engine: &Mutex<T>,
+    status: &Mutex<String>,
+    needs_load: impl FnOnce(&T) -> bool,
+    load: impl FnOnce(&mut T) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut engine = engine.lock().map_err(|e| e.to_string())?;
+    if !needs_load(&engine) {
+        return Ok(());
+    }
+    *status.lock().map_err(|e| e.to_string())? = "loading".into();
+    let result = load(&mut engine);
+    *status.lock().map_err(|e| e.to_string())? = match &result {
+        Ok(()) => "ready".into(),
+        Err(error) => format!("failed: {}", error),
+    };
+    result
+}
+
+/// Load the engine's models on first use (and optionally switch the text
+/// model). Called from blocking workers: the engine mutex shares
+/// initialization with early searches/indexing and prevents duplicate model
+/// loads.
+pub fn ensure_ai(model: Option<i64>) -> Result<(), String> {
+    let startup = crate::t_state::startup();
+    let ai = crate::t_state::ai();
+    initialize_models(
+        &ai.0,
+        &startup.ai_status,
+        |engine| !engine.is_loaded() || model.is_some(),
+        |engine| {
+            startup.mark("ai-load-started");
+            // Text-model selection validates dimensions against the loaded vision
+            // model and can roll back to the default text model on failure.
+            engine.load_models()?;
+            if let Some(model) = model {
+                engine.set_text_model(ImageSearchTextModel::from_i64(model))?;
+            }
+            startup.mark("ai-ready");
+            Ok(())
+        },
+    )
+}
+
 async fn verify_downloaded_file(
     path: &Path,
     expected_size: Option<u64>,
@@ -973,6 +1020,81 @@ pub async fn cancel_multilingual_text_model_download() -> Result<(), String> {
     let model_dir = AiEngine::multilingual_model_dir()?;
     clean_multilingual_download_temp_dirs(&model_dir).await;
     Ok(())
+}
+
+#[cfg(test)]
+mod initialization_tests {
+    use super::*;
+    use std::{
+        sync::{Arc, Barrier},
+        thread,
+    };
+
+    #[test]
+    fn early_ai_requests_share_one_initialization() {
+        let engine = Arc::new(Mutex::new(false));
+        let status = Arc::new(Mutex::new("not-initialized".into()));
+        let loads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let barrier = Arc::new(Barrier::new(8));
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                let (engine, status, loads, barrier) = (
+                    engine.clone(),
+                    status.clone(),
+                    loads.clone(),
+                    barrier.clone(),
+                );
+                thread::spawn(move || {
+                    barrier.wait();
+                    initialize_models(
+                        &engine,
+                        &status,
+                        |loaded| !loaded,
+                        |loaded| {
+                            assert_eq!(*status.lock().unwrap(), "loading");
+                            loads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            *loaded = true;
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        assert_eq!(loads.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(*status.lock().unwrap(), "ready");
+    }
+
+    #[test]
+    fn failed_initialization_can_retry_without_marking_models_ready() {
+        let engine = Mutex::new(false);
+        let status = Mutex::new("not-initialized".into());
+        assert!(
+            initialize_models(
+                &engine,
+                &status,
+                |loaded| !loaded,
+                |_| Err("missing model".into())
+            )
+            .is_err()
+        );
+        assert_eq!(*status.lock().unwrap(), "failed: missing model");
+        assert!(!*engine.lock().unwrap());
+        initialize_models(
+            &engine,
+            &status,
+            |loaded| !loaded,
+            |loaded| {
+                *loaded = true;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(*status.lock().unwrap(), "ready");
+    }
 }
 
 #[cfg(test)]
