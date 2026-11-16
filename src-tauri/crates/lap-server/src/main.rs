@@ -11,6 +11,7 @@ mod bridge_gen;
 mod flags;
 mod lock;
 mod media;
+mod shutdown;
 mod sse;
 
 use std::net::SocketAddr;
@@ -65,6 +66,14 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     // back the /api/events and /api/auth routes.
     let boot = boot::run(&flags)?;
 
+    // §3.7 graceful shutdown: the flag starts rejecting new commands and
+    // tells axum to stop accepting connections.
+    let shutdown = shutdown::ShutdownState::new();
+    let signal_watcher = shutdown::spawn_signal_watcher(shutdown.clone());
+    // The stdin control channel is how a Windows service wrapper (which has
+    // no real SIGTERM) asks for a graceful stop.
+    let control_watcher = shutdown::spawn_stdin_control(shutdown.clone());
+
     // /api/cmd and /api/events sit behind the §3.6 whitelist middleware;
     // server_info and /api/auth stay open (client discovery + first token).
     // Media routes authenticate via the §3.5 HMAC signature themselves.
@@ -75,6 +84,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
             boot.auth.clone(),
             auth::whitelist_middleware,
         ))
+        .layer(axum::Extension(shutdown.clone()))
         .with_state(boot.bus.clone());
     let media_router = axum::Router::new()
         .route("/api/thumb/{library_id}/{file_id}", get(media::thumb_handler))
@@ -109,13 +119,32 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     );
     // `boot` (and its lock file guard) must outlive the server loop;
     // ConnectInfo feeds the loopback checks (setup, admin commands).
-    axum::serve(
+    let serve_result = axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .await
-    .map_err(|e| format!("server error: {e}"))?;
+    .with_graceful_shutdown(async move {
+        shutdown.wait().await;
+        println!("lapd: shutting down — no new commands accepted");
+    })
+    .await;
+
+    // The server stopped accepting connections; now cancel the background
+    // work and fold the WAL into the databases.
+    let warnings = shutdown::run_shutdown_sequence(&boot.data_dir).await;
+    signal_watcher.abort();
+    control_watcher.abort();
+    println!(
+        "lapd: stopped{}",
+        if warnings.is_empty() {
+            String::new()
+        } else {
+            format!(" with {} checkpoint warning(s)", warnings.len())
+        }
+    );
+    // The lock file guard is released here.
     drop(boot);
+    serve_result.map_err(|e| format!("server error: {e}"))?;
     Ok(())
 }
 

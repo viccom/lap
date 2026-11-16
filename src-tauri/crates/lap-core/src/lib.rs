@@ -34,6 +34,7 @@ pub mod t_paths;
 pub mod t_raw_display;
 pub mod t_rt;
 pub mod t_similar;
+pub mod t_shutdown;
 pub mod t_sqlite;
 pub mod t_startup;
 pub mod t_state;

@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 3 批次 3.2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过；批次 3.3：鉴权（Argon2id 管理员密码 + 配对码设备令牌 + Cookie/Bearer + 白名单 401/403/429 + 限流审计）+ 媒体四端点（Range/206 + HMAC 签名，只按 file_id 解析）+ `t_http` 收紧，Rust workspace 635/0/10。下一步 = 批次 3.4（优雅退出 + 服务安装脚本 + 跨壳收尾））
+状态：**阶段 3 批次 3.2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过；批次 3.3：鉴权（Argon2id 管理员密码 + 配对码设备令牌 + Cookie/Bearer + 白名单 401/403/429 + 限流审计）+ 媒体四端点（Range/206 + HMAC 签名，只按 file_id 解析）+ `t_http` 收紧，Rust workspace 635/0/10；批次 3.4（优雅退出：停收新命令 503 → 取消全部可取消后台任务 + 杀 ffmpeg 子进程 → flush 所有库 WAL → 释放锁文件；unix SIGTERM/SIGINT + Windows stdin 控制通道），Rust workspace 642/0/10。下一步 = 安装脚本与阶段 3 总验收（按用户指示暂缓））
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -317,6 +317,13 @@ src-vite/                      一套前端，两种传输
 - **t_http 收紧**（本批收尾提交）：删 OPTIONS/CORS 全部面（`Access-Control-Allow-Origin: *` ×3 + 预检分支）；新增图库根限定——请求路径必须落在当前库 `afolders` 根集合内（`SELECT DISTINCT path` 前缀判定），检查不可用即拒绝（宁可错杀不开任意路径门）。cfg(linux) 代码，Windows 不可编译验证（机械小 diff 诚实报告）。
 - **验证**：`cargo test --workspace` = **635/0/10**（基线 612 + lapd 23：argon2 往返/配对码过期/限流与失败锁定（paused 时钟）/白名单决策全矩阵/命令限流设备隔离/MAC 篡改与过期/Range 语法全覆盖/流式 full·partial·416·suffix/存储四测；零警告）；清单 diff 空；src-vite 零改动；全链活体冒烟（临时 --data-dir，真库零接触）：CLI 设密→二次拒绝→login→sign→原图 200 逐字节一致→Range 206→篡改 403→未签名 403→无令牌命令 401→standard scope 调 admin → 403→未列名 403→缩略图真生成 200→可达性闸实证（album 缺席拒生成）→审计表有 login/admin_cmd 行。
 - **本批未做（3.4/阶段 4）**：优雅退出；systemd/LaunchAgent/WinSW 安装脚本；令牌管理 UI（未决事项 4）；`--read-only`（未决事项 3）；桌面内嵌检测 lapd.lock 提示；Web 端 CSP 与 pairing/login 前端（阶段 4）；`/api/video` 的 remux/transcode 缓存按 file_id 服务（`prepare_video` 以路径为参，前端映射归阶段 4）。
+
+**批次 3.4（优雅退出）· 已完成**（提交 `见 git log`；按用户指示只做优雅退出，安装脚本与跨壳收尾略过）：
+- **core 新增 `t_shutdown.rs`**（取消语义归 core 所有，服务端只问「全部取消」与「flush WAL」）：`cancel_background_tasks()` 置位全部可取消后台工作——索引（按 album_id）、导入整理（`ImportState.cancelled`）、人脸索引、去重扫描、相似图扫描、VL 运行（按 run_id）；`terminate_background_tasks()` 额外杀掉视频准备派生的 ffmpeg 子进程（否则父进程退出后子进程仍在写缓存）；`background_tasks_idle()` 供退出流程判断是否收尾完毕；`flush_wal(data_dir)` 对服务库（`lapd.db`）与**每个图库库**做 checkpoint（`t_storage::checkpoint_db` pub 化，复用其 TRUNCATE→RESTART 回退）。
+- **lap-server 新增 `shutdown.rs`**：`ShutdownState`（flag + Notify）→ 中间件在关闭期对新命令返回 **503**（纯函数 `reject_while_shutting_down`，单测钉死）；`with_graceful_shutdown` 让 axum 停止接受新连接并等待在途请求；退出序列按 §3.7 次序：**停收新命令 → 取消后台任务（给 5 秒收尾窗口）→ flush WAL → 释放锁文件（Drop）**。
+- **信号覆盖与诚实边界**：unix 监听 SIGTERM/SIGINT；Windows 无真 SIGTERM，服务包装器硬杀（WinSW 默认）会跳过本路径（锁文件由陈旧接管兜底）。**扩展**：新增 **stdin 控制通道**（写入 `quit`/`shutdown`/`stop` 即优雅退出；stdin 非网络面，服务管理器可写）——这是 Windows 上唯一可确定性触发优雅退出的手段，本批的端到端验证即经它完成。
+- **验证**：`cargo test --workspace` = **642/0/10**（core +1：WAL 折叠效果单测——真 WAL 库 checkpoint 后 `-wal` 归零且数据存活；lapd +2：关闭期 503 纯函数）；**端到端**（真实进程 + 真实库）：服务 200 → 锁文件存在 → stdin 写 `quit` → 日志完整序列（`'quit' received` → `shutting down — no new commands accepted` → `cancelling background work` → `stopped`）→ **退出码 0** → 锁文件已释放 → 图库库 WAL 归零。**未覆盖（诚实）**：unix SIGTERM/SIGINT 与 Windows Ctrl-C 的实际投递**未在本机端到端验证**（本机为 Windows + Git Bash ConPTY，实测 Ctrl-C 事件送不到子进程，见探针）。
+- **本批未做（按用户指示略过）**：systemd/LaunchAgent/WinSW 安装脚本；跨壳收尾与阶段 3 总验收；令牌管理 UI（未决事项 4）；`--read-only`（未决事项 3）；桌面内嵌检测 lapd.lock 提示；Web 端 CSP 与 pairing/login 前端（阶段 4）；`/api/video` 的 remux/transcode 按 file_id 服务。
 
 
 - **验收**：局域网另一台设备用浏览器完成「登录 → 搜索 → 网格 → 原图/视频」；无令牌 401；C 类 403；路径穿越无效；桌面与 `lapd` 同时启动被第二个进程拒绝；真实图库 `user_version` 与完整性检查正常。

@@ -617,10 +617,16 @@ impl AuthService {
 pub async fn whitelist_middleware(
     State(auth): State<std::sync::Arc<AuthService>>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    axum::Extension(shutdown): axum::Extension<std::sync::Arc<crate::shutdown::ShutdownState>>,
     headers: HeaderMap,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> Response {
+    // §3.7: a shutting-down server stops accepting new commands. The
+    // in-flight ones are allowed to finish (axum waits for them below).
+    if let Some(response) = crate::shutdown::reject_while_shutting_down(&shutdown) {
+        return response;
+    }
     let command = request
         .uri()
         .path()

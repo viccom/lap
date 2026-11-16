@@ -123,7 +123,9 @@ pub fn get_current_db_path() -> Result<String, String> {
     get_library_db_path_from_config(&config, &config.current_library_id)
 }
 
-fn checkpoint_db(path: &Path) -> Result<(), String> {
+/// Fold the WAL of one database into its main file. Public so the server's
+/// graceful shutdown can checkpoint the databases it owns before exiting.
+pub fn checkpoint_db(path: &Path) -> Result<(), String> {
     match path.try_exists() {
         Ok(true) => {}
         Ok(false) => {
