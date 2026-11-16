@@ -26,7 +26,7 @@
 ## 2. 统计
 
 - 命令总数：**253**
-- 拆分分类：A 纯内核 **192** · B 需适配 **45** · C 原生专属 **16**
+- 拆分分类：A 纯内核 **197** · B 需适配 **40** · C 原生专属 **16**
 - 暴露等级：只读 **110** · 写入 **87** · 管理员 **38** · 不暴露 **18**
 
 ## 3. 清单（按注册表分组）
@@ -209,9 +209,9 @@
 |---:|---|---|---|---|
 | 1 | `t_cmds::edit_file_comment` | A 纯内核 | 写入 |  |
 | 2 | `t_cmds::clean_unused_thumbnail_cache` | A 纯内核 | 管理员 |  |
-| 3 | `t_cmds::get_file_thumb` | B 需适配 | 只读 | AppHandle |
-| 4 | `t_cmds::get_file_thumb_by_id` | B 需适配 | 只读 | AppHandle |
-| 5 | `t_cmds::get_file_thumbs` | B 需适配 | 只读 | AppHandle |
+| 3 | `t_cmds::get_file_thumb` | A 纯内核 | 只读 |  |
+| 4 | `t_cmds::get_file_thumb_by_id` | A 纯内核 | 只读 |  |
+| 5 | `t_cmds::get_file_thumbs` | A 纯内核 | 只读 |  |
 | 6 | `t_cmds::get_file_info` | A 纯内核 | 只读 |  |
 | 7 | `t_cmds::get_file_metadata_details` | A 纯内核 | 只读 |  |
 | 8 | `t_cmds::cancel_file_metadata_requests` | A 纯内核 | 写入 |  |
@@ -306,8 +306,8 @@
 | 1 | `t_cmds::check_ai_status` | B 需适配 | 只读 | State |
 | 2 | `t_cmds::get_image_search_model_status` | B 需适配 | 只读 | AppHandle |
 | 3 | `t_cmds::set_image_search_model` | B 需适配 | 管理员 | AppHandle |
-| 4 | `t_cmds::download_multilingual_image_search_model` | B 需适配 | 管理员 | AppHandle |
-| 5 | `t_cmds::cancel_multilingual_image_search_model_download` | B 需适配 | 写入 | AppHandle |
+| 4 | `t_cmds::download_multilingual_image_search_model` | A 纯内核 | 管理员 |  |
+| 5 | `t_cmds::cancel_multilingual_image_search_model_download` | A 纯内核 | 写入 |  |
 | 6 | `t_cmds::generate_embedding` | B 需适配 | 只读 | AppHandle |
 | 7 | `t_cmds::search_similar_images` | B 需适配 | 只读 | AppHandle |
 
@@ -323,7 +323,7 @@
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
-| 1 | `t_cmds::index_faces` | B 需适配 | 管理员 | AppHandle/State |
+| 1 | `t_cmds::index_faces` | B 需适配 | 管理员 | State |
 | 2 | `t_cmds::cancel_face_index` | B 需适配 | 写入 | State |
 | 3 | `t_cmds::reset_faces` | A 纯内核 | 管理员 |  |
 | 4 | `t_cmds::is_face_indexing` | B 需适配 | 只读 | State |
@@ -340,14 +340,14 @@
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
-| 1 | `t_cmds::dedup_start_scan` | B 需适配 | 管理员 | AppHandle/State |
+| 1 | `t_cmds::dedup_start_scan` | B 需适配 | 管理员 | State |
 | 2 | `t_cmds::dedup_get_scan_status` | B 需适配 | 写入 | State |
 | 3 | `t_cmds::dedup_cancel_scan` | B 需适配 | 写入 | State |
 | 4 | `t_cmds::dedup_list_groups` | A 纯内核 | 写入 |  |
 | 5 | `t_cmds::dedup_get_overview` | A 纯内核 | 写入 |  |
 | 6 | `t_cmds::dedup_set_keep` | A 纯内核 | 写入 |  |
 | 7 | `t_cmds::dedup_delete` | A 纯内核 | 管理员 |  |
-| 8 | `t_cmds::similar_start_scan` | B 需适配 | 管理员 | AppHandle/State |
+| 8 | `t_cmds::similar_start_scan` | B 需适配 | 管理员 | State |
 | 9 | `t_cmds::similar_get_scan_status` | B 需适配 | 写入 | State |
 | 10 | `t_cmds::similar_cancel_scan` | B 需适配 | 写入 | State |
 | 11 | `t_cmds::similar_get_eligible_count` | A 纯内核 | 写入 |  |
@@ -395,10 +395,10 @@
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
-| 1 | `t_video::prepare_video` | B 需适配 | 只读 | AppHandle/State |
+| 1 | `t_video::prepare_video` | B 需适配 | 只读 | State |
 | 2 | `t_video::get_video_stream_url` | A 纯内核 | 只读 |  |
 | 3 | `t_video::cancel_video_prepare` | B 需适配 | 只读 | State |
-| 4 | `t_video::clear_video_cache` | B 需适配 | 管理员 | AppHandle/State |
+| 4 | `t_video::clear_video_cache` | B 需适配 | 管理员 | State |
 
 ### 备份 / 恢复（4）
 
