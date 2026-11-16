@@ -1,5 +1,5 @@
-import { emit } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@/common/transport';
+import { invoke } from '@/common/transport';
 import { libConfig } from '@/common/config';
 import { getAlbumAccessibility, getUnavailableAlbumIds, resetFileAccessibility, setAlbumAccessibility } from '@/common/availability';
 

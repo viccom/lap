@@ -1,5 +1,5 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { Channel, invoke, capabilities } from '@/common/transport';
+import { listen } from '@/common/transport';
 
 export const MAX_NATIVE_DRAG_FILES = 1000;
 
@@ -57,6 +57,8 @@ export function createDragPreview(image?: HTMLImageElement | null): number[] {
 }
 
 export async function startNativeFileDrag(paths: string[], preview: number[]): Promise<void> {
+  // Native drag-out is desktop-only (§3.3); a Web client has no equivalent.
+  if (!capabilities().native) return;
   if (paths.length > MAX_NATIVE_DRAG_FILES) throw new Error(`At most ${MAX_NATIVE_DRAG_FILES} files can be dragged out at once`);
   if (isNativeFileDragActive()) return;
   active = true;

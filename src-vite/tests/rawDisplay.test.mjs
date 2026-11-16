@@ -118,8 +118,9 @@ const utilsSource = fs.readFileSync(new URL('../src/common/utils.ts', import.met
 const previewUrlSource = ts.transpile(utilsSource.slice(utilsSource.indexOf('export function getPreviewUrl('), utilsSource.indexOf('export function shouldUseBackendPreview(')).replace('export ', ''), { target: ts.ScriptTarget.ES2022 });
 
 test('editor URL selects the export pipeline regardless of RAW browsing settings', () => {
-  const getPreviewUrl = new Function('isWin', '_thumbLibraryId', 'useUIStore', 'appendRawDisplayParams', previewUrlSource + '; return getPreviewUrl;')(
+  const getPreviewUrl = new Function('isWin', '_thumbLibraryId', 'useUIStore', 'appendRawDisplayParams', 'transportAssetUrl', previewUrlSource + '; return getPreviewUrl;')(
     false, 'test-library', () => ({ getFileVersion: () => 7 }), appendRawDisplayParams,
+    (kind, { libraryId, fileId, win }) => `${win ? 'http' : kind}://localhost/${libraryId}/${fileId}`,
   );
   const urls = new Set();
   for (const source of ['embedded', 'rendered']) {

@@ -135,7 +135,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '@/common/transport';
 import { useToast } from '@/common/toast';
 import { IconAdd, IconEdit, IconTrash } from '@/common/icons';
 import TButton from '@/components/TButton.vue';

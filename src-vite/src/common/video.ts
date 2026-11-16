@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/common/transport';
 import { matchesShortcut, type ShortcutPlatform } from './shortcuts';
 
 export function handleVideoEscapeShortcut(event: KeyboardEvent, platform: ShortcutPlatform, closePreview: () => void) {

@@ -299,7 +299,7 @@ import { externalDragKind, updateExternalDrag, resetExternalDrag, finishExternal
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus'
-import { listen, emit as tauriEmit } from '@tauri-apps/api/event';
+import { listen, emit as tauriEmit } from '@/common/transport';
 import { config, libConfig } from '@/common/config';
 import { useUIStore } from '@/stores/uiStore';
 import {

@@ -119,7 +119,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { emit as tauriEmit } from '@tauri-apps/api/event';
+import { emit as tauriEmit } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
 import { addFilesToCollection, createCollection, deleteCollection as deleteCollectionApi, getCollectionSelectionCounts, listCollections, removeFilesFromCollection, renameCollection } from '@/common/api';

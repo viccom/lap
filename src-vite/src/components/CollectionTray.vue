@@ -172,7 +172,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { emit as tauriEmit, listen } from '@tauri-apps/api/event';
+import { emit as tauriEmit, listen } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useUIStore } from '@/stores/uiStore';
 import { config, libConfig } from '@/common/config';

@@ -1,7 +1,7 @@
 import { setAlbumAccessibility } from '@/common/availability';
-import { invoke, Channel } from '@tauri-apps/api/core';
+import { invoke, Channel, capabilities } from '@/common/transport';
 import { locale } from '@tauri-apps/plugin-os';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '@/common/transport';
 import { config, libConfig } from '@/common/config';
 import { separator, localeComp, formatTimestamp } from '@/common/utils';
 import { getRawDisplayOptions } from './rawDisplay';
@@ -494,6 +494,7 @@ export async function removeAlbum(albumId) {
 
 // open an external URL or deep link
 export async function openExternalUrl(url) {
+  if (!capabilities().native) return false;
   try {
     await invoke('open_external_url', { url });
     return true;
@@ -504,11 +505,13 @@ export async function openExternalUrl(url) {
 }
 
 export async function setDesktopWallpaper(filePath, companionPath = null) {
+  if (!capabilities().native) return null;
   return invoke('set_desktop_wallpaper', { filePath, companionPath });
 }
 
 // open a file with a specific external app
 export async function openFileWithApp(filePath, appPath) {
+  if (!capabilities().native) return false;
   try {
     await invoke('open_file_with_app', { filePath, appPath });
     return true;
@@ -761,6 +764,7 @@ export async function deleteFolderPermanently(folderPath, libraryId, expectedIde
 
 /// reveal a file or folder in file explorer (or finder)
 export async function revealPath(path) {
+  if (!capabilities().native) return null;
   try {
     const result = await invoke('reveal_path', { path });
     if(result) {

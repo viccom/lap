@@ -1139,7 +1139,7 @@
 import { ref, watch, computed, onMounted, onUnmounted, onBeforeUnmount } from 'vue';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { emit } from '@tauri-apps/api/event';
+import { emit } from '@/common/transport';
 import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { useI18n } from 'vue-i18n';
 import { config, libConfig } from '@/common/config';
@@ -1563,7 +1563,7 @@ watch(vlRuns, syncVlRunsPolling);
 
 onMounted(async () => {
   try {
-    const { listen } = await import('@tauri-apps/api/event');
+    const { listen } = await import('@/common/transport');
     unlistenVlRunEvents = [
       await listen('vl-analysis-progress', () => {
         if (config.settings.tabIndex === VL_TASKS_TAB) void loadVlRuns();

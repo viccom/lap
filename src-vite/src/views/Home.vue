@@ -184,10 +184,10 @@
 <script setup lang="ts">
 import { defineAsyncComponent, ref, computed, onBeforeUnmount, onMounted, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { emit, listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@/common/transport';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getName } from '@tauri-apps/api/app';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/common/transport';
 import { applyAlbumAccess, recheckOfflineAlbums } from '@/common/albumRecovery';
 import { config, libConfig } from '@/common/config';
 import { useAppUpdater } from '@/common/updater';

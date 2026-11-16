@@ -568,10 +568,10 @@
 import FileInfoFieldsDialog from '@/components/FileInfoFieldsDialog.vue';
 import { normalizeFileInfoFields } from '@/common/fileInfoFields';
 import ImageNavigator from '@/components/ImageNavigator.vue';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/common/transport';
 import { navigatorLayout } from '@/common/imageNavigator';
 import { h, ref, nextTick, computed, watch, onBeforeUnmount, onMounted } from 'vue';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
 import { useUIStore } from '@/stores/uiStore';

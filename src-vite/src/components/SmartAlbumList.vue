@@ -136,7 +136,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '@/common/transport';
 import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus';
 import { config, libConfig } from '@/common/config';
 import { useUIStore } from '@/stores/uiStore';

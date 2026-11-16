@@ -2,6 +2,7 @@ import { computed, ref, type Ref } from 'vue';
 import { check, type Update, type DownloadEvent } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { openExternalUrl } from '@/common/api';
+import { capabilities } from '@/common/transport';
 import { useToast, type ToastPlacement } from '@/common/toast';
 
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -191,6 +192,9 @@ export function useAppUpdater(localeMsg: Ref<any>, options: AppUpdaterOptions = 
   }
 
   async function checkForUpdates(manual = false) {
+    // The updater is a desktop-shell feature (§3.3); a Web client updates by
+    // refreshing the page, so there is nothing to check.
+    if (!capabilities().native) return;
     if (isCheckingUpdate.value || isInstallingUpdate.value) return;
 
     if (!manual) {

@@ -38,7 +38,8 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { libConfig } from '@/common/config';
-import { listen, type Event } from '@tauri-apps/api/event';
+import { listen } from '@/common/transport';
+import type { Event } from '@tauri-apps/api/event';
 import { IconAdd } from '@/common/icons';
 import { useUIStore } from '@/stores/uiStore';
 

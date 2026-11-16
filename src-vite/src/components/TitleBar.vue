@@ -71,9 +71,10 @@
 <script setup>
 
 import { ref, watch } from 'vue';
-import { emit } from '@tauri-apps/api/event';
+import { emit } from '@/common/transport';
 import { getCurrentWindow  } from '@tauri-apps/api/window';
 import { isWin, isMac, isLinux } from '@/common/utils';
+import { capabilities } from '@/common/transport';
 
 import { 
   IconWinMinus,
@@ -105,7 +106,7 @@ const searchValue = ref('');
 
 const appWindow = getCurrentWindow();
 const isMaximized = ref(false);
-const showDesktopWindowControls = isWin || isLinux;
+const showDesktopWindowControls = capabilities().native && (isWin || isLinux);
 
 watch(() => searchValue.value, (newValue) => { 
   console.log('searchValue:', newValue);

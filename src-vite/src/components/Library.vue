@@ -281,7 +281,7 @@ onMounted(() => { void refreshLibraryCounts(); });
 let unlistenVlFinished: (() => void) | null = null;
 onMounted(async () => {
   try {
-    const { listen } = await import('@tauri-apps/api/event');
+    const { listen } = await import('@/common/transport');
     unlistenVlFinished = await listen('vl-analysis-finished', () => {
       if (isActiveLibraryView()) void refreshLibraryCounts();
     });

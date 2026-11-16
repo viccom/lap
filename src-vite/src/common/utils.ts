@@ -1,5 +1,5 @@
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke, assetUrl as transportAssetUrl, capabilities } from '@/common/transport';
 import { useUIStore } from '@/stores/uiStore';
 import { config } from '@/common/config';
 import { appendRawDisplayParams, rawDisplayKey } from './rawDisplay';
@@ -579,12 +579,13 @@ export function getThumbUrl(
   fileVersion = 0,
 ): string {
   if (!fileId || fileId <= 0) return '';
-  if (isWin && !bustCache) {
+  // The data-URL fast path is a Windows-desktop shortcut; a Web client requests
+  // the thumbnail endpoint directly (§3.3), so gate it on native transport.
+  if (isWin && capabilities().native && !bustCache) {
     const cached = getCachedThumbnailDataUrl(fileId, thumbnailSize);
     if (cached) return cached;
   }
-  const scheme = isWin ? 'http://thumb.localhost' : 'thumb://localhost';
-  const base = `${scheme}/${_thumbLibraryId}/${fileId}`;
+  const base = transportAssetUrl('thumb', { libraryId: _thumbLibraryId, fileId, win: isWin });
   const params = new URLSearchParams();
   appendRawDisplayParams(params);
   if (thumbnailSize > 0) params.set('size', String(thumbnailSize));
@@ -602,8 +603,7 @@ export function getPreviewUrl(
   forEditing = false,
 ): string {
   if (!fileId || fileId <= 0) return '';
-  const scheme = isWin ? 'http://preview.localhost' : 'preview://localhost';
-  const base = `${scheme}/${_thumbLibraryId}/${fileId}`;
+  const base = transportAssetUrl('preview', { libraryId: _thumbLibraryId, fileId, win: isWin });
 
   const params = new URLSearchParams();
   if (forEditing) {
@@ -723,6 +723,9 @@ export const isValidFileName = (name: string) => {
 
 // Function to select a folder
 export async function openFolderDialog(title?: string) {
+  // Native directory picker is a desktop-shell feature (§3.3); Web clients
+  // choose server-side paths through settings instead.
+  if (!capabilities().native) return null;
   const selected = await openDialog({
     title: title || 'Select a folder',
     directory: true,  // Enables folder selection
@@ -768,12 +771,15 @@ export function getAssetSrc(filePath: string, fileVersion = 0): string {
   }
   const uiStore = useUIStore();
   const localVersion = uiStore.getFileVersion(filePath);
-  const assetUrl = convertFileSrc(filePath);
+  const base = transportAssetUrl('asset', { filePath, win: isWin });
+  // No Web endpoint for arbitrary paths until phase 3; degrade to empty rather
+  // than emit a query-only URL that would resolve against the current page.
+  if (!base) return '';
   const params = new URLSearchParams();
   if (fileVersion > 0) params.set('v', String(fileVersion));
   if (localVersion > 0) params.set('u', String(localVersion));
   const query = params.toString();
-  return query ? `${assetUrl}?${query}` : assetUrl;
+  return query ? `${base}?${query}` : base;
 }
 
 // get country name from country code

@@ -4,13 +4,13 @@ import fs from 'node:fs';
 import ts from 'typescript';
 
 const source = fs.readFileSync(new URL('../src/common/nativeDrag.ts', import.meta.url), 'utf8');
-function load(invoke = async () => {}, events = { listen: async () => () => {}, emit: async () => {} }) {
+function load(invoke = async () => {}, events = { listen: async () => () => {}, emit: async () => {} }, capabilities = () => ({ native: true })) {
   const channels = [];
   class Channel { constructor() { channels.push(this); } }
   const js = ts.transpile(source.replace(/^import .*;$/gm, '').replace(/export /g, ''), { target: ts.ScriptTarget.ES2022 });
   const listeners = new Map();
   const window = { innerWidth: 1000, innerHeight: 700, addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name) };
-  return { channels, listeners, ...new Function('invoke', 'Channel', 'window', 'listen', js + '; return { startNativeFileDrag, isNativeFileDragActive, isReturningNativeFileDrag, isWindowDragEdge };')(invoke, Channel, window, events.listen) };
+  return { channels, listeners, ...new Function('invoke', 'Channel', 'window', 'listen', 'capabilities', js + '; return { startNativeFileDrag, isNativeFileDragActive, isReturningNativeFileDrag, isWindowDragEdge };')(invoke, Channel, window, events.listen, capabilities) };
 }
 
 async function waitForStart(api) {
@@ -318,4 +318,13 @@ test('starting at the window edge leaves no internal listeners after native hand
   assert.equal(listeners.size, 0);
   assert.equal(api.listeners.size, 0);
   assert.deepEqual(api.calls, ['cancel-pointer', ['clear', []], ['native', ['/one.jpg']]]);
+});
+
+test('a Web client never reaches the native drag backend', async () => {
+  const calls = [];
+  const api = load(async (...args) => { calls.push(args); }, undefined, () => ({ native: false }));
+  await api.startNativeFileDrag(['/photos/a.jpg'], [1]);
+  assert.deepEqual(calls, []);
+  assert.equal(api.channels.length, 0);
+  assert.equal(api.isNativeFileDragActive(), false);
 });

@@ -279,14 +279,14 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { emit, listen } from '@tauri-apps/api/event';
+import { emit, listen } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import TitleBar from '@/components/TitleBar.vue';
 import { IconRight } from '@/common/icons';
 import { config } from '@/common/config';
 import { useToast } from '@/common/toast';
 import { getThumbnailDataUrl, isWin, isLinux } from '@/common/utils';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/common/transport';
 import { getFileThumb, getFilesByIds, getQueryFiles } from '@/common/api';
 import { getVlConfig, getVlAnnotations, getVlCalls, listVlTemplates, runVlAnalysis, cancelVlRun } from '@/common/vlApi';
 import {

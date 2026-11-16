@@ -7,7 +7,7 @@
  * Every function takes an optional `invoker` as its last argument; it defaults
  * to the real Tauri invoke and exists so the tests can observe the payloads.
  */
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './transport/index.js';
 import {
   buildRunArgs,
   buildTemplateArgs,

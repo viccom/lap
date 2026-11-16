@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 0 已完成**（基线已固化并全绿：Rust 561/0/9、前端 425/0、构建通过，见 [BASELINE-阶段0-服务化拆分基线.md](./BASELINE-阶段0-服务化拆分基线.md)；下一阶段 = 阶段 1 前端传输抽象，未开始）
+状态：**阶段 1 已完成**（阶段 0 基线 Rust 561/0/9、前端 425/0；阶段 1 落地 `src-vite/src/common/transport/` 传输抽象，35 个文件改 import，媒体三函数走 `assetUrl()`，`capabilities()` 门控 C 类入口；前端 438/0、两传输 `pnpm build` 均 exit=0、Rust 561/0/9 不变；下一阶段 = 阶段 2 原地去 Tauri 化，未开始）
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -14,7 +14,7 @@
 
 ## 0. 结论摘要
 
-1. **可行，且成本比看起来低**：253 条命令中 **192 条是纯函数**（无任何 Tauri 注入参数），只有 **45 条需适配**、**16 条原生专属**；前端 228 个 `invoke` 调用点只来自 **15 个文件**的同一句 import（209 个集中在 `common/api.js`）；图片/视频 URL 只在 `common/utils.ts` 的 **3 个函数**里构造。模块级核验（`rg 'tauri::'` 全量扫描，见 §3.1）更乐观：**19 个模块零 Tauri 引用**、**4 个模块只用 `tauri::async_runtime`**（换成 tokio 即可），真正要动手术的只有 10 个模块（含 `t_cmds` 巨石）。
+1. **可行，且成本比看起来低**：253 条命令中 **192 条是纯函数**（无任何 Tauri 注入参数），只有 **45 条需适配**、**16 条原生专属**；前端 228 个 `invoke` 调用点集中在 **15 个文件**的同一句 import（209 个在 `common/api.js`），另有 **29 个文件**从 `@tauri-apps/api/event` 引入 `listen`/`emit`——传输层要覆盖的是这两类的并集 **35 个文件**；图片/视频 URL 只在 `common/utils.ts` 的 **3 个函数**里构造。模块级核验（`rg 'tauri::'` 全量扫描，见 §3.1）更乐观：**19 个模块零 Tauri 引用**、**4 个模块只用 `tauri::async_runtime`**（换成 tokio 即可），真正要动手术的只有 10 个模块（含 `t_cmds` 巨石）。
 2. **最低代价的路线不是"先拆 crate"**，而是"先在原地把命令体改成无 Tauri 依赖，再打包成 crate"。这样路径改写、workspace/锁文件/CI 变更都推迟到代码已经 Tauri-free 之后，由编译器与既有测试兜底。
 3. **真正的风险不在传输层**：个人照片库联网后的鉴权与命令面、SQLite 单写者所有权、桌面专属 UX、移动端布局、跨平台打包，才是决定成败的地方。
 4. **MVP（局域网 Web 浏览/搜索/查看 + 鉴权）约 2–3 周专注工作**；含手机 PWA 再加约 2 周。
@@ -49,7 +49,7 @@
 | 命令面 | 253 条 / 9 个模块；`t_cmds.rs` 单文件 4644 行、占 216 条 | `src-tauri/src/main.rs:271-549` |
 | 拆分难度 | A 纯内核 192 · B 需适配 45 · C 原生专属 16 | 配套清单文档；脚本 `docs/dev/gen-command-inventory.py` |
 | 业务分层 | 30+ 个非命令模块（`t_sqlite` 13.7k 行、`t_utils` 5.2k、`t_image` 2.4k…）本身与 Tauri 无关 | 各 `t_*.rs` |
-| 前端耦合 | 228 个 `invoke`，209 个在 `common/api.js`；仅 15 个文件 import `@tauri-apps/api/core`；29 个文件用 event | `src-vite/src` |
+| 前端耦合 | 228 个 `invoke`，209 个在 `common/api.js`（15 个文件 import `@tauri-apps/api/core`）；29 个文件用 event；传输层覆盖并集 **35 文件** | `src-vite/src` |
 | 事件 | Rust 侧 23 个事件名 / 46 个 emit 点；前端 303 emit、110 listen，多数是**多窗口 JS↔JS 总线** | 同上 |
 | 媒体通路 | `thumb://` / `preview://` 自定义协议（`t_protocol.rs:129-309`）、`asset://`（`utils.ts:771`）、Windows data-URL 缩略图缓存；Linux 另有 `127.0.0.1:0` 视频 206 服务 | `t_http.rs:23-313` |
 | 网络栈 | **没有任何 HTTP server crate**；`hyper` 只是 `reqwest` 的传递依赖；唯一监听器是 Linux 视频服务 | `src-tauri/Cargo.toml`、`Cargo.lock` |
@@ -115,7 +115,7 @@ src-vite/                      一套前端，两种传输
 ### 3.3 前端传输层
 
 - 新增 `src/common/transport/`：导出与 `@tauri-apps/api/core` **同签名**的 `invoke`/`Channel`，与 `@tauri-apps/api/event` 同签名的 `listen`/`emit`，外加 `assetUrl()` 与 `capabilities()`。
-- 迁移动作是**改 15 个文件的 import 一行**（228 个调用点原地不动）；`common/vlApi.js` 已有的可注入 `invoker` 模式继续保留给测试。
+- 迁移动作是**改 35 个文件的 import 一行**（15 个 `core` 文件 + 29 个 `event` 文件，有 9 个文件同时属于两类，并集 35；228 个调用点原地不动）；`common/vlApi.js` 已有的可注入 `invoker` 模式继续保留给测试。
 - `Channel` 只有 2 条命令使用（缓存迁移、出窗拖拽）；后者是 C 类，Web 端不需要。
 - `capabilities()` 返回 `{ native: boolean }`：Web 端隐藏目录选择、资源管理器定位、原生拖拽、更新器、壁纸等入口。
 - **多窗口 → 同页路由**：桌面上的 `imageviewer/imageeditor/montage/settings/vl-lab` 是独立 `WebviewWindow`；Web 端改为同一 tab 内的 router 路由。跨窗口事件总线的大头（303 emit / 110 listen）在 Web 端退化为 Vue 状态，SSE 只承载后端进度事件。
@@ -238,11 +238,14 @@ src-vite/                      一套前端，两种传输
 - **验收**：基线结果写入 `docs/dev/`；后续每阶段失败集合无新增。
 - **回滚**：无代码改动。
 
-### 阶段 1 · 前端传输抽象（2–4 天，不碰 Rust）
+### 阶段 1 · 前端传输抽象（2–4 天，不碰 Rust）✅ 已完成
 
-- 新增 `transport/`，15 个文件改 import；媒体三函数改 `assetUrl()`；`capabilities()` 门控 C 类入口。
+- 新增 `transport/`，35 个文件改 import（core 15 ∪ event 29）；媒体三函数改 `assetUrl()`；`capabilities()` 门控 C 类入口。
 - **验收**：`VITE_LAP_TRANSPORT=tauri` 与 `=http` 都能 `pnpm build`；transport 单测覆盖名称/参数/事件名映射；桌面端冒烟无变化。
 - **回滚**：默认传输仍是 Tauri；改动是纯前端、可整体回退。
+- **落地结果**：新增 `src-vite/src/common/transport/`（`mode.js`/`capabilities.js`/`tauri.js`/`http.js`/`index.js`）；35 文件 import 迁移（`vlApi.js`/`vlLabLogic.js` 用相对路径 `./transport/index.js` 以保持 Node 直载）；`utils.ts` 三媒体函数改走 `assetUrl()`，Windows data-URL 快路径加 `capabilities().native` 前置；C 类门控落点 = `utils.ts:openFolderDialog`、`api.js:openExternalUrl/setDesktopWallpaper/openFileWithApp/revealPath`、`nativeDrag.ts:startNativeFileDrag`、`updater.ts:checkForUpdates`、`TitleBar.vue` 窗口控制。新增 `tests/transport.test.mjs`（13 例）+ `test:transport` 脚本。**验收证据**：前端 438/0（425 基线 + 13 新）、两传输 `pnpm build` 均 exit=0、Rust 561/0/9 不变。
+- **`http` 实现是骨架**：端点（`/api/cmd`、`/api/events`、`/api/thumb|preview|original`）按 §3.3/§3.5 契约定型但由阶段 3 落地；本轮验收只到「两种传输都能构建 + 单测映射正确」，**不是可用的 Web 应用**。
+
 
 ### 阶段 2 · 原地去 Tauri 化（1–2 周，主成本）
 

@@ -192,7 +192,7 @@ import {
   onMounted,
   onBeforeUnmount,
 } from "vue";
-import { emit as tauriEmit, listen } from "@tauri-apps/api/event";
+import { emit as tauriEmit, listen } from "@/common/transport";
 import { useI18n } from "vue-i18n";
 import { useToast } from "@/common/toast";
 import {

@@ -466,7 +466,7 @@ import { isOriginalUnavailable, setFileAccessibility } from '@/common/availabili
 import { getMotionPhotoVideoPath, checkFileAccessibility } from '@/common/api';
 
 import Image from '@/components/Image.vue';
-import { emit as tauriEmit } from '@tauri-apps/api/event';
+import { emit as tauriEmit } from '@/common/transport';
 import TButton from '@/components/TButton.vue';
 import { 
   IconLeft, 

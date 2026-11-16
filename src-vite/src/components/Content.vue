@@ -844,8 +844,8 @@ import { getExternalDropUris, getExternalHttpDropUrls, getExternalFileDropPaths,
 
 import PrintImage from '@/components/PrintImage.vue';
 import { defineAsyncComponent, ref, watch, computed, createVNode, onMounted, onBeforeUnmount, nextTick, render, markRaw } from 'vue';
-import { emit as tauriEmit, listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { emit as tauriEmit, listen } from '@/common/transport';
+import { invoke } from '@/common/transport';
 import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { PREVIEW_WINDOW_FOCUS_RESTORED } from '@/common/previewWindow';
@@ -9160,7 +9160,7 @@ function ensureVlRunListeners() {
   if (vlRunListenersRequested) return;
   vlRunListenersRequested = true;
   void (async () => {
-    const { listen } = await import('@tauri-apps/api/event');
+    const { listen } = await import('@/common/transport');
     const stopProgress = await listen('vl-analysis-progress', (event: any) => {
       const status = event.payload;
       if (!status || !vlActiveRunIds.has(String(status.runId)) || status.state !== 'running') return;

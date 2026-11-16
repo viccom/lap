@@ -6,7 +6,7 @@
  * The logic is side effect free so it can be tested without a Tauri runtime;
  * the invoke wrappers follow the ./vlApi.js style with an injectable invoker.
  */
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './transport/index.js';
 import { MATCH_COLUMN_KEYS, SEARCH_RESULT_LIMIT } from './searchMode.js';
 import { buildRunArgs } from './vlLogic.js';
 

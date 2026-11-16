@@ -290,7 +290,7 @@ import { getFileInfo, checkFileExists, renderMontage } from '@/common/api';
 import { computeMontageLayout, shuffled, type MontageItem } from '@/common/montageLayout';
 import { getAspectRatio } from '@/common/layout';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { emit as tauriEmit } from '@tauri-apps/api/event';
+import { emit as tauriEmit } from '@/common/transport';
 import { open as openDialog, message } from '@tauri-apps/plugin-dialog';
 
 import PrintImage from '@/components/PrintImage.vue';

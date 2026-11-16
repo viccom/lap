@@ -40,7 +40,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { emit as tauriEmit } from '@tauri-apps/api/event';
+import { emit as tauriEmit } from '@/common/transport';
 import { getPackageInfo } from '@/common/api';
 import { IconAdd, IconCollection, IconFolderCog, IconFolders } from '@/common/icons';
 import iconLogo from '@/assets/images/icon.png';

@@ -36,7 +36,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onUnmounted } from 'vue';
 import { IconClose, IconSearch } from '@/common/icons';
-import { listen } from '@tauri-apps/api/event';
+import { listen } from '@/common/transport';
 import { useUIStore } from '@/stores/uiStore';
 
 const props = defineProps({

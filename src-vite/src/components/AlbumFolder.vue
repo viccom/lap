@@ -227,7 +227,7 @@ import {
 } from '@/common/icons';
 
 // used for cross-component communication (Content.vue listens for this event)
-import { emit as tauriEmit } from '@tauri-apps/api/event';
+import { emit as tauriEmit } from '@/common/transport';
 
 const NEW_FOLDER_CONTEXT = 'album-folder-new-folder-context';
 

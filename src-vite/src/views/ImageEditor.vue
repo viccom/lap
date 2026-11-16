@@ -555,7 +555,7 @@ import { isWin, isLinux, SCALE_VALUES, getFolderPath, getFileExtension, shortenF
 import { editImage, checkFileExists, getFileInfo } from '@/common/api';
 import { getMaxInscribedRect, clampCenterInRotatedRect, maxResizeT } from '@/common/geometry';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { emit as tauriEmit, listen } from '@tauri-apps/api/event';
+import { emit as tauriEmit, listen } from '@/common/transport';
 
 watch(() => config.imageEditor, (preferences) => {
   void tauriEmit('image-editor-config-changed', JSON.parse(JSON.stringify(preferences)));

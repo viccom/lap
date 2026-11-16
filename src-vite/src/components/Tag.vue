@@ -161,7 +161,7 @@ import {
   onMounted,
   onBeforeUnmount,
 } from "vue";
-import { emit as emitEvent, listen } from "@tauri-apps/api/event";
+import { emit as emitEvent, listen } from "@/common/transport";
 import { useI18n } from "vue-i18n";
 import { useToast } from "@/common/toast";
 import { useUIStore } from "@/stores/uiStore";

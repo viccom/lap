@@ -30,7 +30,7 @@
 
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/common/transport';
 import { config, libConfig } from '@/common/config';
 import { getRawDisplayOptions } from '@/common/rawDisplay';
 import { useUIStore } from '@/stores/uiStore';

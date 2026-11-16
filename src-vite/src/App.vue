@@ -10,8 +10,8 @@
  
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { emit } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { emit } from '@/common/transport';
+import { invoke } from '@/common/transport';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useConfigStore } from '@/stores/configStore';
 import { useLibraryStore } from '@/stores/libraryStore';
