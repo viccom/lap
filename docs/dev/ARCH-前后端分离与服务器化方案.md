@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 2 批次 1 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫，43 emit / 9 path / 76 async 点位迁移，Rust 568/0/9、便携版冒烟通过；6 提交 `dd2bb08f`…`723a91bf` 已推送。后续 = 阶段 2 批次 2 写入面/重活面）
+状态：**阶段 2 批次 2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫，43 emit / 9 path / 76 async 点位迁移；阶段 2 批次 2：写入面 26 条命令体迁入 `t_write.rs`、`t_state` 状态注册表、拆核心→壳倒置依赖、写入面契约守卫；Rust 573/0/9、前端 439/0、便携版冒烟通过。下一阶段 = 阶段 2 批次 3（重活/管理面）或阶段 3）
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -264,6 +264,15 @@ src-vite/                      一套前端，两种传输
 - **顺带修复**：`metadata::xmp` 的 `new_scan_rebuilds_index_without_directory_timestamp` 是**既有**并发 flake（phase-1 HEAD 实测 4/10 失败、串行 6/6 绿），根因=进程级 `SIDECAR_REVISION` 被兄弟模块测试并发 bump；加测试专用锁修掉（`5bf3a233`）。
 - **验收证据**：`cargo test --bin Lap` **568/0/9**（561 基线 + 7 新测试），连续 8 轮全绿；便携版重建（subsystem=2、sha256 `8a2ac3c1…0c26a7`）冒烟 OK；真库 v18 / debug v28 integrity=ok。
 - **未做**：写入面与重活面的 `State<T>` 迁移、`t_cmds` 巨石按领域拆分——留阶段 2 后续批。
+
+**批次 2（写入面 + 状态注册表）· 已完成**（6 提交 `3d6df87a`…`37e450a4`）：
+- **写入面 26 条命令**（标签 7 / 收藏评分 6 / 集合 7 / 相册编排 6）体全部迁入新核心模块 **`t_write.rs`**（无 `tauri::` 依赖），`#[tauri::command]` 薄包装留在 `t_cmds.rs` 转发；两个 JS 可见结构体（`CollectionAddResult`/`BatchFileMetadataUpdate`）随之迁移，字段名与 camelCase 序列化**逐字不变**。**`add_album` 有意仍是 B 类**——目录授权走平台 fs scope，按 §3.2 属壳职责，包装里做授权、体只写库。
+- **`t_state.rs` 状态注册表**：`IndexCancellation` 从壳搬进进程级注册表，`.manage()` 取消；**必须同批切换的 4 条**（`index_album`/`cancel_indexing`/`edit_album`/`remove_album`）一起切，否则会出现两个取消源、取消功能静默失效。已补两个此前**无法测试**的不变量测试（注册表单例共享 + cancel 命令确实写进注册表）。
+- **拆掉核心→壳的倒置依赖**：`FILE_REFRESH_LIBRARY_LOCK`/`with_library_context`/`with_current_library` 从 `t_cmds.rs` 搬进 `t_config.rs`（与 `current_library_id` 同居），`t_sqlite`/`t_utils`/`t_protocol`/`t_startup` 不再 `use crate::t_cmds::`。锁序仍单向（refresh → current_library），无环。
+- **写入面契约守卫**（`t_write.rs` 测试）：写入面此前**零测试覆盖**，任何参数漂移都会静默上线。守卫扫描 `t_cmds.rs` 源码，把 26 条命令的注入参数与 **JS 可见参数**分开，断言后者与写死的 camelCase 表**逐字相符**（已验证非空转：给 `create_tag` 加参数即红）。另加边界断言：写入面命令**不得取 `State<>`**，且仅 `add_album` 可取 `AppHandle`。
+- **验收证据**：`cargo test --bin Lap` **573/0/9**（连续多轮绿）；前端 **439/0** 未变（本批零前端改动）；命令清单重生成，A **197→200** / B **40→37**（恰好 3 条去掉 `State`），命令总数仍 253；便携版重建（subsystem=2、sha256 `dfc2204b…56a77`）冒烟 OK，真库 v18 / debug v28 integrity=ok。
+- **本批未做**：重活/管理面的 `State<T>`（face/dedup/similar/VL/import）迁移；`t_dedup` 仍从壳取 `BatchDeleteFile`/`delete_files_with_components`（属文件删除面，留批次 4）。
+
 
 
 ### 阶段 3 · 打包 `lap-core` + `lapd`（1–1.5 周）
