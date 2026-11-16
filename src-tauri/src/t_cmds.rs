@@ -172,6 +172,10 @@ pub async fn change_thumbnail_cache_location(
 
 #[tauri::command]
 pub async fn set_desktop_wallpaper(
+    // macOS needs an AppHandle to hop to the main thread (see the cfg block
+    // below); other platforms never touch it. Injected by Tauri, never sent
+    // by the frontend — restoring the pre-3.1 signature verbatim.
+    _app_handle: tauri::AppHandle,
     file_path: &str,
     companion_path: Option<String>,
 ) -> Result<(), String> {
