@@ -8,12 +8,13 @@
 
 | 门禁 | 结果 | 复现命令 |
 |---|---|---|
-| Rust 全量 | **556 passed / 0 failed / 9 ignored**（exit=0） | `source docs/dev/build-env.sh && cd src-tauri && cargo test --bin Lap` |
+| Rust 全量 | **561 passed / 0 failed / 9 ignored**（exit=0） | `source docs/dev/build-env.sh && cd src-tauri && cargo test --bin Lap` |
 | 前端全量 | **41 文件 / 425 tests / 425 pass / 0 fail** | `cd src-vite && node --experimental-vm-modules --test tests/*.test.mjs` |
 | 前端构建 | exit=0（仅 chunk 体积警告） | `cd src-vite && pnpm build` |
 
 - 已知 flaky 池：**清空**（原三成员全部根因修复，见 §2）。
 - 9 个 ignored 均为需真实数据/网关/样本的手动测试，与基线无关：`t_dedup` 外部样本 keep rules、`t_fts` 真实库检索探针、`t_image` 离线 RAW 预览 ×3、`t_sqlite` 镜头回填、`t_vl` 真实网关 ×3。
+- 注：基线计数曾记 556，后因人脸优化批（`be3a180c`/`3c39bf21`）新增 5 个门控/对齐探针测试升为 **561**（0 删除、0 新增失败、ignored 仍 9）。**阶段 0 的验收标准是「失败集合无新增」，该标准仍成立**；后续阶段以 561 为对照值。
 
 ## 2. 本阶段修复（全部有红→绿证据）
 
