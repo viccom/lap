@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 2 批次 2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫，43 emit / 9 path / 76 async 点位迁移；阶段 2 批次 2：写入面 26 条命令体迁入 `t_write.rs`、`t_state` 状态注册表、拆核心→壳倒置依赖、写入面契约守卫；Rust 573/0/9、前端 439/0、便携版冒烟通过。下一阶段 = 阶段 2 批次 3（重活/管理面）或阶段 3）
+状态：**阶段 2 批次 3 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、全部 11 个 `.manage()` 状态入 `t_state`、`t_sqlite`/`t_dedup`/`t_similar` 零 tauri、`.manage` 计数归零；Rust 577/0/9、清单 A 233/B 4/C 16、便携版冒烟通过。下一阶段 = 阶段 3（打包 `lap-core` + `lapd`）或批次 4（文件删除面））
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -272,6 +272,15 @@ src-vite/                      一套前端，两种传输
 - **写入面契约守卫**（`t_write.rs` 测试）：写入面此前**零测试覆盖**，任何参数漂移都会静默上线。守卫扫描 `t_cmds.rs` 源码，把 26 条命令的注入参数与 **JS 可见参数**分开，断言后者与写死的 camelCase 表**逐字相符**（已验证非空转：给 `create_tag` 加参数即红）。另加边界断言：写入面命令**不得取 `State<>`**，且仅 `add_album` 可取 `AppHandle`。
 - **验收证据**：`cargo test --bin Lap` **573/0/9**（连续多轮绿）；前端 **439/0** 未变（本批零前端改动）；命令清单重生成，A **197→200** / B **40→37**（恰好 3 条去掉 `State`），命令总数仍 253；便携版重建（subsystem=2、sha256 `dfc2204b…56a77`）冒烟 OK，真库 v18 / debug v28 integrity=ok。
 - **本批未做**：重活/管理面的 `State<T>`（face/dedup/similar/VL/import）迁移；`t_dedup` 仍从壳取 `BatchDeleteFile`/`delete_files_with_components`（属文件删除面，留批次 4）。
+
+**批次 3（重活/管理面 + 全量状态注册表）· 已完成**（6 提交 `32b52635`…`3c448ece`）：
+- **`t_state` 注册表扩到 11 项**：StartupState、AiState、FaceState/FaceIndexCancellation/FaceIndexingStatus/FaceIndexProgressState、ImportCancellation（+ImportState 从壳迁入）、DedupState、SimilarState、VideoManager、VlState，加批次 2 的 IndexCancellation；`init_process_states()` 在 main 最早调用（保 StartupState 计时起点），**main.rs `.manage()` 计数归零**，唯一残留 `.state::<>()` 是 `t_utils` 的 Scopes（桌面 fs 授权，壳职责）。
+- **AI 缝是解锁钥匙**：`ensure_ai`/`initialize_models` 迁入 `t_ai`（无句柄版，读注册表）；`t_sqlite` AFile 四方法 `&State<AiState>`→`&AiState`（SQL 层不再引用 tauri）；`t_utils` 索引/mtime 后台管道六处去 AppHandle（`ProgressTracker::new` 本就是死参）。由此 `index_album`/`sync_album_folder_mtimes`/`refresh_album_subfolders`/AI 五命令/启动三命令全部无注入。
+- **VL 全管道去 AppHandle**：事件早已走 `t_events`、spawn 早已走 `t_rt`，句柄是纯管道残留——`start_run`/`start_run_for_library`/`pump_queue`/`spawn_run_worker`/`finish_run`/`retry_run` 签名全部去句柄；`t_vl_schedule::spawn_scheduler()` 无参化（注册表取 VlState）；`remove_library` 改读注册表。
+- **33 条 B→A**（face 3、import 2、dedup 3、similar 3、VL 6、video 3、AI 5、库管理 3、索引/mtime 3、启动 2），JS 可见参数逐字不变（前端从不发送注入参数）；**有意留 B 的 4 条**：`add_album`（fs scope）、`switch_library`（restore_album_scopes 留壳）、`copy_images`（原生剪贴板 Linux 主线程跳转）、`change_thumbnail_cache_location`（JS 可见 `Channel` 进度参数，注入备注从 Channel/State 缩为 Channel）。`record_startup_stage` 等 3 条启动命令去句柄但按策展清单仍为 C 类（不暴露）。
+- **守卫**：`t_state` 新增去注入契约守卫——34 条命令断言签名零注入 + JS 可见参数逐字相符（复用 `t_write` 的 `signature_of`，改 pub(crate)）；**已验证非空转**（给 `clear_video_cache` 注回 State 即红）。边界守卫清单 28→31（加入 `t_sqlite`/`t_dedup`/`t_similar`，四模块源码零 tauri 引用）。
+- **验收证据**：`cargo test --bin Lap` **577/0/9**（基线 573 + 注册表/守卫新测试；`initialize_models` 并发测试随迁 `t_ai`）；命令清单重生成，**A 200→233 / B 37→4 / C 16 / 总数 253**，B 剩余恰好 4 个有意例外；前端零改动（src-vite 未动）。
+- **本批未做**：`t_dedup`→壳的 `BatchDeleteFile`/`delete_files_with_components`（文件删除面，批次 4）；`t_cmds` 巨石按领域拆分（可并入阶段 3 workspace 化时做）；`t_vl`/`t_video`/`t_startup` 因自带 `#[tauri::command]` 属性不入源码扫描守卫（其 A 类身份由清单生成器审计）。
 
 
 

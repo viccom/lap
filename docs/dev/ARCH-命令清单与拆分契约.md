@@ -26,7 +26,7 @@
 ## 2. 统计
 
 - 命令总数：**253**
-- 拆分分类：A 纯内核 **200** · B 需适配 **37** · C 原生专属 **16**
+- 拆分分类：A 纯内核 **233** · B 需适配 **4** · C 原生专属 **16**
 - 暴露等级：只读 **110** · 写入 **87** · 管理员 **38** · 不暴露 **18**
 
 ## 3. 清单（按注册表分组）
@@ -36,8 +36,8 @@
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
 | 1 | `t_startup::record_startup_stage` | C 原生专属 | 不暴露 | 启动阶段遥测（桌面启动画面） |
-| 2 | `t_startup::finish_startup` | B 需适配 | 不暴露 | AppHandle |
-| 3 | `t_startup::get_ai_initialization_status` | B 需适配 | 不暴露 | AppHandle |
+| 2 | `t_startup::finish_startup` | A 纯内核 | 不暴露 |  |
+| 3 | `t_startup::get_ai_initialization_status` | A 纯内核 | 不暴露 |  |
 | 4 | `t_drag::start_file_drag` | C 原生专属 | 不暴露 | 出窗拖拽 |
 | 5 | `t_drag::cancel_file_drag` | C 原生专属 | 不暴露 | 出窗拖拽 |
 
@@ -53,15 +53,15 @@
 | 6 | `t_cmds::set_last_selected_item_index` | A 纯内核 | 写入 |  |
 | 7 | `t_cmds::get_thumbnail_cache_location` | A 纯内核 | 只读 |  |
 | 8 | `t_cmds::get_thumbnail_cache_migration_count` | A 纯内核 | 只读 |  |
-| 9 | `t_cmds::change_thumbnail_cache_location` | B 需适配 | 管理员 | Channel/State |
+| 9 | `t_cmds::change_thumbnail_cache_location` | B 需适配 | 管理员 | Channel |
 | 10 | `t_cmds::cancel_thumbnail_cache_migration` | A 纯内核 | 写入 |  |
 | 11 | `t_cmds::get_db_storage_dir` | A 纯内核 | 只读 |  |
 | 12 | `t_cmds::is_using_custom_db_storage` | A 纯内核 | 只读 |  |
-| 13 | `t_cmds::change_db_storage_dir` | B 需适配 | 管理员 | State |
-| 14 | `t_cmds::reset_db_storage_dir` | B 需适配 | 管理员 | State |
+| 13 | `t_cmds::change_db_storage_dir` | A 纯内核 | 管理员 |  |
+| 14 | `t_cmds::reset_db_storage_dir` | A 纯内核 | 管理员 |  |
 | 15 | `t_cmds::add_library` | A 纯内核 | 管理员 |  |
 | 16 | `t_cmds::edit_library` | A 纯内核 | 管理员 |  |
-| 17 | `t_cmds::remove_library` | B 需适配 | 管理员 | State |
+| 17 | `t_cmds::remove_library` | A 纯内核 | 管理员 |  |
 | 18 | `t_cmds::hide_library` | A 纯内核 | 写入 |  |
 | 19 | `t_cmds::reorder_libraries` | A 纯内核 | 写入 |  |
 | 20 | `t_cmds::switch_library` | B 需适配 | 管理员 | AppHandle |
@@ -87,7 +87,7 @@
 | 10 | `t_cmds::remove_album` | A 纯内核 | 管理员 |  |
 | 11 | `t_cmds::reorder_albums` | A 纯内核 | 写入 |  |
 | 12 | `t_cmds::set_album_cover` | A 纯内核 | 写入 |  |
-| 13 | `t_cmds::index_album` | B 需适配 | 管理员 | AppHandle |
+| 13 | `t_cmds::index_album` | A 纯内核 | 管理员 |  |
 | 14 | `t_cmds::cancel_indexing` | A 纯内核 | 写入 |  |
 | 15 | `t_cmds::get_index_recovery_info` | A 纯内核 | 只读 |  |
 | 16 | `t_cmds::clear_index_recovery_info` | A 纯内核 | 写入 |  |
@@ -169,8 +169,8 @@
 |---:|---|---|---|---|
 | 1 | `t_cmds::get_files_by_ids` | A 纯内核 | 只读 |  |
 | 2 | `t_cmds::get_folder_files` | A 纯内核 | 只读 |  |
-| 3 | `t_cmds::sync_album_folder_mtimes` | B 需适配 | 管理员 | AppHandle |
-| 4 | `t_cmds::refresh_album_subfolders` | B 需适配 | 管理员 | AppHandle |
+| 3 | `t_cmds::sync_album_folder_mtimes` | A 纯内核 | 管理员 |  |
+| 4 | `t_cmds::refresh_album_subfolders` | A 纯内核 | 管理员 |  |
 | 5 | `t_cmds::is_directory_accessible` | A 纯内核 | 只读 |  |
 | 6 | `t_cmds::get_folder_thumb_count` | A 纯内核 | 只读 |  |
 
@@ -190,8 +190,8 @@
 | 10 | `t_cmds::move_file_outside_library` | A 纯内核 | 写入 |  |
 | 11 | `t_cmds::copy_file` | A 纯内核 | 写入 |  |
 | 12 | `t_cmds::import_file` | A 纯内核 | 管理员 |  |
-| 13 | `t_cmds::import_and_organize` | B 需适配 | 管理员 | AppHandle/State |
-| 14 | `t_cmds::cancel_import_and_organize` | B 需适配 | 写入 | State |
+| 13 | `t_cmds::import_and_organize` | A 纯内核 | 管理员 |  |
+| 14 | `t_cmds::cancel_import_and_organize` | A 纯内核 | 写入 |  |
 | 15 | `t_cmds::import_url` | A 纯内核 | 管理员 |  |
 | 16 | `t_cmds::import_from_drag` | C 原生专属 | 不暴露 | OS 拖放载荷 |
 | 17 | `t_cmds::get_drag_payload` | C 原生专属 | 不暴露 | OS 拖放载荷 |
@@ -303,13 +303,13 @@
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
-| 1 | `t_cmds::check_ai_status` | B 需适配 | 只读 | State |
-| 2 | `t_cmds::get_image_search_model_status` | B 需适配 | 只读 | AppHandle |
-| 3 | `t_cmds::set_image_search_model` | B 需适配 | 管理员 | AppHandle |
+| 1 | `t_cmds::check_ai_status` | A 纯内核 | 只读 |  |
+| 2 | `t_cmds::get_image_search_model_status` | A 纯内核 | 只读 |  |
+| 3 | `t_cmds::set_image_search_model` | A 纯内核 | 管理员 |  |
 | 4 | `t_cmds::download_multilingual_image_search_model` | A 纯内核 | 管理员 |  |
 | 5 | `t_cmds::cancel_multilingual_image_search_model_download` | A 纯内核 | 写入 |  |
-| 6 | `t_cmds::generate_embedding` | B 需适配 | 只读 | AppHandle |
-| 7 | `t_cmds::search_similar_images` | B 需适配 | 只读 | AppHandle |
+| 6 | `t_cmds::generate_embedding` | A 纯内核 | 只读 |  |
+| 7 | `t_cmds::search_similar_images` | A 纯内核 | 只读 |  |
 
 ### 描述向量（语义搜索）（3）
 
@@ -323,10 +323,10 @@
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
-| 1 | `t_cmds::index_faces` | B 需适配 | 管理员 | State |
-| 2 | `t_cmds::cancel_face_index` | B 需适配 | 写入 | State |
+| 1 | `t_cmds::index_faces` | A 纯内核 | 管理员 |  |
+| 2 | `t_cmds::cancel_face_index` | A 纯内核 | 写入 |  |
 | 3 | `t_cmds::reset_faces` | A 纯内核 | 管理员 |  |
-| 4 | `t_cmds::is_face_indexing` | B 需适配 | 只读 | State |
+| 4 | `t_cmds::is_face_indexing` | A 纯内核 | 只读 |  |
 | 5 | `t_cmds::get_face_stats` | A 纯内核 | 只读 |  |
 | 6 | `t_cmds::get_persons` | A 纯内核 | 只读 |  |
 | 7 | `t_cmds::get_persons_page` | A 纯内核 | 只读 |  |
@@ -340,16 +340,16 @@
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
-| 1 | `t_cmds::dedup_start_scan` | B 需适配 | 管理员 | State |
-| 2 | `t_cmds::dedup_get_scan_status` | B 需适配 | 写入 | State |
-| 3 | `t_cmds::dedup_cancel_scan` | B 需适配 | 写入 | State |
+| 1 | `t_cmds::dedup_start_scan` | A 纯内核 | 管理员 |  |
+| 2 | `t_cmds::dedup_get_scan_status` | A 纯内核 | 写入 |  |
+| 3 | `t_cmds::dedup_cancel_scan` | A 纯内核 | 写入 |  |
 | 4 | `t_cmds::dedup_list_groups` | A 纯内核 | 写入 |  |
 | 5 | `t_cmds::dedup_get_overview` | A 纯内核 | 写入 |  |
 | 6 | `t_cmds::dedup_set_keep` | A 纯内核 | 写入 |  |
 | 7 | `t_cmds::dedup_delete` | A 纯内核 | 管理员 |  |
-| 8 | `t_cmds::similar_start_scan` | B 需适配 | 管理员 | State |
-| 9 | `t_cmds::similar_get_scan_status` | B 需适配 | 写入 | State |
-| 10 | `t_cmds::similar_cancel_scan` | B 需适配 | 写入 | State |
+| 8 | `t_cmds::similar_start_scan` | A 纯内核 | 管理员 |  |
+| 9 | `t_cmds::similar_get_scan_status` | A 纯内核 | 写入 |  |
+| 10 | `t_cmds::similar_cancel_scan` | A 纯内核 | 写入 |  |
 | 11 | `t_cmds::similar_get_eligible_count` | A 纯内核 | 写入 |  |
 | 12 | `t_cmds::similar_list_groups` | A 纯内核 | 写入 |  |
 | 13 | `t_cmds::similar_get_overview` | A 纯内核 | 写入 |  |
@@ -362,21 +362,21 @@
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
 | 1 | `t_vl::get_vl_config` | A 纯内核 | 只读 |  |
-| 2 | `t_vl::set_vl_config` | B 需适配 | 管理员 | State |
+| 2 | `t_vl::set_vl_config` | A 纯内核 | 管理员 |  |
 | 3 | `t_vl::list_vl_templates` | A 纯内核 | 只读 |  |
 | 4 | `t_vl::create_vl_template` | A 纯内核 | 写入 |  |
 | 5 | `t_vl::update_vl_template` | A 纯内核 | 写入 |  |
 | 6 | `t_vl::delete_vl_template` | A 纯内核 | 写入 |  |
-| 7 | `t_vl::run_vl_analysis` | B 需适配 | 写入 | AppHandle/State |
+| 7 | `t_vl::run_vl_analysis` | A 纯内核 | 写入 |  |
 | 8 | `t_vl::get_vl_annotations` | A 纯内核 | 只读 |  |
 | 9 | `t_vl::get_vl_calls` | A 纯内核 | 只读 |  |
-| 10 | `t_vl::cancel_vl_run` | B 需适配 | 写入 | AppHandle/State |
+| 10 | `t_vl::cancel_vl_run` | A 纯内核 | 写入 |  |
 | 11 | `t_vl::rerank_search_with_llm` | A 纯内核 | 写入 |  |
 | 12 | `t_vl::list_vl_models` | A 纯内核 | 只读 |  |
-| 13 | `t_vl::list_vl_runs` | B 需适配 | 只读 | State |
+| 13 | `t_vl::list_vl_runs` | A 纯内核 | 只读 |  |
 | 14 | `t_vl::list_vl_run_calls` | A 纯内核 | 只读 |  |
-| 15 | `t_vl::retry_vl_run` | B 需适配 | 写入 | AppHandle/State |
-| 16 | `t_vl::delete_vl_run` | B 需适配 | 写入 | State |
+| 15 | `t_vl::retry_vl_run` | A 纯内核 | 写入 |  |
+| 16 | `t_vl::delete_vl_run` | A 纯内核 | 写入 |  |
 | 17 | `t_vl::clear_vl_runs` | A 纯内核 | 写入 |  |
 | 18 | `t_vl_schedule::queue_vl_task` | A 纯内核 | 写入 |  |
 | 19 | `t_vl_schedule::list_vl_tasks` | A 纯内核 | 只读 |  |
@@ -395,10 +395,10 @@
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
-| 1 | `t_video::prepare_video` | B 需适配 | 只读 | State |
+| 1 | `t_video::prepare_video` | A 纯内核 | 只读 |  |
 | 2 | `t_video::get_video_stream_url` | A 纯内核 | 只读 |  |
-| 3 | `t_video::cancel_video_prepare` | B 需适配 | 只读 | State |
-| 4 | `t_video::clear_video_cache` | B 需适配 | 管理员 | State |
+| 3 | `t_video::cancel_video_prepare` | A 纯内核 | 只读 |  |
+| 4 | `t_video::clear_video_cache` | A 纯内核 | 管理员 |  |
 
 ### 备份 / 恢复（4）
 
