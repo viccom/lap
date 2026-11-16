@@ -61,6 +61,7 @@ mod t_vl;
 mod t_vl_protocol;
 mod t_vl_schedule;
 mod t_vl_tags;
+mod t_write;
 
 /// Desktop adapter for the process-level event sink: forwards emitted events
 /// to the Tauri shell. Lives here (not in `t_events`) so the sink module stays
