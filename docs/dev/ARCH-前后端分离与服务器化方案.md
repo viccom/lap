@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 3 批次 3.2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过；批次 3.3：鉴权（Argon2id 管理员密码 + 配对码设备令牌 + Cookie/Bearer + 白名单 401/403/429 + 限流审计）+ 媒体四端点（Range/206 + HMAC 签名，只按 file_id 解析）+ `t_http` 收紧，Rust workspace 635/0/10；批次 3.4（优雅退出：停收新命令 503 → 取消全部可取消后台任务 + 杀 ffmpeg 子进程 → flush 所有库 WAL → 释放锁文件；unix SIGTERM/SIGINT + Windows stdin 控制通道），Rust workspace 642/0/10。下一步 = 安装脚本与阶段 3 总验收（按用户指示暂缓））
+状态：**阶段 4 批次 4.3 已完成（核心 Web 相册闭环打通）**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过；批次 3.3：鉴权（Argon2id 管理员密码 + 配对码设备令牌 + Cookie/Bearer + 白名单 401/403/429 + 限流审计）+ 媒体四端点（Range/206 + HMAC 签名，只按 file_id 解析）+ `t_http` 收紧，Rust workspace 635/0/10；批次 3.4（优雅退出：停收新命令 503 → 取消全部可取消后台任务 + 杀 ffmpeg 子进程 → flush 所有库 WAL → 释放锁文件；unix SIGTERM/SIGINT + Windows stdin 控制通道），Rust workspace 642/0/10；阶段 4 批次 4.1：lapd 内建静态托管（SPA fallback/--web-dir/路径穿越防护，Rust workspace 646/0/10，提交 ace3dd35）；批次 4.2：Web 登录/配对页 + http 传输层令牌/Cookie/批量媒体签名 + router 守卫 + 启动链 Web 降级（前端 442/0，提交 09deccfd）；批次 4.3：媒体 URL 批量 HMAC 签名接入（缩略图/原图/预览）+ build:http 脚本 + 查看器 Web 降级（前端 443/0，提交 989fde9a）。**浏览器实证**：真库只读副本 + 临时 data-dir → 浏览器打开 lapd 自动跳 /login → 密码登录 → 相册网格显示 72 张真实照片名/分辨率、缩略图 URL 全部带 sig 签名。**诚实边界**：本机原图源盘 F:\Users\viccom\Pictures\家图2 不可达 → 缩略图/原图字节 404（非代码问题）；首屏加载约 20–30 秒；响应式/PWA 与全量 C 类能力降级（20 个 Tauri 直调组件的延迟调用）留批次 5。下一步 = 响应式/PWA + 全量能力降级，或安装脚本（按用户指示））
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -334,6 +334,23 @@ src-vite/                      一套前端，两种传输
 - 手机导航/网格/查看器手势；manifest + 最小手写 service worker（只缓存应用壳，不缓存媒体）；不引入 workbox（除非后续确有复杂缓存需求）。
 - **验收**：手机视口无横向滚动、可安装、离线打开壳；Lighthouse PWA 可安装项通过。
 - **回滚**：PWA 资源与响应式样式独立，可移除。
+
+**批次 4.1（lapd 内建静态托管）· 已完成**（提交 `ace3dd35`）：
+- `static_files.rs`（新）：同源托管 Web 产物——真实文件优先、未知非 `/api` 路径 SPA fallback 到 `index.html`（Vue Router `createWebHistory` 深链）、`/api/*` 永不回退到 SPA、百分号解码 + `..` 穿越拒绝、缺失 `.js/.css` 返回 404 而非 SPA 壳（避免隐藏构建错误）。手写 handler 而非 `ServeDir`：零依赖/feature 变更。`--web-dir` 旗标（默认 exe 旁 `resources/web`）；`server_info.capabilities.web` 反映是否实际托管。
+- **验证**：lap-server 61 测（原 57 + 3 static + 1 flags）；`cargo test --workspace` **646/0/10**；活体冒烟（临时 data-dir + 现成 dist）：`/`→200 text/html、`/image-viewer`→200 SPA fallback、asset→200 JS MIME、unknown `/api`→404、编码穿越→403、优雅退出日志完整。
+
+**批次 4.2（Web 登录/配对 + 传输层）· 已完成**（提交 `09deccfd`）：
+- **关键认知**：桌面前端就是标准 Vue 3 Web 页面，UI 组件 100% 复用，无需逐个移植；真正差异只在传输层（`tauri.js`↔`http.js`）与窗口模型。
+- `http.js` 补全：`onUnauthorized` 401 回调、`authStatus/login/pair/setup/pairing-code` 端点、`signedAssetUrl`（后续 4.3 接入）。`window.js`（新）：Web 下 `getCurrentWebviewWindow()` 返回安全 stub（桌面直调真实 API），`main.js`/`App.vue` 改走该 facade——这是浏览器能挂载 Vue 根组件的前提。
+- `auth.js`（新）+ `Login.vue`（新）：密码登录/配对码配对/首次设置密码三态，i18n `auth.*`（en+zh-CN）。router 加 `/login` + 前置守卫。**会话时序修复**：`checkSession()` 必须在 `app.use(router)` 之前 await，否则守卫在会话未知时把已登录用户弹回 /login（刷新即掉登录的 bug，浏览器实证定位并修复）。
+- **验证**：transport 单测 16/0（+401/ auth/签名三例）；前端全量 442/0；`VITE_LAP_TRANSPORT=http` 构建 exit=0；**浏览器实证**：打开 lapd → 自动 `/login` → 中文登录框渲染无 JS 错误 → 填密登录 → 进 `/` 主界面；刷新后会话保持（不再回登录页）。
+
+**批次 4.3（媒体签名接入 + 构建 + 查看器）· 已完成**（提交 `989fde9a`）：
+- **签名批处理修复**：初版 `signedAssetUrl` 的 coalesce 只签首个 URL（后续同 tick 调用共享 Promise 却未入批）→ 重写为微任务批处理队列（`pendingRaw` Set + 单 `flushPromise` 覆盖全部入队 URL，按服务端 ≤50 分片）。加回归测试「8 个并发调用合并为 1 批」。
+- `Thumbnail.vue`：thumb URL 异步签名后替换 `thumbnailSrc`（含 repair 路径）；`Image.vue`：Web 下原图走 `/api/original/{file_id}`（path 型 `getAssetSrc` 在浏览器不可用）、RAW preview 也签名（async Promise executor 因 await 签名）。`window.js` stub 补浏览器全屏 API 映射，`ImageViewer.vue` 改走 facade。
+- `scripts/build-web.mjs`（新）+ `build:http` 脚本：跨平台设置 `VITE_LAP_TRANSPORT=http`（不引 cross-env）。`thumbnail-scheduler.test.mjs` 适配：注入 `transportMode`/`signedAssetUrl` 新参数。
+- **验证**：前端全量 **443/0**；`build:http` 与 tauri 模式构建均 exit=0；**浏览器实证（承重合规）**：刷新后约 20 秒相册网格渲染 72 张真实照片（文件名+分辨率），**72 个缩略图 URL 全部带 `sig=`**（signed=72/72），证明签名链端到端打通。
+- **诚实边界**：本机 `F:\Users\viccom\Pictures\家图2`（原图源盘）不可达 → loaded=0（缩略图字节 404，界面显示「原文件暂时无法访问」），非代码缺陷；首屏加载慢（约 20–30 秒）未做专项优化。
 
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
