@@ -543,10 +543,32 @@ fn set_test_app_data_dir(dir: Option<PathBuf>) {
     *TEST_APP_DATA_DIR.lock().unwrap() = dir;
 }
 
+/// Process-lifetime data-directory override, pinned once by `lapd --data-dir`
+/// before any config access. Explicit directories are used verbatim — the
+/// `.debug` suffix only applies to the default location.
+static DATA_DIR_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+/// Pin the app data directory (first writer wins; later calls are ignored).
+pub fn set_data_dir_override(dir: PathBuf) {
+    if let Ok(mut pinned) = DATA_DIR_OVERRIDE.lock() {
+        if pinned.is_none() {
+            *pinned = Some(dir);
+        }
+    }
+}
+
+#[cfg(test)]
+fn set_test_data_dir_override(dir: Option<PathBuf>) {
+    *DATA_DIR_OVERRIDE.lock().unwrap() = dir;
+}
+
 /// Get the AppData directory for app
 pub fn get_app_data_dir() -> Result<PathBuf, String> {
     #[cfg(test)]
     if let Some(dir) = TEST_APP_DATA_DIR.lock().map_err(|e| e.to_string())?.clone() {
+        return Ok(dir);
+    }
+    if let Some(dir) = DATA_DIR_OVERRIDE.lock().map_err(|e| e.to_string())?.clone() {
         return Ok(dir);
     }
     let app_dir_name = get_app_data_folder_name();
@@ -1320,6 +1342,24 @@ mod config_update_tests {
             set_test_app_data_dir(None);
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn data_dir_override_pins_an_explicit_directory() {
+        // The override is process-global: serialize behind the config IO lock
+        // like the other data-dir tests, and clear TEST_APP_DATA_DIR first so
+        // the override branch of get_app_data_dir is the one under test.
+        let _guard = config_io_lock().lock().map_err(|e| e.to_string()).unwrap();
+        set_test_app_data_dir(None);
+        let scratch = std::env::temp_dir().join(format!("lap-config-override-{}", Uuid::new_v4()));
+        set_data_dir_override(scratch.clone());
+        // An explicit --data-dir is used verbatim: no `.debug` suffix.
+        assert_eq!(get_app_data_dir().unwrap(), scratch);
+        // First writer wins; a later pin is ignored.
+        set_data_dir_override(scratch.join("ignored"));
+        assert_eq!(get_app_data_dir().unwrap(), scratch);
+        set_test_data_dir_override(None);
+        let _ = fs::remove_dir_all(&scratch);
     }
 
     #[test]
