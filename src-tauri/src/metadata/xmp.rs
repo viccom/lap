@@ -66,6 +66,21 @@ const MAX_XML_EXPANDED_BYTES: usize = 32 * 1024 * 1024;
 static SIDECAR_REVISION: AtomicU64 = AtomicU64::new(0);
 type SidecarIndex = (i64, PathBuf, u64, HashMap<String, PathBuf>);
 
+/// Serializes tests that otherwise race on the process-global
+/// `SIDECAR_REVISION`. A test asserting that a raw `fs::write` stays invisible
+/// within a scan generation must not have its thread-local index invalidated by
+/// a concurrent import/rename test bumping the revision. Test-only: no effect
+/// on the shipped binary.
+#[cfg(test)]
+static REVISION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn revision_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    REVISION_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// Filesystem lifecycle mutations invalidate every thread/session lazily.
 /// Update a current, small scan index in-place so batch imports avoid rescanning
 /// the whole destination directory for each newly copied sidecar.
@@ -73,6 +88,9 @@ pub(crate) fn sidecars_changed(paths: &[PathBuf]) {
     if paths.is_empty() {
         return;
     }
+    // Keep test threads from invalidating each other's scan index (see the lock).
+    #[cfg(test)]
+    let _guard = revision_test_lock();
     let previous = SIDECAR_REVISION.fetch_add(1, Ordering::AcqRel);
     INDEX.with(|index| {
         let mut index = index.borrow_mut();
@@ -2556,6 +2574,10 @@ mod import_tests {
     }
     #[test]
     fn new_scan_rebuilds_index_without_directory_timestamp() {
+        // This test asserts a raw `fs::write` stays invisible inside a scan
+        // generation; a sibling test bumping the global revision concurrently
+        // would invalidate the thread-local index and fail it spuriously.
+        let _isolation = revision_test_lock();
         let dir = create_temp_test_dir("generation");
         let image = dir.join("photo.RAF");
         {
