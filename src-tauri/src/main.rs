@@ -29,6 +29,7 @@ mod t_dedup;
 mod t_drag;
 mod t_embed;
 mod t_embedded_jpeg;
+mod t_events;
 mod t_face;
 mod t_fts;
 mod t_heif;
@@ -58,6 +59,18 @@ mod t_vl;
 mod t_vl_protocol;
 mod t_vl_schedule;
 mod t_vl_tags;
+
+/// Desktop adapter for the process-level event sink: forwards emitted events
+/// to the Tauri shell. Lives here (not in `t_events`) so the sink module stays
+/// Tauri-free and the same core can later run under `lapd` with an SSE sink.
+struct TauriEventSink(tauri::AppHandle);
+
+impl t_events::EventSink for TauriEventSink {
+    fn emit(&self, name: &str, payload: serde_json::Value) {
+        use tauri::Emitter;
+        let _ = self.0.emit(name, payload);
+    }
+}
 
 /// Runtime console opt-in for GUI-subsystem builds: setting `LAP_CONSOLE=1`
 /// (or `true`) in the environment allocates a console window and rewires
@@ -175,6 +188,7 @@ async fn main() {
         .manage(t_vl::VlState::default())
         .setup(|_app| {
             t_startup::mark(&_app.handle(), "setup-started");
+            t_events::set_sink(std::sync::Arc::new(TauriEventSink(_app.handle().clone())));
             t_video::init_ffmpeg_path(&_app.handle());
             t_config::set_app_identifier(&_app.config().identifier);
             t_menu::install_app_menu(&_app.handle())?;

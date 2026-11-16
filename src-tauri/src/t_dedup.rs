@@ -7,7 +7,6 @@ use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Emitter;
 
 // ----------------------------------------------------------------------------
 // Types and Structs
@@ -98,7 +97,6 @@ const RAW_PAIR_MEMBER_SQL: &str = "(a.media_subtype IS 'raw_jpeg_pair' AND EXIST
 // ----------------------------------------------------------------------------
 
 pub fn start_scan(
-    app_handle: tauri::AppHandle,
     dedup_state: tauri::State<'_, DedupState>,
     query_params: Option<QueryParams>,
     collection_id: Option<i64>,
@@ -136,7 +134,6 @@ pub fn start_scan(
 
     std::thread::spawn(move || {
         let result = scan_and_hash_files(
-            &app_handle,
             &status_clone,
             &cancel_flag_clone,
             query_params,
@@ -163,14 +160,16 @@ pub fn start_scan(
 
         is_scanning_clone.store(false, Ordering::SeqCst);
         final_status.is_scanning = false;
-        let _ = app_handle.emit("dedup-scan-progress", final_status.clone());
+        crate::t_events::emit(
+            crate::t_events::names::DEDUP_SCAN_PROGRESS,
+            final_status.clone(),
+        );
     });
 
     Ok(())
 }
 
 fn scan_and_hash_files(
-    app_handle: &tauri::AppHandle,
     status_mutex: &Arc<Mutex<DedupScanStatus>>,
     cancel_flag: &Arc<AtomicBool>,
     query_params: Option<QueryParams>,
@@ -230,7 +229,10 @@ fn scan_and_hash_files(
         status.total = total_files;
         status.processed = 0;
     }
-    let _ = app_handle.emit("dedup-scan-progress", status_mutex.lock().unwrap().clone());
+    crate::t_events::emit(
+        crate::t_events::names::DEDUP_SCAN_PROGRESS,
+        status_mutex.lock().unwrap().clone(),
+    );
 
     // Step 3: Hash them
     let mut processed = 0;
@@ -293,7 +295,10 @@ fn scan_and_hash_files(
                 let mut status = status_mutex.lock().unwrap();
                 status.processed = processed;
             }
-            let _ = app_handle.emit("dedup-scan-progress", status_mutex.lock().unwrap().clone());
+            crate::t_events::emit(
+                crate::t_events::names::DEDUP_SCAN_PROGRESS,
+                status_mutex.lock().unwrap().clone(),
+            );
         }
     }
 
@@ -321,7 +326,10 @@ fn scan_and_hash_files(
             status.processed = processed;
             status.groups = groups_count as u64;
         }
-        let _ = app_handle.emit("dedup-scan-progress", status_mutex.lock().unwrap().clone());
+        crate::t_events::emit(
+            crate::t_events::names::DEDUP_SCAN_PROGRESS,
+            status_mutex.lock().unwrap().clone(),
+        );
     }
 
     Ok(())

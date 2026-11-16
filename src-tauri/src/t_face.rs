@@ -12,7 +12,7 @@ use ort::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 /// Short side at or above which `process_image` detects on a libjpeg-turbo 1/2
 /// decode instead of the full image. Below this the full decode is cheaper than
@@ -901,8 +901,8 @@ pub fn run_face_indexing(
             if !engine.is_loaded() {
                 if let Err(e) = engine.load_models(&app_handle) {
                     eprintln!("Failed to load face models: {}", e);
-                    let _ = app_handle.emit(
-                        "face_index_finished",
+                    crate::t_events::emit(
+                        crate::t_events::names::FACE_INDEX_FINISHED,
                         serde_json::json!({
                             "total_faces": 0,
                             "total_persons": 0,
@@ -929,8 +929,8 @@ pub fn run_face_indexing(
             Ok(f) => f,
             Err(e) => {
                 eprintln!("Failed to get unprocessed files: {}", e);
-                let _ = app_handle.emit(
-                    "face_index_finished",
+                crate::t_events::emit(
+                    crate::t_events::names::FACE_INDEX_FINISHED,
                     serde_json::json!({
                         "total_faces": 0,
                         "total_persons": 0,
@@ -956,8 +956,8 @@ pub fn run_face_indexing(
             progress.phase = "indexing".to_string();
         }
 
-        let _ = app_handle.emit(
-            "face_index_progress",
+        crate::t_events::emit(
+            crate::t_events::names::FACE_INDEX_PROGRESS,
             serde_json::json!({
                 "current": current,
                 "total": total_files,
@@ -972,8 +972,8 @@ pub fn run_face_indexing(
             Ok(conn) => conn,
             Err(e) => {
                 eprintln!("Failed to open DB connection for face indexing: {}", e);
-                let _ = app_handle.emit(
-                    "face_index_finished",
+                crate::t_events::emit(
+                    crate::t_events::names::FACE_INDEX_FINISHED,
                     serde_json::json!({
                         "total_faces": 0,
                         "total_persons": 0,
@@ -1134,8 +1134,8 @@ pub fn run_face_indexing(
                     progress.faces_found = total_faces;
                 }
 
-                let _ = app_handle.emit(
-                    "face_index_progress",
+                crate::t_events::emit(
+                    crate::t_events::names::FACE_INDEX_PROGRESS,
                     serde_json::json!({
                         "current": current,
                         "total": total_files,
@@ -1147,8 +1147,8 @@ pub fn run_face_indexing(
         }
 
         if cancelled {
-            let _ = app_handle.emit(
-                "face_index_finished",
+            crate::t_events::emit(
+                crate::t_events::names::FACE_INDEX_FINISHED,
                 serde_json::json!({
                     "total_faces": total_faces,
                     "total_persons": 0,
@@ -1165,8 +1165,8 @@ pub fn run_face_indexing(
             progress.phase = "clustering".to_string();
         }
 
-        let _ = app_handle.emit(
-            "face_index_progress",
+        crate::t_events::emit(
+            crate::t_events::names::FACE_INDEX_PROGRESS,
             serde_json::json!({
                 "current": total_files,
                 "total": total_files,
@@ -1179,8 +1179,8 @@ pub fn run_face_indexing(
         let total_persons = match t_cluster::cluster_faces(
             epsilon,
             |progress| {
-                let _ = app_handle.emit(
-                    "cluster_progress",
+                crate::t_events::emit(
+                    crate::t_events::names::CLUSTER_PROGRESS,
                     serde_json::json!({
                         "phase": progress.phase,
                         "current": progress.current,
@@ -1202,8 +1202,8 @@ pub fn run_face_indexing(
         let cancelled_during_cluster = *cancel_token.lock().unwrap();
 
         // 5. Finished
-        let _ = app_handle.emit(
-            "face_index_finished",
+        crate::t_events::emit(
+            crate::t_events::names::FACE_INDEX_FINISHED,
             serde_json::json!({
                 "total_faces": total_faces,
                 "total_persons": total_persons,

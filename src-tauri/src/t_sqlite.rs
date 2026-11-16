@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, State};
+use tauri::State;
 use tokio::sync::Semaphore;
 use walkdir::WalkDir;
 
@@ -9278,7 +9278,7 @@ impl AThumb {
     }
 
     pub fn schedule_background_generation_for_library(
-        app_handle: tauri::AppHandle,
+        _app_handle: tauri::AppHandle,
         file_id: i64,
         file_path: String,
         file_type: i64,
@@ -9326,7 +9326,7 @@ impl AThumb {
             .await;
             if let Ok(Ok((_, had_cache))) = generated {
                 if album_id > 0 {
-                    let _ = app_handle.emit("thumbnail_ready", serde_json::json!({
+                    crate::t_events::emit(crate::t_events::names::THUMBNAIL_READY, serde_json::json!({
                         "library_id": event_library, "album_id": album_id, "file_ids": [file_id], "invalidate": force_regenerate || had_cache, "metadata_changed": false,
                     }));
                 }

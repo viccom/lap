@@ -8,7 +8,7 @@ use std::{
     },
     time::Instant,
 };
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 
 pub struct StartupState {
     started: Instant,
@@ -146,8 +146,8 @@ pub fn finish_startup(app: AppHandle, model: i64) {
                 t_utils::refresh_all_album_accessibility_if_current(&mut albums, generation);
                 if generation == t_utils::album_accessibility_generation() {
                     mark(&app, "album-accessibility-ready");
-                    let _ = app.emit(
-                        "albums-refreshed",
+                    crate::t_events::emit(
+                        crate::t_events::names::ALBUMS_REFRESHED,
                         serde_json::json!({
                             "albums": albums, "refreshFolders": false, "libraryId": library_id,
                         }),

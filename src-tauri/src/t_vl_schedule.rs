@@ -12,7 +12,7 @@
 //! The scheduler only runs while the app lives; no OS-level wake-up.
 use chrono::Timelike;
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 use crate::t_config::load_app_config;
 use crate::t_vl::{start_run_for_library, LibraryContext, VlState, VlStore};
@@ -139,7 +139,7 @@ fn run_due_tasks(app_handle: &tauri::AppHandle, state: &VlState) -> Result<(), S
         }
     }
     if changed {
-        let _ = app_handle.emit("vl-tasks-changed", ());
+        crate::t_events::emit(crate::t_events::names::VL_TASKS_CHANGED, ());
     }
     Ok(())
 }

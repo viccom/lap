@@ -8,7 +8,7 @@ use std::{
     },
 };
 
-use tauri::{AppHandle, Emitter, Listener, Manager, Window, ipc::Channel};
+use tauri::{AppHandle, Listener, Manager, Window, ipc::Channel};
 
 const MAX_NATIVE_DRAG_FILES: usize = 1000;
 
@@ -92,14 +92,13 @@ pub async fn start_file_drag(
     let destroyed_listener = Arc::new(Mutex::new(None));
     let listener_id = destroyed_listener.clone();
     let source = window.clone();
-    let events = app.clone();
     let session = Arc::new(DragSession::new(move |active| {
         if !active {
             if let Some(id) = listener_id.lock().unwrap().take() {
                 source.unlisten(id);
             }
         }
-        let _ = events.emit("native-file-drag-active", active);
+        crate::t_events::emit(crate::t_events::names::NATIVE_FILE_DRAG_ACTIVE, active);
     }));
     let request_id = uuid::Uuid::new_v4().to_string();
     let key = format!("{}:{request_id}", window.label());

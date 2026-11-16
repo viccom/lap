@@ -11,7 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tauri::Emitter;
 
 use crate::t_common::{VL_API_KEY_ENV, VL_DEFAULT_MODEL, VL_GATEWAY_URL_ENV, VL_MAX_TOKENS};
 use crate::t_vl_protocol::{
@@ -3542,7 +3541,10 @@ pub fn start_run_for_library(
         config,
     });
     // Let the UI show "排队中" before the worker flips to running.
-    let _ = app_handle.emit("vl-analysis-progress", status_payload(state, &run_id));
+    crate::t_events::emit(
+        crate::t_events::names::VL_ANALYSIS_PROGRESS,
+        status_payload(state, &run_id),
+    );
     pump_queue(app_handle, state);
 
     Ok(run_id)
@@ -3607,7 +3609,10 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
             status.state = "running".to_string();
         });
         persist_progress(&state, &library.db_path, &run_id);
-        let _ = app_handle.emit("vl-analysis-progress", status_payload(&state, &run_id));
+        crate::t_events::emit(
+            crate::t_events::names::VL_ANALYSIS_PROGRESS,
+            status_payload(&state, &run_id),
+        );
 
         let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(
@@ -3638,15 +3643,15 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
         // The files of one run are analyzed with bounded concurrency: the
         // configured limit is the number of LLM requests in flight at once,
         // across all runs (global permit pool below).
-        let progress_app = app_handle.clone();
         let emit_progress: Arc<dyn Fn(&VlRunStatus) + Send + Sync> = Arc::new(move |status| {
-            let _ = progress_app.emit("vl-analysis-progress", status.clone());
+            crate::t_events::emit(
+                crate::t_events::names::VL_ANALYSIS_PROGRESS,
+                status.clone(),
+            );
         });
-        let tags_app = app_handle.clone();
-        let emit_tags_changed: Arc<dyn Fn() + Send + Sync> =
-            Arc::new(move || {
-                let _ = tags_app.emit("tags-changed", ());
-            });
+        let emit_tags_changed: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            crate::t_events::emit(crate::t_events::names::TAGS_CHANGED, ());
+        });
         process_run_files(
             &state,
             &library,
@@ -3826,7 +3831,7 @@ async fn process_run_files(
 /// `queued`, rows).
 fn finish_run(
     state: &VlState,
-    app_handle: &tauri::AppHandle,
+    _app_handle: &tauri::AppHandle,
     db_path: &str,
     run_id: &str,
     final_state: &str,
@@ -3850,7 +3855,10 @@ fn finish_run(
             eprintln!("finalizing VL run {run_id} failed: {e}");
         }
     }
-    let _ = app_handle.emit("vl-analysis-finished", status_payload(state, run_id));
+    crate::t_events::emit(
+        crate::t_events::names::VL_ANALYSIS_FINISHED,
+        status_payload(state, run_id),
+    );
 }
 
 /// Persist the counters of a live run; failures are logged, never fatal —

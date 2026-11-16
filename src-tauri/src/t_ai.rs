@@ -22,7 +22,7 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tokenizers::Tokenizer;
 use tokio::io::AsyncWriteExt;
 
@@ -801,8 +801,8 @@ pub async fn download_multilingual_text_model(app: AppHandle) -> Result<(), Stri
     let mut downloaded_total = 0u64;
     ensure_current_multilingual_download(download_id, &temp_dir)?;
 
-    let _ = app.emit(
-        "image_search_model_download_progress",
+    crate::t_events::emit(
+        crate::t_events::names::IMAGE_SEARCH_MODEL_DOWNLOAD_PROGRESS,
         serde_json::json!({
             "progress": 0,
             "downloadedBytes": 0,
@@ -856,8 +856,8 @@ pub async fn download_multilingual_text_model(app: AppHandle) -> Result<(), Stri
             } else {
                 (((index as f64 + file_progress) / total_files) * 100.0).round() as i64
             };
-            let _ = app.emit(
-                "image_search_model_download_progress",
+            crate::t_events::emit(
+                crate::t_events::names::IMAGE_SEARCH_MODEL_DOWNLOAD_PROGRESS,
                 serde_json::json!({
                     "progress": progress,
                     "downloadedBytes": downloaded_total,
@@ -891,8 +891,8 @@ pub async fn download_multilingual_text_model(app: AppHandle) -> Result<(), Stri
         } else {
             ((((index + 1) as f64) / total_files) * 100.0).round() as i64
         };
-        let _ = app.emit(
-            "image_search_model_download_progress",
+        crate::t_events::emit(
+            crate::t_events::names::IMAGE_SEARCH_MODEL_DOWNLOAD_PROGRESS,
             serde_json::json!({
                 "progress": progress,
                 "downloadedBytes": downloaded_total,
@@ -964,8 +964,8 @@ pub async fn download_multilingual_text_model(app: AppHandle) -> Result<(), Stri
     }
     let _ = tokio::fs::remove_dir_all(&backup_dir).await;
 
-    let _ = app.emit(
-        "image_search_model_download_progress",
+    crate::t_events::emit(
+        crate::t_events::names::IMAGE_SEARCH_MODEL_DOWNLOAD_PROGRESS,
         serde_json::json!({
             "progress": 100,
             "downloadedBytes": downloaded_total,

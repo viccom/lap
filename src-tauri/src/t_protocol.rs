@@ -150,7 +150,6 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
             let thumbnail_size = query.split('&').find_map(|p| p.strip_prefix("size=").and_then(|v| v.parse::<u32>().ok()))
                 .unwrap_or(512).clamp(64,2048);
             let repair = query.split('&').any(|p| p == "repair=true");
-            let app = _ctx.app_handle().clone();
             tauri::async_runtime::spawn(async move {
                 if !repair {
                     let lookup_library = library_id.clone();
@@ -180,9 +179,10 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                             thumbnail_size, options, repair && t_sqlite::AThumb::auto_repair_allowed(&file, thumbnail_size, options), file.duration.map(|d| d as u64), None, repair)?;
                         if repair && thumb.as_ref().is_some_and(|thumb| thumb.error_code == 0 && thumb.thumb_data.is_some()
                             && previous != thumb.id) {
-                            use tauri::Emitter;
-                            let _ = app.emit("thumbnail_ready", serde_json::json!({ "library_id": library_id, "album_id": file.album_id,
-                                "file_ids": [file_id], "invalidate": true, "metadata_changed": false }));
+                            crate::t_events::emit(
+                                crate::t_events::names::THUMBNAIL_READY,
+                                serde_json::json!({ "library_id": library_id, "album_id": file.album_id,
+                                    "file_ids": [file_id], "invalidate": true, "metadata_changed": false }));
                         }
                         if let Some(thumb) = thumb {
                             if let Some(data) = thumb.thumb_data { return Ok(Some((data, file.file_type == Some(3)))); }

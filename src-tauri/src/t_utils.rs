@@ -23,7 +23,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager, State};
+use tauri::{Manager, State};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 use walkdir::WalkDir; // https://docs.rs/walkdir/2.5.0/walkdir/
@@ -2491,8 +2491,8 @@ pub fn start_folder_mtime_sync(app_handle: tauri::AppHandle) {
                 return;
             }
             if !result.folder_path_migrations.is_empty() {
-                let _ = app_handle.emit(
-                    "album-folder-paths-migrated",
+                crate::t_events::emit(
+                    crate::t_events::names::ALBUM_FOLDER_PATHS_MIGRATED,
                     &result.folder_path_migrations,
                 );
             }
@@ -2500,8 +2500,11 @@ pub fn start_folder_mtime_sync(app_handle: tauri::AppHandle) {
                 schedule_synced_file_processing(app_handle.clone(), task);
             }
             if result.dirty_folder_count > 0 || result.new_folder_count > 0 {
-                let _ = app_handle.emit("library-folder-sync-finished", &result);
-                let _ = app_handle.emit("library-total-refreshed", ());
+                crate::t_events::emit(
+                    crate::t_events::names::LIBRARY_FOLDER_SYNC_FINISHED,
+                    &result,
+                );
+                crate::t_events::emit(crate::t_events::names::LIBRARY_TOTAL_REFRESHED, ());
             }
         }
         Err(e) => eprintln!("folder mtime sync failed: {}", e),
@@ -3327,8 +3330,8 @@ fn schedule_synced_file_processing(app_handle: tauri::AppHandle, task: SyncedFil
             return;
         }
 
-        let _ = app_handle.emit(
-            "thumbnail_ready",
+        crate::t_events::emit(
+            crate::t_events::names::THUMBNAIL_READY,
             serde_json::json!({
                 "album_id": task.album_id,
                 "file_ids": [task.file_id],
@@ -4126,7 +4129,6 @@ impl ProgressSnapshot {
 
 struct ProgressTracker {
     album_id: i64,
-    app_handle: tauri::AppHandle,
     flush_interval: Duration,
     last_emit_at: Option<Instant>,
     last_phase: String,
@@ -4135,7 +4137,7 @@ struct ProgressTracker {
 
 impl ProgressTracker {
     fn new(
-        app_handle: &tauri::AppHandle,
+        _app_handle: &tauri::AppHandle,
         album_id: i64,
         total: u64,
         search_total: u64,
@@ -4159,7 +4161,6 @@ impl ProgressTracker {
         };
         Self {
             album_id,
-            app_handle: app_handle.clone(),
             flush_interval: Duration::from_millis(150),
             last_emit_at: None,
             last_phase: snapshot.phase().to_string(),
@@ -4194,7 +4195,7 @@ impl ProgressTracker {
 
     fn emit_now(&mut self) {
         let payload = self.snapshot.to_payload(self.album_id);
-        let _ = self.app_handle.emit("index_progress", payload);
+        crate::t_events::emit(crate::t_events::names::INDEX_PROGRESS, payload);
         self.last_emit_at = Some(Instant::now());
         self.last_phase = self.snapshot.phase().to_string();
     }
@@ -4403,8 +4404,8 @@ async fn process_thumbnail_task(
         return Ok(false);
     }
 
-    let _ = app_handle.emit(
-        "thumbnail_ready",
+    crate::t_events::emit(
+        crate::t_events::names::THUMBNAIL_READY,
         ThumbnailReadyPayload {
             library_id: task.library_id.clone(),
             album_id: with_progress_tracker(&tracker, |tracker| tracker.album_id),
@@ -4490,28 +4491,26 @@ pub async fn index_album_worker(
     let previous_indexed = album.indexed.unwrap_or(0).max(0) as u64;
     let previous_total = album.total.unwrap_or(0).max(0) as u64;
     if !directory_accessible(&album.path) {
-        app_handle
-            .emit(
-                "index_finished",
-                FinishedPayload {
-                    library_id: scan_library_id.clone(),
-                    metadata_failed: metadata_failures.count(),
-                    album_id,
-                    phase: "complete".to_string(),
-                    indexed: previous_indexed,
-                    processed: previous_indexed,
-                    search_ready: previous_indexed,
-                    total: previous_total,
-                    search_total: previous_total,
-                    skipped: 0,
-                    skipped_size: 0,
-                    failed: 1,
-                    failed_size: 0,
-                    scan_total: previous_total,
-                    scan_total_size: 0,
-                },
-            )
-            .map_err(|e| e.to_string())?;
+        crate::t_events::emit(
+            crate::t_events::names::INDEX_FINISHED,
+            FinishedPayload {
+                library_id: scan_library_id.clone(),
+                metadata_failed: metadata_failures.count(),
+                album_id,
+                phase: "complete".to_string(),
+                indexed: previous_indexed,
+                processed: previous_indexed,
+                search_ready: previous_indexed,
+                total: previous_total,
+                search_total: previous_total,
+                skipped: 0,
+                skipped_size: 0,
+                failed: 1,
+                failed_size: 0,
+                scan_total: previous_total,
+                scan_total_size: 0,
+            },
+        );
         return Ok(());
     }
 
@@ -4538,28 +4537,26 @@ pub async fn index_album_worker(
         scan_total_size,
     )) = counts
     else {
-        app_handle
-            .emit(
-                "index_finished",
-                FinishedPayload {
-                    library_id: scan_library_id.clone(),
-                    metadata_failed: metadata_failures.count(),
-                    album_id,
-                    phase: "discovering".to_string(),
-                    indexed: previous_indexed,
-                    processed: previous_indexed,
-                    search_ready: previous_indexed,
-                    total: previous_total,
-                    search_total: previous_total,
-                    skipped: album.skipped_count.unwrap_or(0),
-                    skipped_size: album.skipped_size.unwrap_or(0),
-                    failed: album.failed_count.unwrap_or(0),
-                    failed_size: album.failed_size.unwrap_or(0),
-                    scan_total: previous_total,
-                    scan_total_size: 0,
-                },
-            )
-            .map_err(|e| e.to_string())?;
+        crate::t_events::emit(
+            crate::t_events::names::INDEX_FINISHED,
+            FinishedPayload {
+                library_id: scan_library_id.clone(),
+                metadata_failed: metadata_failures.count(),
+                album_id,
+                phase: "discovering".to_string(),
+                indexed: previous_indexed,
+                processed: previous_indexed,
+                search_ready: previous_indexed,
+                total: previous_total,
+                search_total: previous_total,
+                skipped: album.skipped_count.unwrap_or(0),
+                skipped_size: album.skipped_size.unwrap_or(0),
+                failed: album.failed_count.unwrap_or(0),
+                failed_size: album.failed_size.unwrap_or(0),
+                scan_total: previous_total,
+                scan_total_size: 0,
+            },
+        );
         return Ok(());
     };
     let total_files = image_count + video_count;
@@ -4906,40 +4903,38 @@ pub async fn index_album_worker(
     );
 
     // 6. Emit finished
-    app_handle
-        .emit(
-            "index_finished",
-            FinishedPayload {
-                library_id: scan_library_id,
-                metadata_failed: metadata_failures.count(),
-                album_id,
-                phase: final_snapshot.phase().to_string(),
-                indexed: if scan_failed {
-                    previous_indexed
-                } else {
-                    final_snapshot.processed
-                },
-                processed: if scan_failed {
-                    previous_indexed
-                } else {
-                    final_snapshot.processed
-                },
-                search_ready: final_snapshot.search_ready,
-                total: if scan_failed {
-                    previous_total
-                } else {
-                    final_snapshot.total
-                },
-                search_total: final_snapshot.search_total,
-                skipped: final_snapshot.skipped,
-                skipped_size: final_snapshot.skipped_size,
-                failed: final_snapshot.failed,
-                failed_size: final_snapshot.failed_size,
-                scan_total: final_snapshot.scan_total,
-                scan_total_size: final_snapshot.scan_total_size,
+    crate::t_events::emit(
+        crate::t_events::names::INDEX_FINISHED,
+        FinishedPayload {
+            library_id: scan_library_id,
+            metadata_failed: metadata_failures.count(),
+            album_id,
+            phase: final_snapshot.phase().to_string(),
+            indexed: if scan_failed {
+                previous_indexed
+            } else {
+                final_snapshot.processed
             },
-        )
-        .map_err(|e| e.to_string())?;
+            processed: if scan_failed {
+                previous_indexed
+            } else {
+                final_snapshot.processed
+            },
+            search_ready: final_snapshot.search_ready,
+            total: if scan_failed {
+                previous_total
+            } else {
+                final_snapshot.total
+            },
+            search_total: final_snapshot.search_total,
+            skipped: final_snapshot.skipped,
+            skipped_size: final_snapshot.skipped_size,
+            failed: final_snapshot.failed,
+            failed_size: final_snapshot.failed_size,
+            scan_total: final_snapshot.scan_total,
+            scan_total_size: final_snapshot.scan_total_size,
+        },
+    );
 
     Ok(())
 }

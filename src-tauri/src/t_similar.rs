@@ -7,7 +7,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::Emitter;
 
 // Keep groups reviewable and ensure every member can consider all other members.
 const MAX_GROUP_SIZE: usize = 64;
@@ -196,7 +195,6 @@ pub fn eligible_count(
 }
 
 pub fn start_scan(
-    app: tauri::AppHandle,
     state: tauri::State<'_, SimilarState>,
     scope_key: String,
     source_version: i64,
@@ -228,7 +226,6 @@ pub fn start_scan(
     let cancel = state.cancel_flag.clone();
     std::thread::spawn(move || {
         let result = scan(
-            &app,
             &status,
             &cancel,
             &scope_key,
@@ -249,7 +246,10 @@ pub fn start_scan(
         };
         current.is_scanning = false;
         running.store(false, Ordering::SeqCst);
-        let _ = app.emit("similar-scan-progress", current.clone());
+        crate::t_events::emit(
+            crate::t_events::names::SIMILAR_SCAN_PROGRESS,
+            current.clone(),
+        );
     });
     Ok(())
 }
@@ -276,7 +276,6 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
 }
 
 fn scan(
-    app: &tauri::AppHandle,
     status: &Arc<Mutex<SimilarScanStatus>>,
     cancel: &Arc<AtomicBool>,
     scope_key: &str,
@@ -294,7 +293,10 @@ fn scan(
         s.total = vectors.len() as u64;
         s.current = 0;
     }
-    let _ = app.emit("similar-scan-progress", status.lock().unwrap().clone());
+    crate::t_events::emit(
+        crate::t_events::names::SIMILAR_SCAN_PROGRESS,
+        status.lock().unwrap().clone(),
+    );
     if cancel.load(Ordering::SeqCst) {
         return Ok(());
     }
@@ -326,7 +328,10 @@ fn scan(
                 let mut s = status.lock().unwrap();
                 s.phase = "finding_matches".into();
                 s.current = i as u64;
-                let _ = app.emit("similar-scan-progress", s.clone());
+                crate::t_events::emit(
+                    crate::t_events::names::SIMILAR_SCAN_PROGRESS,
+                    s.clone(),
+                );
             }
         }
     }

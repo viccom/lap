@@ -33,7 +33,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, RwLock};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 // Scoped refreshes and RAW thumbnail requests can open several connections.
 // Keep their library stable until all reads and writes have completed.
@@ -1941,8 +1941,8 @@ pub async fn sync_album_folder_mtimes(
     .await
     .map_err(|e| format!("folder sync task failed: {}", e))??;
     if !result.folder_path_migrations.is_empty() {
-        let _ = app_handle.emit(
-            "album-folder-paths-migrated",
+        crate::t_events::emit(
+            crate::t_events::names::ALBUM_FOLDER_PATHS_MIGRATED,
             &result.folder_path_migrations,
         );
     }
@@ -1952,7 +1952,7 @@ pub async fn sync_album_folder_mtimes(
 /// Refresh the subfolder tree below a folder without scanning its files.
 #[tauri::command]
 pub async fn refresh_album_subfolders(
-    app_handle: tauri::AppHandle,
+    _app_handle: tauri::AppHandle,
     album_id: i64,
     folder_path: String,
 ) -> Result<(), String> {
@@ -1962,7 +1962,10 @@ pub async fn refresh_album_subfolders(
     .await
     .map_err(|error| format!("Subfolder refresh task failed: {error}"))??;
     if !migrations.is_empty() {
-        let _ = app_handle.emit("album-folder-paths-migrated", &migrations);
+        crate::t_events::emit(
+            crate::t_events::names::ALBUM_FOLDER_PATHS_MIGRATED,
+            &migrations,
+        );
     }
     Ok(())
 }
@@ -2492,7 +2495,7 @@ pub async fn import_file(
 /// Import media from a folder and organize it below the album root by date.
 #[tauri::command]
 pub fn import_and_organize(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     state: State<ImportCancellation>,
     album_id: i64,
     source_path: String,
@@ -2520,7 +2523,10 @@ pub fn import_and_organize(
             &layout,
             completed_paths.into_iter().collect(),
             |progress| {
-                let _ = app_handle.emit("import-organize-progress", progress);
+                crate::t_events::emit(
+                    crate::t_events::names::IMPORT_ORGANIZE_PROGRESS,
+                    progress,
+                );
             },
             || {
                 cancellation
@@ -2542,7 +2548,7 @@ pub fn import_and_organize(
                 error: Some(error),
             },
         };
-        let _ = app_handle.emit("import-organize-finished", payload);
+        crate::t_events::emit(crate::t_events::names::IMPORT_ORGANIZE_FINISHED, payload);
     });
     Ok(())
 }
@@ -4163,7 +4169,6 @@ pub async fn search_similar_images(
 
 #[tauri::command]
 pub fn similar_start_scan(
-    app_handle: tauri::AppHandle,
     state: State<t_similar::SimilarState>,
     scope_key: String,
     source_version: i64,
@@ -4174,7 +4179,6 @@ pub fn similar_start_scan(
     keep_rules: Option<crate::t_dedup::KeepRules>,
 ) -> Result<(), String> {
     t_similar::start_scan(
-        app_handle,
         state,
         scope_key,
         source_version,
@@ -4345,7 +4349,6 @@ pub fn get_person_thumbnail(person_id: i64) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub fn dedup_start_scan(
-    app_handle: tauri::AppHandle,
     state: tauri::State<'_, crate::t_dedup::DedupState>,
     params: Option<crate::t_sqlite::QueryParams>,
     collection_id: Option<i64>,
@@ -4354,7 +4357,6 @@ pub fn dedup_start_scan(
     group_raw_pairs: Option<bool>,
 ) -> Result<(), String> {
     crate::t_dedup::start_scan(
-        app_handle,
         state,
         params,
         collection_id,
