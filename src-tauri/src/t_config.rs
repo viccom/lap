@@ -21,6 +21,50 @@ static APP_IDENTIFIER: OnceLock<String> = OnceLock::new();
 static CONFIG_IO_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static CURRENT_LIBRARY_ID: RwLock<Option<String>> = RwLock::new(None);
 
+/// Scoped refreshes and RAW thumbnail requests can open several connections.
+/// Keep their library stable until all reads and writes have completed.
+static LIBRARY_REFRESH_LOCK: RwLock<()> = RwLock::new(());
+
+/// The library-scoped refresh lock. Commands that must not run while the
+/// current library is being switched take it directly.
+pub fn library_refresh_lock() -> &'static RwLock<()> {
+    &LIBRARY_REFRESH_LOCK
+}
+
+/// Run `operation` while holding the library-scoped refresh lock, but only if
+/// `library_id` is still the current library.
+///
+/// The lock is taken before the current library is read, and the current
+/// library id is read under its own lock, so the order is always
+/// `library_refresh -> current_library`; nothing takes them the other way
+/// round, so the two cannot deadlock.
+pub(crate) fn with_library_context<T>(
+    lock: &RwLock<()>,
+    library_id: &str,
+    current_library: impl FnOnce() -> Result<String, String>,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let _guard = lock.read().map_err(|e| e.to_string())?;
+    if current_library()? != library_id {
+        return Err("Library changed".to_string());
+    }
+    operation()
+}
+
+/// Run `operation` against `library_id`, failing if the current library has
+/// changed in the meantime.
+pub fn with_current_library<T>(
+    library_id: &str,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    with_library_context(
+        &LIBRARY_REFRESH_LOCK,
+        library_id,
+        current_library_id,
+        operation,
+    )
+}
+
 pub fn current_library_id() -> Result<String, String> {
     if let Some(id) = CURRENT_LIBRARY_ID
         .read()

@@ -9305,7 +9305,7 @@ impl AThumb {
             };
             let event_library = library_id.clone();
             let generated = crate::t_rt::spawn_blocking(move || {
-                crate::t_cmds::with_current_library(&library_id, || {
+                crate::t_config::with_current_library(&library_id, || {
                     let had_cache = Self::fetch_record(file_id)?.is_some();
                     let result = Self::get_or_create_thumb(
                         file_id,

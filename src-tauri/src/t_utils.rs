@@ -4374,7 +4374,7 @@ async fn process_thumbnail_task(
         .map_err(|e| e.to_string())?;
     let task_for_thumb = task.clone();
     let thumb_ok = crate::t_rt::spawn_blocking(move || {
-        let generated = crate::t_cmds::with_current_library(&task_for_thumb.library_id, || {
+        let generated = crate::t_config::with_current_library(&task_for_thumb.library_id, || {
             crate::t_sqlite::AThumb::refresh_file_and_thumbnail(
                 task_for_thumb.file_id,
                 task_for_thumb.thumbnail_size,

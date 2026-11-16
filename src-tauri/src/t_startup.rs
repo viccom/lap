@@ -134,7 +134,7 @@ pub fn finish_startup(app: AppHandle, model: i64) {
             report_ai_dependency_error();
         }
         if let Some(library_id) = library_id {
-            let _ = crate::t_cmds::with_current_library(&library_id, || {
+            let _ = crate::t_config::with_current_library(&library_id, || {
                 if t_sqlite::is_database_corrupted() {
                     return Ok(());
                 }

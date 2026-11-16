@@ -32,41 +32,18 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 
 // Scoped refreshes and RAW thumbnail requests can open several connections.
 // Keep their library stable until all reads and writes have completed.
-static FILE_REFRESH_LIBRARY_LOCK: RwLock<()> = RwLock::new(());
+// The lock and the helpers that use it live in `t_config`, next to
+// `current_library_id`: core modules depend on them, so they cannot live in
+// the command shell.
 
 // Linux serves clipboard data from its owner; keep it alive between commands.
 // Serialize writes from the main window and separate viewer windows.
 static FILE_PATH_CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None);
-
-fn with_library_context<T>(
-    lock: &RwLock<()>,
-    library_id: &str,
-    current_library: impl FnOnce() -> Result<String, String>,
-    operation: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
-    let _guard = lock.read().map_err(|e| e.to_string())?;
-    if current_library()? != library_id {
-        return Err("Library changed".to_string());
-    }
-    operation()
-}
-
-pub(crate) fn with_current_library<T>(
-    library_id: &str,
-    operation: impl FnOnce() -> Result<T, String>,
-) -> Result<T, String> {
-    with_library_context(
-        &FILE_REFRESH_LIBRARY_LOCK,
-        library_id,
-        t_config::current_library_id,
-        operation,
-    )
-}
 
 // cancellation token for indexing
 pub struct IndexCancellation(pub Arc<Mutex<HashMap<i64, bool>>>);
@@ -329,7 +306,7 @@ fn cache_migration_library_guard(
 ) -> Result<std::sync::RwLockWriteGuard<'static, ()>, crate::t_cache_storage::CacheChangeError> {
     loop {
         cancellation.check()?;
-        match FILE_REFRESH_LIBRARY_LOCK.try_write() {
+        match t_config::library_refresh_lock().try_write() {
             Ok(guard) => return Ok(guard),
             Err(std::sync::TryLockError::WouldBlock) => {
                 std::thread::sleep(std::time::Duration::from_millis(50))
@@ -391,7 +368,7 @@ pub async fn change_db_storage_dir(
 ) -> Result<t_storage::DbStorageChangeResult, String> {
     ensure_db_storage_change_allowed(&status_state)?;
     crate::t_rt::spawn_blocking(move || {
-        let _guard = FILE_REFRESH_LIBRARY_LOCK
+        let _guard = t_config::library_refresh_lock()
             .write()
             .map_err(|e| e.to_string())?;
         let result = t_storage::change_db_storage_dir(&new_dir);
@@ -410,7 +387,7 @@ pub async fn reset_db_storage_dir(
 ) -> Result<t_storage::DbStorageChangeResult, String> {
     ensure_db_storage_change_allowed(&status_state)?;
     crate::t_rt::spawn_blocking(move || {
-        let _guard = FILE_REFRESH_LIBRARY_LOCK
+        let _guard = t_config::library_refresh_lock()
             .write()
             .map_err(|e| e.to_string())?;
         let result = t_storage::reset_db_storage_dir();
@@ -472,7 +449,7 @@ pub async fn remove_library(
         ));
     }
     crate::t_rt::spawn_blocking(move || {
-        let _guard = FILE_REFRESH_LIBRARY_LOCK
+        let _guard = t_config::library_refresh_lock()
             .write()
             .map_err(|e| e.to_string())?;
         t_config::remove_library(&id)
@@ -494,7 +471,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
     // create_db's returned error itself rather than re-reading the process-global flag afterwards
     // (which a concurrent switch could resolve against a different library).
     let corrupted = crate::t_rt::spawn_blocking(move || -> Result<bool, String> {
-        let _guard = FILE_REFRESH_LIBRARY_LOCK
+        let _guard = t_config::library_refresh_lock()
             .write()
             .map_err(|e| e.to_string())?;
         t_config::switch_library(&id)?;
@@ -621,7 +598,7 @@ pub fn get_album(album_id: i64) -> Result<Album, String> {
 pub async fn check_album_accessibility(album_id: i64) -> Result<bool, String> {
     let library_id = t_config::current_library_id()?;
     crate::t_rt::spawn_blocking(move || {
-        let (mut album, generation) = with_current_library(&library_id, || {
+        let (mut album, generation) = t_config::with_current_library(&library_id, || {
             let album = Album::get_album_by_id(album_id)
                 .map_err(|e| format!("Error while checking album accessibility: {}", e))?;
             Ok((album, t_utils::album_accessibility_generation()))
@@ -1238,7 +1215,7 @@ fn verify_folder_delete_identity(path: &str, expected_identity: &str) -> Result<
 
 #[tauri::command]
 pub fn prepare_folder_delete(folder_path: &str, library_id: &str) -> Result<String, String> {
-    with_current_library(library_id, || {
+    t_config::with_current_library(library_id, || {
         validate_folder_delete(folder_path, library_id)?;
         folder_delete_identity(folder_path)
     })
@@ -1329,7 +1306,7 @@ pub fn delete_folder(
     library_id: &str,
     expected_identity: &str,
 ) -> Result<FolderTrashResult, String> {
-    with_current_library(library_id, || {
+    t_config::with_current_library(library_id, || {
         validate_folder_delete(folder_path, library_id)?;
         verify_folder_delete_identity(folder_path, expected_identity)?;
         #[cfg(windows)]
@@ -1390,7 +1367,7 @@ pub fn delete_folder_permanently(
     library_id: &str,
     expected_identity: &str,
 ) -> Result<usize, String> {
-    with_current_library(library_id, || {
+    t_config::with_current_library(library_id, || {
         validate_folder_delete(folder_path, library_id)?;
         verify_folder_delete_identity(folder_path, expected_identity)?;
         t_utils::delete_folder_permanently(folder_path)?;
@@ -2040,7 +2017,7 @@ pub async fn preview_batch_rename(
     options: crate::t_batch_rename::RenameOptions,
 ) -> Result<crate::t_batch_rename::RenamePreview, String> {
     crate::t_rt::spawn_blocking(move || {
-        with_current_library(&library_id, || {
+        t_config::with_current_library(&library_id, || {
             crate::t_batch_rename::preview(&file_ids, &options)
         })
     })
@@ -2056,7 +2033,7 @@ pub async fn batch_rename_files(
     expected: Vec<crate::t_batch_rename::RenameItem>,
 ) -> Result<crate::t_batch_rename::RenamePreview, String> {
     crate::t_rt::spawn_blocking(move || {
-        with_current_library(&library_id, || {
+        t_config::with_current_library(&library_id, || {
             crate::t_batch_rename::execute(&file_ids, &options, &expected)
         })
     })
@@ -2453,7 +2430,7 @@ pub async fn import_file(
 ) -> Result<Option<AFile>, String> {
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
     crate::t_rt::spawn_blocking(move || {
-        with_current_library(&library_id, || {
+        t_config::with_current_library(&library_id, || {
             // Validate the source is a supported type *before* copying.
             t_utils::get_file_type(&file_path)
                 .ok_or_else(|| format!("Unsupported file type: {}", file_path))?;
@@ -3317,7 +3294,7 @@ pub async fn get_file_thumbs(
 ) -> Result<Vec<Option<AThumb>>, String> {
     let library = t_config::current_library_id()?;
     crate::t_rt::spawn_blocking(move || {
-        with_current_library(&library, || {
+        t_config::with_current_library(&library, || {
             let ids: Vec<_> = files
                 .iter()
                 .map(|f| f.file_id)
@@ -3601,7 +3578,7 @@ fn refresh_file(file_id: i64, force: bool) -> Result<Option<FileRefreshResult>, 
 
 #[tauri::command]
 pub fn begin_file_refresh_batch(library_id: String) -> Result<u64, String> {
-    let _guard = FILE_REFRESH_LIBRARY_LOCK
+    let _guard = t_config::library_refresh_lock()
         .read()
         .map_err(|e| e.to_string())?;
     if t_config::current_library_id()? != library_id {
@@ -3628,7 +3605,7 @@ pub async fn change_video_thumbnail(
         .await
         .map_err(|e| e.to_string())?;
     crate::t_rt::spawn_blocking(move || {
-        with_current_library(&library_id, || {
+        t_config::with_current_library(&library_id, || {
             let file = AFile::get_file_info(file_id)?.ok_or("File not found")?;
             if file.file_type != Some(2) {
                 return Err("Not a video".into());
@@ -3665,7 +3642,7 @@ pub async fn refresh_selected_file_info(
         .await
         .map_err(|e| e.to_string())?;
     crate::t_rt::spawn_blocking(move || {
-        with_current_library(&library_id, || {
+        t_config::with_current_library(&library_id, || {
             let _index = crate::metadata::xmp::refresh_index_scope(batch_id, &library_id)?;
             let size = thumbnail_size.unwrap_or(512).clamp(64, 2048);
             let options = raw_display_options.unwrap_or_default();
@@ -3697,7 +3674,7 @@ pub async fn index_cloud_file(
     raw_display_options: RawDisplayOptions,
 ) -> Result<Option<FileRefreshResult>, String> {
     crate::t_rt::spawn_blocking(move || {
-        let _guard = FILE_REFRESH_LIBRARY_LOCK.read().map_err(|e| e.to_string())?;
+        let _guard = t_config::library_refresh_lock().read().map_err(|e| e.to_string())?;
         if t_config::current_library_id()? != library_id {
             return Err("Library changed".to_string());
         }
@@ -3914,7 +3891,7 @@ pub async fn save_xmp_metadata(
     file_ids: Vec<i64>,
 ) -> Result<crate::metadata::xmp::BatchResult, String> {
     crate::t_rt::spawn_blocking(move || {
-        let _guard = FILE_REFRESH_LIBRARY_LOCK
+        let _guard = t_config::library_refresh_lock()
             .read()
             .map_err(|e| e.to_string())?;
         if t_config::current_library_id()? != library_id {
@@ -4132,7 +4109,7 @@ pub async fn generate_embedding(
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
     crate::t_rt::spawn_blocking(move || {
         crate::t_startup::ensure_ai(&app_handle, None)?;
-        with_current_library(&library_id, || {
+        t_config::with_current_library(&library_id, || {
             AFile::generate_embedding(&app_handle.state::<t_ai::AiState>(), file_id)
         })
     })
@@ -4150,7 +4127,7 @@ pub async fn search_similar_images(
     let library_id = library_id.unwrap_or(t_config::current_library_id()?);
     crate::t_rt::spawn_blocking(move || {
         crate::t_startup::ensure_ai(&app_handle, None)?;
-        with_current_library(&library_id, || {
+        t_config::with_current_library(&library_id, || {
             AFile::search_similar_images(&app_handle.state::<t_ai::AiState>(), params)
                 .map_err(|e| format!("Error while searching similar images: {}", e))
         })
@@ -4523,7 +4500,7 @@ mod gstreamer_probe_tests {
 
 #[cfg(test)]
 mod raw_display_library_tests {
-    use super::with_library_context;
+    use crate::t_config::with_library_context;
     use std::sync::{Arc, Mutex, RwLock, TryLockError, mpsc};
 
     #[test]

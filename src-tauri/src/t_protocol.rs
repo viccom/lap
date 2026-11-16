@@ -154,7 +154,7 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 if !repair {
                     let lookup_library = library_id.clone();
                     let cached = crate::t_rt::spawn_blocking(move || {
-                        crate::t_cmds::with_current_library(&lookup_library, || {
+                        crate::t_config::with_current_library(&lookup_library, || {
                             let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                             let path = file.file_path.as_deref().unwrap_or_default();
                             if let Some(thumb) = t_sqlite::AThumb::get_thumb_if_available(file_id, path, false, file.album_accessible)? {
@@ -171,7 +171,7 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 };
                 let result = crate::t_rt::spawn_blocking(move || {
                     let _permit = permit;
-                    crate::t_cmds::with_current_library(&library_id, || {
+                    crate::t_config::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                         let previous = t_sqlite::AThumb::fetch_record(file_id)?.and_then(|(thumb, _)| thumb.id);
                         let thumb = t_sqlite::AThumb::get_or_create_thumb(file_id, file.file_path.as_deref().unwrap_or_default(),
@@ -224,7 +224,7 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 // Scheme callbacks can run on the UI thread. Never wait for a
                 // library lock, configuration IO or SQLite there.
                 let lookup = crate::t_rt::spawn_blocking(move || {
-                    crate::t_cmds::with_current_library(&library_id, || {
+                    crate::t_config::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?
                             .ok_or_else(|| "File not found".to_string())?;
                         let companion = if !options.prefer_pair {
