@@ -2206,7 +2206,7 @@ fn original_fallback_allowed(path: &std::path::Path, len: u64) -> bool {
 /// claim turns the duplicate call into a Skipped instead of a second
 /// gateway bill (REVIEW-2026-11-14 P1-2).
 #[derive(Default)]
-pub struct InFlight {
+pub(crate) struct InFlight {
     set: Mutex<std::collections::HashSet<(i64, i64, i64)>>,
 }
 
@@ -2227,7 +2227,7 @@ impl InFlight {
 }
 
 /// Releases the claim when the analysis ends, whatever way it ends.
-pub struct InFlightGuard<'a> {
+pub(crate) struct InFlightGuard<'a> {
     registry: &'a InFlight,
     key: (i64, i64, i64),
 }
@@ -2262,7 +2262,7 @@ fn template_spec(spec: &str) -> serde_json::Value {
 /// A file that already has an annotation for this template version is skipped
 /// unless `force` is set. Every call leaves evidence behind, successful or not.
 /// `run_id` groups the evidence into the run that produced it.
-pub async fn analyze_file(
+pub(crate) async fn analyze_file(
     store: &dyn VlStore,
     source: &dyn VlSource,
     client: &reqwest::Client,
@@ -3232,7 +3232,9 @@ pub struct VlState {
     pub runs: Arc<Mutex<HashMap<String, VlRunStatus>>>,
     pub cancel_flags: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
     pub queue: Arc<VlQueue>,
-    pub in_flight: Arc<InFlight>,
+    // InFlight is crate-internal: no shell or lapd caller inspects the
+    // claim registry, only the run orchestration below does.
+    pub(crate) in_flight: Arc<InFlight>,
     /// The global pool of LLM-call permits: at most `max_concurrency`
     /// gateway requests are in flight at once, across all runs. The pool is
     /// replaced (not resized) on config changes; permits of the old pool are

@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 3 批次 3.1 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取（42 模块 + metadata/11 下沉、四 C 原生构建随迁、壳薄包装层、`lapd` 占位 bin），桌面零行为变化，Rust workspace 577/0/9、清单 diff 为空、便携版冒烟通过。下一步 = 批次 3.2（lapd 骨架：axum + 生成式命令桥 + SSE））
+状态：**阶段 3 批次 3.2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过。下一步 = 批次 3.3（鉴权 + 媒体端点 + HMAC））
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -299,6 +299,15 @@ src-vite/                      一套前端，两种传输
 - **桌面零行为变化证据**：命令清单重生成 **diff 为空**（253 条 A233/B4/C16 不变）；前端 439/0（src-vite 零改动）；`cargo test --workspace` = **577/0/9**（core 568 + 壳 9，逐测试对账基线全数保留）；便携版重建（subsystem=2）冒烟 + 真库 v18 / debug v28 integrity=ok。
 - **壳包装层**：7 命令模块 35 条包装以 main.rs 注册表为唯一事实源生成；t_cmds 206 包装同签名转发（async 补 `.await`、返回类型逐字回填）。
 - **本批未做**：lapd 仅有占位 bin（3.2 填 axum/命令桥/SSE）；lap-server 无任何依赖；`--read-only`/令牌/媒体端点全在 3.2–3.4；跨壳小抽取改 pub 的 9 项可在 3.2 复核收窄。
+
+**批次 3.2（lapd 骨架）· 已完成**（提交 `e2009b86` + `389ed13e` + `d394bf26` + `4e4deeb4` + 文档）：
+- **顺带修复（批次 3.1 回归）**：`set_desktop_wallpaper` 的 `_app_handle` 参数被误判死参删除，`cfg(macos)` 块仍在调用——Windows 因 cfg 裁剪编译通过而 macOS 构建必断；已按 3.1 前签名逐字恢复（前端不发送注入参，JS 契约零变化）。同批顺带修复 `gen-command-inventory.py` `parse_signatures` off-by-one（每条签名首参首字符被截，A/B 判定靠子串正则侥幸未受影响；清单重生成 diff 为空）。
+- **骨架可启动**（`389ed13e`）：4 旗标手写解析（`--host/--port/--data-dir/--library`，默认 `127.0.0.1:17860`，不引 clap）；`<data>/lapd.lock`（PID+port+启动时间，活 PID 拒绝/陈旧接管，Windows 活性检测用 kernel32 `OpenProcess` FFI——tasklist 输出本地化不可解析，实测踩坑）；`t_config::set_data_dir_override` 一次性接缝（显式目录不追加 `.debug`）；boot.rs 复刻 §3.7 对照表 lapd 列（finish_startup(0) 启动自跑，前端新鲜客户端恒传 0）；`GET /api/server_info` 最小字段集（未决事项 6，先最小后扩）。
+- **生成式命令桥**（`d394bf26`）：`gen-lapd-bridge.py` importlib 复用清单生成器的注册表/分类/暴露（不复制逻辑），新增包装保真扫描 + 注释感知切参 + 类型→路径映射；产出确定性 `bridge_gen.rs`（**231 桥接 / 253 注册 / 22 跳过** = B4+C16+A不暴露2）；参数契约 = 顶层键 camelCase 优先 + snake 兜底、嵌套 payload 直 deserialize（对齐 Tauri IPC）；`Err(String)`→500 `{"error"}`（结构化错误枚举如 `CacheChangeError` 串化为 JSON 渲染）、body 非法→400、未知名→404（无鉴权阶段不泄露存在性，3.3 后按 §3.6 改 403）；sync 命令跑 **lapd runtime** 的 blocking 池（t_image/t_video 同步体内调 `t_rt::block_on`，用 t_rt 池必重入 panic）；`catch_unwind` → 500 internal。**完备性守卫**：注册表 253 = COMMANDS ∪ SKIP（22 条手工钉死），新命令不重跑生成器 + 不复核 SKIP 即红。
+- **SSE**（`4e4deeb4`）：`SseSink` 实现 `EventSink`，boot 链**最前**安装（finish_startup 的 albums-refreshed 必须落总线）；30s 环形缓冲 + `Last-Event-ID` 重放 + 15s 心跳；进度 8 事件 ≥100ms 合并（保首 id 换新 payload，缓冲原位刷新）；帧 = 默认 message + `{"event","id","payload"}` 封套（阶段 1 http.js 钉死），事件名/payload 与 Tauri 逐字一致。
+- **pub 收窄复核（3.1 遗留 9 项）**：收窄 4（`InFlight`/`InFlightGuard`/`VlState.in_flight`/`analyze_file`，壳外零引用）；保留 5+1（`MigrationOperation`/`MigrationCancellation` 壳 t_cmds 消费链、`clear_conn_pool` 壳+lapd、`is_heic_path`/`get_generated_preview_bytes`/`thumb_background_generation_permits` 壳 t_protocol、metadata 三重导出壳 t_cmds）——每项保留都有消费证据。
+- **验证**：`cargo test --workspace` = **612/0/10**（基线 577 + core override 测试 1 + lapd 30 + drag vendor 对账；零警告）；清单重生成 diff 为空；src-vite 零改动；lapd 冒烟（临时 `--data-dir`，真库零接触）：全新库迁移 0→28、嵌套 QueryParams（camel 键）→200 `[0,0]`、重复库名 Err→500、未知名/C 类名→404、非法 body→400、boot 期连接即收重放帧 + 16s 心跳、二次实例锁拒绝 exit 1。
+- **本批未做（3.3/3.4）**：鉴权/令牌/白名单 403/限流；媒体端点与 HMAC；优雅退出（Ctrl-C 硬杀留锁，下次启动陈旧接管已覆盖）；`--read-only`（未决事项 3）；桌面内嵌模式检测 lapd.lock 的冲突提示（§3.7，阶段 5 前）。
 
 
 - **验收**：局域网另一台设备用浏览器完成「登录 → 搜索 → 网格 → 原图/视频」；无令牌 401；C 类 403；路径穿越无效；桌面与 `lapd` 同时启动被第二个进程拒绝；真实图库 `user_version` 与完整性检查正常。
