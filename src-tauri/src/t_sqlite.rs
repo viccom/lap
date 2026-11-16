@@ -9278,7 +9278,6 @@ impl AThumb {
     }
 
     pub fn schedule_background_generation_for_library(
-        _app_handle: tauri::AppHandle,
         file_id: i64,
         file_path: String,
         file_type: i64,

@@ -3221,7 +3221,6 @@ pub async fn clean_unused_thumbnail_cache(
 /// get a file's thumb image, if not exist, create a new one
 #[tauri::command]
 pub async fn get_file_thumb(
-    app_handle: tauri::AppHandle,
     file_id: i64,
     file_path: &str,
     file_type: i64,
@@ -3251,7 +3250,6 @@ pub async fn get_file_thumb(
     }
 
     AThumb::schedule_background_generation_for_library(
-        app_handle,
         file_id,
         file_path.to_string(),
         file_type,
@@ -3269,7 +3267,6 @@ pub async fn get_file_thumb(
 /// get a file's thumb image by id, if not exist, create a new one in background
 #[tauri::command]
 pub async fn get_file_thumb_by_id(
-    app_handle: tauri::AppHandle,
     file_id: i64,
     thumbnail_size: u32,
     raw_display_options: RawDisplayOptions,
@@ -3296,7 +3293,6 @@ pub async fn get_file_thumb_by_id(
     }
 
     AThumb::schedule_background_generation_for_library(
-        app_handle,
         file_id,
         file_path,
         file_type,
@@ -3314,7 +3310,6 @@ pub async fn get_file_thumb_by_id(
 /// get multiple thumbnails in one IPC call; missing thumbnails are generated in background
 #[tauri::command]
 pub async fn get_file_thumbs(
-    app_handle: tauri::AppHandle,
     files: Vec<ThumbRequest>,
     thumbnail_size: u32,
     raw_display_options: RawDisplayOptions,
@@ -3367,7 +3362,6 @@ pub async fn get_file_thumbs(
                 }
                 if t_utils::content_readable(path) {
                     AThumb::schedule_background_generation_for_library(
-                        app_handle.clone(),
                         request.file_id,
                         path.to_string(),
                         file.file_type.unwrap_or(0),
