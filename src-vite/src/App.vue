@@ -1,5 +1,5 @@
 <template>
-  <div v-if="!isReady || (isMainWindow && !uiStore.startupReady)" class="fixed inset-0 z-[1000] flex items-center justify-center bg-base-300" role="status" aria-label="Loading" data-tauri-drag-region>
+  <div v-if="!isReady || (transportMode !== 'http' && isMainWindow && !uiStore.startupReady)" class="fixed inset-0 z-[1000] flex items-center justify-center bg-base-300" role="status" aria-label="Loading" data-tauri-drag-region>
     <span class="loading loading-spinner loading-lg text-primary" aria-hidden="true"></span>
   </div>
   <template v-if="isReady">
@@ -10,9 +10,10 @@
  
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { emit } from '@/common/transport';
+import { emit, transportMode } from '@/common/transport';
 import { invoke } from '@/common/transport';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { isAuthenticated } from '@/common/auth';
+import { getCurrentWebviewWindow } from '@/common/transport/window.js';
 import { useConfigStore } from '@/stores/configStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { useUIStore } from '@/stores/uiStore';
@@ -122,9 +123,13 @@ onMounted(async () => {
     void invoke('record_startup_stage', { stage: 'window-shown' }).catch(console.error);
   }
 
-  // Initialize library state from backend
+  // Initialize library state from backend. The Web client skips this until
+  // login: get_app_config is token-protected, and Login.vue calls init() once
+  // it holds a session (phase 4).
   try {
-    await libConfig.init();
+    if (transportMode !== 'http' || isAuthenticated()) {
+      await libConfig.init();
+    }
   } catch (error) {
     console.error('[App] Library initialization failed:', error);
     // Continue anyway - user can retry from UI

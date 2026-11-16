@@ -1,11 +1,15 @@
 import { createApp, watch } from 'vue'
 import { i18n, initializeLanguage, resolveSystemLanguage } from '@/common/i18n'
-import { locale as getSystemLanguage } from '@tauri-apps/plugin-os'
 import { createPinia } from 'pinia'
 import piniaPersistedState from 'pinia-plugin-persistedstate'
-import { emit, listen } from '@/common/transport'
+import { emit, listen, transportMode } from '@/common/transport'
 import { invoke } from '@/common/transport'
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
+import { getCurrentWebviewWindow } from '@/common/transport/window.js'
+// Web client: navigator.language is the browser equivalent of plugin-os's
+// locale; the real plugin has no browser implementation (phase 4).
+const getSystemLanguage = transportMode === 'http'
+  ? async () => navigator.language
+  : async () => (await import('@tauri-apps/plugin-os')).locale()
 import { getSystemRegionLocale } from '@/common/api'
 import 'cally'
 import router from '@/common/router'
@@ -99,6 +103,15 @@ if (isMainWindow) void invoke('record_startup_stage', { stage: 'language-ready' 
 
 // Set up global properties
 app.config.globalProperties.$invoke = invoke
+
+// Web client: resolve the session BEFORE installing the router, so its very
+// first navigation already knows whether to show /login (phase 4). Installing
+// the router first would run the guard while the session is still unknown and
+// bounce a signed-in user to /login on every refresh.
+if (transportMode === 'http') {
+  const { checkSession } = await import('@/common/auth')
+  await checkSession()
+}
 
 // Use the router and i18n
 app.use(router)

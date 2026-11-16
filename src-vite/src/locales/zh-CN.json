@@ -2127,5 +2127,23 @@
     "rerank_failed": "云端重排失败，已保留本地排序",
     "rerank_no_match": "没有与描述相符的照片",
     "rerank_short": "重排"
+  },
+  "auth": {
+    "subtitle": "登录后浏览你的图库",
+    "tab_setup": "设置密码",
+    "tab_login": "密码登录",
+    "tab_pair": "配对码",
+    "password": "管理员密码",
+    "password_placeholder": "输入管理员密码",
+    "pair_code": "6 位配对码",
+    "pair_placeholder": "见 lapd 控制台",
+    "device_name": "设备名称",
+    "working": "请稍候…",
+    "submit_setup": "设置密码",
+    "submit_login": "登录",
+    "submit_pair": "配对设备",
+    "setup_done": "密码已设置，请使用密码登录",
+    "failed_default": "登录失败",
+    "hint_pairing_code": "配对码在 lapd 启动时打印到控制台（5 分钟内有效）。"
   }
 }

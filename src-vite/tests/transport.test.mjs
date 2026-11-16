@@ -143,6 +143,59 @@ test('http transport: media URLs follow the /api/{kind}/{library}/{file} shape',
   assert.equal(t.assetUrl('asset', { filePath: 'C:/x.jpg' }), '');
 });
 
+test('http transport: a 401 signals the unauthorized handler', async () => {
+  const t = createHttpTransport({
+    fetchImpl: async () => ({ ok: false, status: 401, text: async () => '' }),
+  });
+  let fired = 0;
+  const off = t.onUnauthorized(() => { fired += 1; });
+  await assert.rejects(() => t.invoke('get_app_config'), /401/);
+  assert.equal(fired, 1);
+  off();
+  await assert.rejects(() => t.invoke('get_app_config'), /401/);
+  assert.equal(fired, 1);
+});
+
+test('http transport: auth endpoints post JSON and return the credential', async () => {
+  const calls = [];
+  const t = createHttpTransport({
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, opts });
+      const body = JSON.parse(opts.body);
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ token: 'tok', scope: body.code ? 'admin' : 'standard' }),
+      };
+    },
+  });
+  const cred = await t.login('pw', 'browser');
+  assert.equal(cred.scope, 'standard');
+  assert.equal(calls[0].url, '/api/auth/login');
+  assert.deepEqual(JSON.parse(calls[0].opts.body), { password: 'pw', deviceName: 'browser' });
+  const paired = await t.pair('123456');
+  assert.equal(paired.scope, 'admin');
+  assert.equal(calls[1].url, '/api/auth/pair');
+});
+
+test('http transport: signedAssetUrl mints via /api/media/sign and caches', async () => {
+  const calls = [];
+  const t = createHttpTransport({
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, body: JSON.parse(opts.body) });
+      const urls = JSON.parse(opts.body).urls.map((u) => `${u}&exp=9999999999&sig=abc&dev=1`);
+      return { ok: true, status: 200, json: async () => ({ urls }) };
+    },
+  });
+  const a = await t.signedAssetUrl('/api/thumb/default/1?size=256');
+  assert.match(a, /sig=abc&dev=1/);
+  const b = await t.signedAssetUrl('/api/thumb/default/1?size=256');
+  assert.equal(b, a);
+  // Same URL must be served from cache, not re-minted.
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].body.urls, ['/api/thumb/default/1?size=256']);
+});
+
 test('migrated files import the transport seam, not @tauri-apps core/event', () => {
   // Guard: a file that still imports core/event directly would keep calling
   // Tauri under VITE_LAP_TRANSPORT=http, defeating the phase-1 contract.

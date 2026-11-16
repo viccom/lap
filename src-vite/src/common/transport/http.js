@@ -1,40 +1,62 @@
 /**
  * HTTP transport — the Web bundle built with `VITE_LAP_TRANSPORT=http`.
  *
- * SKELETON (phase 1). It fixes the request/response shapes the rest of the app
- * will use so both transports are drop-in identical, but the `lapd` endpoints
- * behind them are implemented in phase 3. Until then a `=http` bundle builds
- * and unit-tests against these shapes; it is not yet a working Web app.
- *
- * Endpoint contract (serverization plan §3.3/§3.5):
+ * The desktop (`tauri.js`) talks to the Rust shell over IPC; this transport
+ * talks to `lapd` over the same-origin HTTP API (phase 3) so the browser (and
+ * PWA) can run the very same Vue components. Phase 4 completes the skeleton:
  *   invoke(name, args)  -> POST /api/cmd/{name}   (JSON args -> JSON result)
  *   listen(name, cb)    -> GET  /api/events       (SSE, name-tagged payloads)
- *   emit(name, payload) -> local bus only; §3.3 keeps same-tab events off the net
+ *   emit(name, payload) -> local bus only; same-tab events never hit the net
  *   assetUrl(kind, ..)  -> /api/thumb|preview/{library_id}/{file_id}
+ *
+ * Authentication: `lapd` sets an HttpOnly `lapd_token` Cookie on login; same-
+ * origin `fetch`/EventSource carry it automatically. A 401 from a command
+ * means the session expired — callers can register a handler via
+ * `onUnauthorized`, and `login`/`pair` are exposed for the Login view.
+ *
+ * Media signatures: every media URL needs `?exp=&sig=&dev=`. `signedAssetUrl`
+ * mints them through `POST /api/media/sign`, batches up to 50, caches by raw
+ * URL, and refreshes before the 10-minute TTL elapses. `assetUrl` returns the
+ * raw path for backward compatibility; the media helper calls the signed one.
  */
 export function createHttpTransport({
   baseUrl = '',
   fetchImpl = globalThis.fetch?.bind(globalThis),
   EventSourceImpl = globalThis.EventSource,
 } = {}) {
-  // Same-tab events (emit + listen for names nobody served over SSE) run on a
+  // Same-tab events (emit + listen for names nobody serves over SSE) run on a
   // local bus, mirroring the Tauri event semantics without a round trip.
   const bus = new EventTarget();
+  const unauthorizedHandlers = new Set();
 
-  function invoke(name, args = {}) {
+  function onUnauthorized(handler) {
+    unauthorizedHandlers.add(handler);
+    return () => unauthorizedHandlers.delete(handler);
+  }
+
+  function signalUnauthorized() {
+    for (const handler of unauthorizedHandlers) {
+      try { handler(); } catch { /* a broken handler must not break the command */ }
+    }
+  }
+
+  async function invoke(name, args = {}) {
     const url = `${baseUrl}/api/cmd/${name}`;
-    return fetchImpl(url, {
+    const res = await fetchImpl(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(args ?? {}),
-    }).then(async (res) => {
-      if (!res.ok) {
-        throw new Error(`command ${name} failed: HTTP ${res.status}`);
-      }
-      // Commands may legitimately return no body.
-      const text = await res.text();
-      return text ? JSON.parse(text) : null;
     });
+    if (res.status === 401) {
+      signalUnauthorized();
+      throw new Error(`command ${name} failed: HTTP 401`);
+    }
+    if (!res.ok) {
+      throw new Error(`command ${name} failed: HTTP ${res.status}`);
+    }
+    // Commands may legitimately return no body.
+    const text = await res.text();
+    return text ? JSON.parse(text) : null;
   }
 
   // One shared EventSource fanned out to per-name subscribers, opened lazily.
@@ -96,6 +118,84 @@ export function createHttpTransport({
     }
   }
 
+  // -- Authentication (phase 4) -------------------------------------------
+  async function authRequest(path, body) {
+    const res = await fetchImpl(`${baseUrl}/api/auth/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
+    });
+    const text = await res.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = text; }
+    if (!res.ok) throw Object.assign(new Error(typeof parsed === 'string' ? parsed : `HTTP ${res.status}`), { status: res.status, body: parsed });
+    return parsed;
+  }
+
+  async function authStatus() {
+    const res = await fetchImpl(`${baseUrl}/api/auth/status`);
+    if (!res.ok) return { auth: false, passwordSet: false };
+    const text = await res.text();
+    return text ? JSON.parse(text) : { auth: false, passwordSet: false };
+  }
+
+  const login = (password, deviceName = 'web') =>
+    authRequest('login', { password, deviceName });
+  const pair = (code, deviceName = 'web') =>
+    authRequest('pair', { code, deviceName });
+  const setup = (password) =>
+    authRequest('setup', { password });
+  const pairingCode = () =>
+    authRequest('pairing-code', {});
+
+  // -- Signed media URLs (phase 4) ----------------------------------------
+  // The signature binds path+query+device; mint in batches of ≤50 and refresh
+  // before the 600s TTL. Raw->signed map keeps callers' URLs unchanged.
+  const SIGN_TTL_MS = 9 * 60 * 1000; // mint at 9min, before the 10min expiry
+  const signedCache = new Map(); // rawUrl -> { url, expiresAt }
+  let signInFlight = null;
+
+  async function signBatch(rawUrls) {
+    const res = await fetchImpl(`${baseUrl}/api/media/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls: rawUrls }),
+    });
+    if (res.status === 401) {
+      signalUnauthorized();
+      throw new Error('media signing failed: HTTP 401');
+    }
+    if (!res.ok) throw new Error(`media signing failed: HTTP ${res.status}`);
+    const body = await res.json();
+    const urls = body?.urls;
+    if (!Array.isArray(urls) || urls.length !== rawUrls.length) {
+      throw new Error('media signing returned an unexpected response');
+    }
+    const now = Date.now();
+    rawUrls.forEach((raw, i) => {
+      signedCache.set(raw, { url: urls[i], expiresAt: now + SIGN_TTL_MS });
+    });
+  }
+
+  function queueSign(raw) {
+    // Coalesce concurrent mints into one request.
+    if (signInFlight) return signInFlight;
+    const pending = [...new Set([...signedCache.keys(), raw].filter(
+      (u) => !signedCache.get(u) || signedCache.get(u).expiresAt <= Date.now(),
+    ))];
+    if (!pending.length) return Promise.resolve();
+    signInFlight = signBatch(pending).finally(() => { signInFlight = null; });
+    return signInFlight;
+  }
+
+  async function signedAssetUrl(raw) {
+    if (!raw) return '';
+    const cached = signedCache.get(raw);
+    if (cached && cached.expiresAt > Date.now()) return cached.url;
+    await queueSign(raw);
+    return signedCache.get(raw)?.url ?? '';
+  }
+
   return {
     mode: 'http',
     invoke,
@@ -103,11 +203,17 @@ export function createHttpTransport({
     listen: (name, callback) => listen(name, callback),
     listenLocal,
     emit,
+    onUnauthorized,
+    authStatus,
+    login,
+    pair,
+    setup,
+    pairingCode,
+    signedAssetUrl,
     capabilities: () => ({ native: false }),
     assetUrl(kind, { libraryId = '', fileId = 0, filePath = '' } = {}) {
-      // `asset` (arbitrary file path) has no file_id and no Web endpoint until
-      // phase 3; return empty so callers degrade instead of requesting a Tauri
-      // asset URL that cannot resolve in a browser.
+      // `asset` (arbitrary file path) has no Web endpoint; the media helper
+      // maps original/video by file_id. Keep the raw path shape here.
       if (kind === 'asset') return filePath ? '' : '';
       return `${baseUrl}/api/${kind}/${libraryId}/${fileId}`;
     },

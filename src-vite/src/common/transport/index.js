@@ -36,6 +36,18 @@ export const listen = impl.listen;
 export const emit = impl.emit;
 export const assetUrl = impl.assetUrl;
 
+// Auth/signing are HTTP-only concerns (phase 4). The desktop transport has no
+// equivalent, so export inert stubs there — callers never invoke them when
+// `native` is true, but the names exist so views import them unconditionally.
+const noopAuth = async () => { throw new Error('auth is not available in the desktop transport'); };
+export const onUnauthorized = impl.onUnauthorized ?? (() => () => {});
+export const authStatus = impl.authStatus ?? noopAuth;
+export const login = impl.login ?? noopAuth;
+export const pair = impl.pair ?? noopAuth;
+export const setup = impl.setup ?? noopAuth;
+export const pairingCode = impl.pairingCode ?? noopAuth;
+export const signedAssetUrl = impl.signedAssetUrl ?? (async (url) => url);
+
 /// Desktop-only (C-class) entry points are gated on this (§3.3).
 export function capabilities() {
   return resolveCapabilities(mode);

@@ -2127,5 +2127,23 @@
     "rerank_failed": "Cloud rerank failed; the local ranking was kept",
     "rerank_no_match": "No photo description matched the query",
     "rerank_short": "Rerank"
+  },
+  "auth": {
+    "subtitle": "Sign in to browse your library",
+    "tab_setup": "Set password",
+    "tab_login": "Password",
+    "tab_pair": "Pairing code",
+    "password": "Admin password",
+    "password_placeholder": "Enter the admin password",
+    "pair_code": "6-digit pairing code",
+    "pair_placeholder": "From the lapd console",
+    "device_name": "Device name",
+    "working": "Please wait…",
+    "submit_setup": "Set password",
+    "submit_login": "Sign in",
+    "submit_pair": "Pair device",
+    "setup_done": "Password set — sign in with it now",
+    "failed_default": "Sign-in failed",
+    "hint_pairing_code": "The pairing code is printed by lapd at startup (valid 5 minutes)."
   }
 }
