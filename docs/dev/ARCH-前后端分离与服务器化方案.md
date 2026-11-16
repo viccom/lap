@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 2 批次 3 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、全部 11 个 `.manage()` 状态入 `t_state`、`t_sqlite`/`t_dedup`/`t_similar` 零 tauri、`.manage` 计数归零；Rust 577/0/9、清单 A 233/B 4/C 16、便携版冒烟通过。下一阶段 = 阶段 3（打包 `lap-core` + `lapd`）或批次 4（文件删除面））
+状态：**阶段 3 批次 3.1 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取（42 模块 + metadata/11 下沉、四 C 原生构建随迁、壳薄包装层、`lapd` 占位 bin），桌面零行为变化，Rust workspace 577/0/9、清单 diff 为空、便携版冒烟通过。下一步 = 批次 3.2（lapd 骨架：axum + 生成式命令桥 + SSE））
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -290,6 +290,17 @@ src-vite/                      一套前端，两种传输
 - **原生构建随模块走**：`build.rs` 的 4 个 C 构建、`third_party/` 子模块与 `jpeg_shim.cpp` / `libraw_shim.cpp` 迁入 `lap-core`（或 `lap-native` crate）；CI 产出三平台 `lapd`（`cargo build -p lap-server`）。
 - `lap-server`：通用桥 `POST /api/cmd/{name}` + 媒体端点 + SSE + 鉴权限流 + 锁文件 + 优雅退出。
 - 补齐 ffmpeg/ort 的三平台资源；systemd/LaunchAgent/WinSW 安装脚本。
+**批次 3.1（workspace + lap-core 抽取）· 已完成**（4 提交 `12016161`/`82d8706c`/`3d21d404` + 文档）：
+- **workspace 根留 src-tauri**（root package 仍为 Lap bin，members = `crates/lap-core` + `crates/lap-server`）：Cargo.lock/target/CI 缓存路径零改动，`[profile.*]` 合法，repo 根 `.cargo` 目录继承继续生效。
+- **执行中发现（记录）**：核心模块间循环依赖面极大（t_state↔t_vl/t_video/t_ai/t_face、t_sqlite→t_ai→t_config↔t_storage、t_heif↔t_image、t_libraw→t_raw_display），原计划「按域分批迁移」不可行——core 侧每提交必须自封闭，故除前置拆分外**一次性原子迁移**（脚本化 + 编译器驱动修复）。
+- **归属四档落地**：33 verbatim 模块 + metadata/11 + t_http + data/cities.csv + shims `git mv` 进 core（历史保留）；7 命令模块剥 35 行属性行随迁；t_cmds 拆分（208 纯体进 core、壳留 8 条 tauri 签名命令 + 2 条 drag 命令真体 + 206 条同签名薄包装，`t_dedup→crate::t_cmds` 批次 4 遗留随之消灭）；壳专属 = main/t_cmds 包装/t_drag/t_menu/t_protocol/t_pasteboard/t_scopes。
+- **build.rs 拆分**：四 C 构建 + build_info 随 core（third_party 子模块不挪窝，`../../` 寻址）；壳只留 tauri_build + 剪贴板 shim。
+- **守卫新格局**：`lap-core/src/guard.rs` 全量源码扫描（53 文件含 metadata，非空转未再注毒验证——沿用机制）；t_write/t_state 签名契约守卫经相对 include 扫**壳包装文件**（语义归宿）；注册守卫（VL_COMMANDS 家族）扫壳 main.rs。
+- **桌面零行为变化证据**：命令清单重生成 **diff 为空**（253 条 A233/B4/C16 不变）；前端 439/0（src-vite 零改动）；`cargo test --workspace` = **577/0/9**（core 568 + 壳 9，逐测试对账基线全数保留）；便携版重建（subsystem=2）冒烟 + 真库 v18 / debug v28 integrity=ok。
+- **壳包装层**：7 命令模块 35 条包装以 main.rs 注册表为唯一事实源生成；t_cmds 206 包装同签名转发（async 补 `.await`、返回类型逐字回填）。
+- **本批未做**：lapd 仅有占位 bin（3.2 填 axum/命令桥/SSE）；lap-server 无任何依赖；`--read-only`/令牌/媒体端点全在 3.2–3.4；跨壳小抽取改 pub 的 9 项可在 3.2 复核收窄。
+
+
 - **验收**：局域网另一台设备用浏览器完成「登录 → 搜索 → 网格 → 原图/视频」；无令牌 401；C 类 403；路径穿越无效；桌面与 `lapd` 同时启动被第二个进程拒绝；真实图库 `user_version` 与完整性检查正常。
 - **回滚**：`lapd` 是新增产物，桌面内嵌模式保持可用；内核迁移可按模块回退。
 
