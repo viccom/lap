@@ -161,6 +161,14 @@ pub fn similar() -> &'static crate::t_similar::SimilarState {
     SIMILAR.get_or_init(crate::t_similar::SimilarState::default)
 }
 
+/// Video prepare/preview bookkeeping: live ffmpeg children, per-player
+/// request ids and the task counter shared by the three video commands.
+static VIDEO_MANAGER: OnceLock<crate::t_video::VideoManager> = OnceLock::new();
+
+pub fn video_manager() -> &'static crate::t_video::VideoManager {
+    VIDEO_MANAGER.get_or_init(crate::t_video::VideoManager::default)
+}
+
 /// Initialize every registered process state up front. The host entry point
 /// calls this first so time-anchored state (like `StartupState::started`)
 /// reflects process start rather than the first late reader; library-only
@@ -175,6 +183,7 @@ pub fn init_process_states() {
     let _ = import_cancellation();
     let _ = dedup();
     let _ = similar();
+    let _ = video_manager();
 }
 
 #[cfg(test)]

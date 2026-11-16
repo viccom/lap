@@ -1110,9 +1110,8 @@ pub fn init_video_cache() {
 }
 
 #[tauri::command]
-pub async fn clear_video_cache(
-    state: tauri::State<'_, VideoManager>,
-) -> Result<(), String> {
+pub async fn clear_video_cache() -> Result<(), String> {
+    let state = crate::t_state::video_manager();
     {
         let mut guard = state.active_processes.lock().await;
         let children: Vec<_> = guard.drain().map(|(_, (_, child))| child).collect();
@@ -1136,10 +1135,10 @@ pub async fn clear_video_cache(
 
 #[tauri::command]
 pub async fn cancel_video_prepare(
-    state: tauri::State<'_, VideoManager>,
     player_id: String,
     request_id: Option<u64>,
 ) -> Result<(), String> {
+    let state = crate::t_state::video_manager();
     let should_cancel = {
         let mut requests = state.active_requests.lock().await;
         match (requests.get(&player_id).copied(), request_id) {
@@ -1183,12 +1182,12 @@ pub async fn cancel_video_prepare(
 /// Prepares a video for playback with a single probe and an optimized retry loop.
 #[tauri::command]
 pub async fn prepare_video(
-    state: tauri::State<'_, VideoManager>,
     file_path: String,
     player_id: String,
     force: Option<String>,
     request_id: Option<u64>,
 ) -> Result<VideoPrepareResult, String> {
+    let state = crate::t_state::video_manager();
     if is_mpeg_program_stream(&file_path) {
         return Err(EXTERNAL_PLAYER_REQUIRED_ERROR.to_string());
     }
