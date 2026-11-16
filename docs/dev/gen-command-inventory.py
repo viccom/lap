@@ -290,10 +290,14 @@ def parse_signatures() -> dict[str, str]:
             if not fn:
                 continue
             name = fn.group(1)
-            # `fn.end()` points just past the opening paren, i.e. we start
-            # already at depth 1.
-            open_idx = match.end() + fn.end()
-            depth = 1
+            # Step back onto the opening paren itself, then balance it so the
+            # captured text starts at the first parameter character exactly
+            # (an off-by-one here used to truncate every signature's first
+            # parameter silently — classification never noticed because the
+            # injection regex only needs `: Type` substrings).
+            open_idx = match.end() + fn.end() - 1
+            assert text[open_idx] == "(", f"{name}: paren not found"
+            depth = 0
             close_idx = open_idx
             for close_idx in range(open_idx, len(text)):
                 ch = text[close_idx]

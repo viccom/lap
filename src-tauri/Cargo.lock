@@ -3399,6 +3399,7 @@ dependencies = [
  "axum",
  "futures",
  "lap-core",
+ "serde",
  "serde_json",
  "tokio",
 ]
