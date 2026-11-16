@@ -596,13 +596,13 @@ impl AuthService {
                 .find(|(n, _)| *n == name)
                 .map(|(_, exposure)| *exposure)
                 .ok_or(AuthError::Forbidden("command not whitelisted".into()))?;
-            if exposure == "admin" && token.scope != SCOPE_ADMIN && !loopback {
-                return Err(AuthError::Forbidden("admin scope required".into()));
-            }
             if exposure == "admin" {
                 // Attempt-level audit: rejected admin attempts are the
                 // interesting ones (plan §3.6 记录管理员操作).
                 self.store.audit("admin_cmd", &format!("device={} cmd={name}", token.id));
+            }
+            if exposure == "admin" && token.scope != SCOPE_ADMIN && !loopback {
+                return Err(AuthError::Forbidden("admin scope required".into()));
             }
             if !self.check_cmd_rate(token.id) {
                 return Err(AuthError::RateLimited("command rate limit exceeded".into()));

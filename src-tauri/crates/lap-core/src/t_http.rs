@@ -149,6 +149,28 @@ async fn write_http_headers(
     Ok(())
 }
 
+/// Plan §3.5 tightening: the requested path must live under one of the
+/// current library's folder roots. If the check cannot run (no connection
+/// to the current library), refuse — a transient DB hiccup must not reopen
+/// the arbitrary-path door.
+#[cfg(target_os = "linux")]
+fn path_in_current_library_roots(file_path: &str) -> bool {
+    let Ok(conn) = crate::t_sqlite::open_conn() else {
+        return false;
+    };
+    let Ok(mut stmt) = conn.prepare("SELECT DISTINCT path FROM afolders") else {
+        return false;
+    };
+    let requested = std::path::Path::new(file_path);
+    let roots = stmt.query_map([], |row| row.get::<_, String>(0));
+    let Ok(roots) = roots else {
+        return false;
+    };
+    roots
+        .filter_map(Result::ok)
+        .any(|root| requested.starts_with(&root))
+}
+
 #[cfg(target_os = "linux")]
 async fn handle_video_http_connection(mut stream: tokio::net::TcpStream) -> std::io::Result<()> {
     let mut buf = vec![0u8; 16 * 1024];
@@ -165,25 +187,8 @@ async fn handle_video_http_connection(mut stream: tokio::net::TcpStream) -> std:
     let method = request_parts.next().unwrap_or("");
     let target = request_parts.next().unwrap_or("");
 
-    if method == "OPTIONS" {
-        return write_http_headers(
-            &mut stream,
-            "204 No Content",
-            &[
-                ("Access-Control-Allow-Origin", "*".to_string()),
-                (
-                    "Access-Control-Allow-Methods",
-                    "GET, HEAD, OPTIONS".to_string(),
-                ),
-                (
-                    "Access-Control-Allow-Headers",
-                    "Range, Content-Type".to_string(),
-                ),
-                ("Content-Length", "0".to_string()),
-            ],
-        )
-        .await;
-    }
+    // Plan §3.5 tightening: the preflight/CORS surface is gone — this
+    // server is same-machine media streaming only.
 
     if method != "GET" && method != "HEAD" {
         return write_http_headers(
@@ -221,6 +226,18 @@ async fn handle_video_http_connection(mut stream: tokio::net::TcpStream) -> std:
         .await;
     };
 
+    // Plan §3.5 tightening: only paths inside the current library's folder
+    // roots may be streamed — the base64 query is no longer an arbitrary
+    // file read.
+    if !path_in_current_library_roots(&file_path) {
+        return write_http_headers(
+            &mut stream,
+            "403 Forbidden",
+            &[("Content-Length", "0".to_string())],
+        )
+        .await;
+    }
+
     let Ok(metadata) = tokio::fs::metadata(&file_path).await else {
         return write_http_headers(
             &mut stream,
@@ -255,8 +272,7 @@ async fn handle_video_http_connection(mut stream: tokio::net::TcpStream) -> std:
                 &mut stream,
                 "416 Range Not Satisfiable",
                 &[
-                    ("Access-Control-Allow-Origin", "*".to_string()),
-                    ("Accept-Ranges", "bytes".to_string()),
+                        ("Accept-Ranges", "bytes".to_string()),
                     ("Content-Range", format!("bytes */{}", file_size)),
                     ("Content-Length", "0".to_string()),
                 ],
@@ -270,7 +286,6 @@ async fn handle_video_http_connection(mut stream: tokio::net::TcpStream) -> std:
             "206 Partial Content",
             &[
                 ("Content-Type", content_type),
-                ("Access-Control-Allow-Origin", "*".to_string()),
                 ("Accept-Ranges", "bytes".to_string()),
                 (
                     "Content-Range",
@@ -296,7 +311,6 @@ async fn handle_video_http_connection(mut stream: tokio::net::TcpStream) -> std:
         "200 OK",
         &[
             ("Content-Type", content_type),
-            ("Access-Control-Allow-Origin", "*".to_string()),
             ("Accept-Ranges", "bytes".to_string()),
             ("Content-Length", file_size.to_string()),
             ("Cache-Control", "no-store".to_string()),

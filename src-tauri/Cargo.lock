@@ -3423,6 +3423,7 @@ dependencies = [
  "base64 0.22.1",
  "blake3",
  "futures",
+ "image",
  "lap-core",
  "rand 0.8.5",
  "rusqlite",

@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 3 批次 3.2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过。下一步 = 批次 3.3（鉴权 + 媒体端点 + HMAC））
+状态：**阶段 3 批次 3.2 已完成**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过；批次 3.3：鉴权（Argon2id 管理员密码 + 配对码设备令牌 + Cookie/Bearer + 白名单 401/403/429 + 限流审计）+ 媒体四端点（Range/206 + HMAC 签名，只按 file_id 解析）+ `t_http` 收紧，Rust workspace 635/0/10。下一步 = 批次 3.4（优雅退出 + 服务安装脚本 + 跨壳收尾））
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -308,6 +308,15 @@ src-vite/                      一套前端，两种传输
 - **pub 收窄复核（3.1 遗留 9 项）**：收窄 4（`InFlight`/`InFlightGuard`/`VlState.in_flight`/`analyze_file`，壳外零引用）；保留 5+1（`MigrationOperation`/`MigrationCancellation` 壳 t_cmds 消费链、`clear_conn_pool` 壳+lapd、`is_heic_path`/`get_generated_preview_bytes`/`thumb_background_generation_permits` 壳 t_protocol、metadata 三重导出壳 t_cmds）——每项保留都有消费证据。
 - **验证**：`cargo test --workspace` = **612/0/10**（基线 577 + core override 测试 1 + lapd 30 + drag vendor 对账；零警告）；清单重生成 diff 为空；src-vite 零改动；lapd 冒烟（临时 `--data-dir`，真库零接触）：全新库迁移 0→28、嵌套 QueryParams（camel 键）→200 `[0,0]`、重复库名 Err→500、未知名/C 类名→404、非法 body→400、boot 期连接即收重放帧 + 16s 心跳、二次实例锁拒绝 exit 1。
 - **本批未做（3.3/3.4）**：鉴权/令牌/白名单 403/限流；媒体端点与 HMAC；优雅退出（Ctrl-C 硬杀留锁，下次启动陈旧接管已覆盖）；`--read-only`（未决事项 3）；桌面内嵌模式检测 lapd.lock 的冲突提示（§3.7，阶段 5 前）。
+
+**批次 3.3（鉴权 + 媒体端点 + HMAC）· 已完成**（提交 `cce1b9bb`/`5a43076e`/`6fcbbbf4`/`91121a1b` + 收尾文档）：
+- **生成器**：`gen-lapd-bridge.py` 增发 `EXPOSURES: &[(&str, &str)]`（与 COMMANDS 按索引对齐，read/write/admin）；守卫断言三者长度与值域——鉴权中间件的数据源（`cce1b9bb`）。
+- **鉴权核心**（`5a43076e`）：Argon2id 管理员密码落 sidecar `admin-password-hash`（`write_atomic_private` pub 化复用，镜像 vl-api-key 先例）；6 位配对码 5 分钟（OsRng 拒绝采样，boot 时控制台打印）；32 字节设备令牌存 SHA-256 hex（原始令牌永不落盘，测试钉死）；Cookie `lapd_token` HttpOnly SameSite=Strict（无 Secure——TLS 不在 MVP）+ Bearer 双通道；登录 5/min/IP + 连续 5 败锁 5 分钟；`--set-admin-password`（设置即退出、拒绝覆盖）。**存储决策（修订本文档 v29 说法）**：`device_tokens`/`auth_audit` 落 **`<data>/lapd.db`**（服务级 SQLite，WAL，自带 v1 迁移）而非每库 user_version DB——令牌是服务级全局状态，必须跨图库存活、与库删除解耦。
+- **白名单执行**（`6fcbbbf4`）：中间件罩 `/api/cmd/*` + `/api/events`——无/坏令牌 401（阶段验收 :313）、名字不在 EXPOSURES → 403（§5 未列名即 403，3.2 的 404 翻转；dispatch 内部 404 留作纵深防御）、admin 暴露级要求 admin scope **或**回环来源、命令 60/min/设备 → 429、admin 调用尝试级落审计。**scope 语义（落实 §3.9）**：配对码换的令牌 = `admin`（持码者本有控制台访问），密码登录 = `standard`（Web 只做浏览/检索/轻编辑）。`server_info`/`/api/auth/*` 保持开放（客户端匿名发现 + 首令牌）。
+- **媒体端点**（`91121a1b`）：thumb/preview = t_protocol 两协议近逐字移植（相同 query 语义与生成回退，去 CORS *）；`/api/original`、`/api/video` 只按 DB file_id 解析、cloud-only 404（读会触发网盘下载）、Range/206 流式（t_http 语义移植，futures unfold 64KB 块）；HMAC = `blake3::keyed_hash`（boot 随机钥），绑定 `GET|path?query|exp|dev`，10 分钟有效，恒时比较；`POST /api/media/sign`（令牌保护）为阶段 4 前端的铸造口。冒烟揭出并修复：无 query 端点 mint 错用 `&dev=`、thumb/preview split 未剥 `/api/thumb|preview` 前缀。
+- **t_http 收紧**（本批收尾提交）：删 OPTIONS/CORS 全部面（`Access-Control-Allow-Origin: *` ×3 + 预检分支）；新增图库根限定——请求路径必须落在当前库 `afolders` 根集合内（`SELECT DISTINCT path` 前缀判定），检查不可用即拒绝（宁可错杀不开任意路径门）。cfg(linux) 代码，Windows 不可编译验证（机械小 diff 诚实报告）。
+- **验证**：`cargo test --workspace` = **635/0/10**（基线 612 + lapd 23：argon2 往返/配对码过期/限流与失败锁定（paused 时钟）/白名单决策全矩阵/命令限流设备隔离/MAC 篡改与过期/Range 语法全覆盖/流式 full·partial·416·suffix/存储四测；零警告）；清单 diff 空；src-vite 零改动；全链活体冒烟（临时 --data-dir，真库零接触）：CLI 设密→二次拒绝→login→sign→原图 200 逐字节一致→Range 206→篡改 403→未签名 403→无令牌命令 401→standard scope 调 admin → 403→未列名 403→缩略图真生成 200→可达性闸实证（album 缺席拒生成）→审计表有 login/admin_cmd 行。
+- **本批未做（3.4/阶段 4）**：优雅退出；systemd/LaunchAgent/WinSW 安装脚本；令牌管理 UI（未决事项 4）；`--read-only`（未决事项 3）；桌面内嵌检测 lapd.lock 提示；Web 端 CSP 与 pairing/login 前端（阶段 4）；`/api/video` 的 remux/transcode 缓存按 file_id 服务（`prepare_video` 以路径为参，前端映射归阶段 4）。
 
 
 - **验收**：局域网另一台设备用浏览器完成「登录 → 搜索 → 网格 → 原图/视频」；无令牌 401；C 类 403；路径穿越无效；桌面与 `lapd` 同时启动被第二个进程拒绝；真实图库 `user_version` 与完整性检查正常。
