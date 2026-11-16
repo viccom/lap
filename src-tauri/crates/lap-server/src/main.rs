@@ -7,6 +7,7 @@ mod bridge;
 mod bridge_gen;
 mod flags;
 mod lock;
+mod sse;
 
 use std::process::ExitCode;
 
@@ -54,11 +55,15 @@ async fn cmd_handler(Path(name): Path<String>, body: String) -> Response {
 }
 
 async fn serve(flags: flags::Flags) -> Result<(), String> {
+    // boot::run installs the SSE sink as the process EventSink before any
+    // boot stage can emit; the returned bus backs the /api/events route.
     let boot = boot::run(&flags)?;
 
     let app = axum::Router::new()
         .route("/api/server_info", get(server_info))
-        .route("/api/cmd/{name}", post(cmd_handler));
+        .route("/api/cmd/{name}", post(cmd_handler))
+        .route("/api/events", get(sse::events_handler))
+        .with_state(boot.bus.clone());
     let addr = format!("{}:{}", flags.host, flags.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await

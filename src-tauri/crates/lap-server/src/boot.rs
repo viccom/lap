@@ -19,12 +19,20 @@ pub struct Boot {
     #[allow(dead_code)]
     pub lock: LockGuard,
     pub data_dir: PathBuf,
+    /// The SSE fan-out the process EventSink forwards into.
+    pub bus: std::sync::Arc<crate::sse::EventBus>,
 }
 
 pub fn run(flags: &Flags) -> Result<Boot, String> {
     // First thing, same as the desktop shell, so StartupState::started
     // anchors at process start.
     t_state::init_process_states();
+
+    // The SSE sink must be installed before the boot chain runs: the
+    // finish_startup tail below emits `albums-refreshed`, and core
+    // background tasks may start emitting at any point after this.
+    let bus = crate::sse::EventBus::new();
+    lap_core::t_events::set_sink(crate::sse::SseSink::new(bus.clone()));
 
     if let Some(dir) = &flags.data_dir {
         t_config::set_data_dir_override(dir.clone());
@@ -69,7 +77,7 @@ pub fn run(flags: &Flags) -> Result<Boot, String> {
     // so 0 is the faithful eager equivalent.
     t_startup::finish_startup(0);
 
-    Ok(Boot { lock: guard, data_dir })
+    Ok(Boot { lock: guard, data_dir, bus })
 }
 
 fn resource_dir_candidate() -> Option<PathBuf> {
