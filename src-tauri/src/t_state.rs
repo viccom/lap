@@ -14,7 +14,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{
     Arc, Mutex, OnceLock,
-    atomic::{AtomicBool, Ordering},
+    atomic::AtomicBool,
 };
 use std::time::Instant;
 
@@ -201,6 +201,7 @@ pub fn init_process_states() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn the_cancellation_state_is_shared_across_callers() {

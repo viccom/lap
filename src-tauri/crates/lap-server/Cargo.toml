@@ -1,0 +1,13 @@
+[package]
+# `lapd`: the standalone server build of Lap (phase 3). Placeholder binary
+# in batch 3.1; the axum command bridge lands in batch 3.2.
+name = "lap-server"
+version = "0.3.3"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "lapd"
+path = "src/main.rs"
+
+[dependencies]

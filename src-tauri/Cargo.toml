@@ -1,5 +1,5 @@
 [package]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/manifest.html
 name = "Lap"
 version = "0.3.3"
 description = "An offline-first photo manager for large local libraries."
@@ -9,6 +9,13 @@ authors = ["julyx10 <tiangle@gmail.com>"]
 edition = "2024"
 license = "GPL-3.0-or-later"
 build = "build.rs"
+
+# The workspace root stays at src-tauri (not the repo root) so Cargo.lock,
+# target/ and the CI cache/artifact paths keep working unchanged. The Lap
+# package above remains the root package the Tauri CLI builds.
+[workspace]
+members = ["crates/lap-core", "crates/lap-server"]
+resolver = "3"
 
 [build-dependencies]
 cc = "1"
@@ -26,6 +33,7 @@ strip = true
 opt-level = 3
 
 [dependencies]
+lap-core = { path = "crates/lap-core" }
 drag = { path = "vendor/drag" }
 tauri = { version = "2", features = [
     "macos-private-api",

@@ -1,0 +1,10 @@
+[package]
+# The Tauri-free core of Lap: every module a future `lapd` server (and the
+# desktop shell) shares — storage, imaging decoders, AI engine, VL pipeline.
+# The desktop bin keeps only Tauri glue (see the workspace root package).
+name = "lap-core"
+version = "0.3.3"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
