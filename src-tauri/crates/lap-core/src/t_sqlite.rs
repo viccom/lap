@@ -166,7 +166,7 @@ fn thumb_background_tasks() -> &'static Mutex<HashSet<String>> {
     THUMB_BACKGROUND_TASKS.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-pub(crate) fn thumb_background_generation_permits() -> Arc<Semaphore> {
+pub fn thumb_background_generation_permits() -> Arc<Semaphore> {
     THUMB_BACKGROUND_GENERATION_PERMITS
         .get_or_init(|| Arc::new(Semaphore::new(MAX_BACKGROUND_THUMB_GENERATIONS)))
         .clone()
@@ -8054,7 +8054,7 @@ impl AThumb {
     const CLEANUP_MIN_FILE_AGE: Duration = Duration::from_secs(5 * 60);
 
     fn cache_extension(data: &[u8]) -> Option<&'static str> {
-        match crate::t_protocol::detect_image_mime(data) {
+        match crate::t_common::detect_image_mime(data) {
             "image/jpeg" if data.ends_with(&[0xFF, 0xD9]) => Some("jpg"),
             "image/png" => Some("png"),
             "image/gif" => Some("gif"),
@@ -8782,7 +8782,7 @@ impl AThumb {
     }
 
     /// fetch a thumbnail from db by file_id
-    pub(crate) fn fetch_record(file_id: i64) -> Result<Option<(Self, bool)>, String> {
+    pub fn fetch_record(file_id: i64) -> Result<Option<(Self, bool)>, String> {
         Self::fetch_record_on(&*open_conn()?, file_id)
     }
 
@@ -8833,7 +8833,7 @@ impl AThumb {
         }
     }
 
-    pub(crate) fn auto_repair_allowed(file: &AFile, size: u32, options: RawDisplayOptions) -> bool {
+    pub fn auto_repair_allowed(file: &AFile, size: u32, options: RawDisplayOptions) -> bool {
         let (Some(id), Some(path)) = (file.id, file.file_path.as_deref()) else {
             return false;
         };
@@ -11349,7 +11349,7 @@ fn create_conn() -> Result<(String, Connection), String> {
     Ok((path, conn))
 }
 
-pub(crate) fn clear_conn_pool() {
+pub fn clear_conn_pool() {
     if let Ok(mut pool) = CONN_POOL.lock() {
         pool.clear();
     }

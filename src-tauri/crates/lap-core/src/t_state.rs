@@ -287,7 +287,7 @@ mod tests {
 
         assert_rows(
             "t_cmds.rs",
-            include_str!("t_cmds.rs"),
+            include_str!("../../../src/t_cmds.rs"),
             &[
                 ("change_db_storage_dir", &["newDir"]),
                 ("reset_db_storage_dir", &[]),
@@ -356,7 +356,7 @@ mod tests {
         );
         assert_rows(
             "t_startup.rs",
-            include_str!("t_startup.rs"),
+            include_str!("../../../src/t_startup.rs"),
             &[
                 ("record_startup_stage", &["stage"]),
                 ("get_ai_initialization_status", &[]),
@@ -365,7 +365,7 @@ mod tests {
         );
         assert_rows(
             "t_video.rs",
-            include_str!("t_video.rs"),
+            include_str!("../../../src/t_video.rs"),
             &[
                 (
                     "prepare_video",
@@ -377,7 +377,7 @@ mod tests {
         );
         assert_rows(
             "t_vl.rs",
-            include_str!("t_vl.rs"),
+            include_str!("../../../src/t_vl.rs"),
             &[
                 (
                     "set_vl_config",

@@ -460,7 +460,7 @@ pub(crate) mod contract_tests {
 
     #[test]
     fn write_commands_keep_the_arguments_the_frontend_sends() {
-        let source = include_str!("t_cmds.rs");
+        let source = include_str!("../../../src/t_cmds.rs");
         for (name, expected_visible, expected_injected) in WRITE_COMMANDS {
             let (injected, visible) = signature_of(source, name).unwrap_or_else(|| {
                 panic!("write command {name} disappeared from the command shell")
@@ -480,7 +480,7 @@ pub(crate) mod contract_tests {
     fn every_write_command_is_covered_by_the_contract() {
         // A new write command must be added to the table above, otherwise the
         // contract test would not notice its arguments at all.
-        let source = include_str!("t_cmds.rs");
+        let source = include_str!("../../../src/t_cmds.rs");
         for (name, _, _) in WRITE_COMMANDS {
             assert!(
                 signature_of(source, name).is_some(),
@@ -496,7 +496,7 @@ pub(crate) mod contract_tests {
         // Tauri-injected `State<T>` (the core reads process state itself), and
         // may only take an `AppHandle` where the desktop shell genuinely has
         // to act — authorizing a directory with the platform filesystem scope.
-        let source = include_str!("t_cmds.rs");
+        let source = include_str!("../../../src/t_cmds.rs");
         for (name, _, expected_injected) in WRITE_COMMANDS {
             let (injected, _) = signature_of(source, name).expect("write command");
             assert!(

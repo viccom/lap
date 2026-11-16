@@ -17,53 +17,32 @@
 use tauri::Manager;
 use tauri_plugin_aptabase::EventTracker;
 
-mod metadata;
-mod t_ai;
-mod t_ai_png;
-mod t_batch_rename;
-mod t_cluster;
+// The core lives in lap-core; importing the module names keeps the
+// bare `t_x::…` paths below unchanged. (t_http is Linux-only.)
+use lap_core::{
+    t_config,
+    t_events,
+    t_paths,
+    t_sqlite,
+    t_state,
+};
+#[cfg(target_os = "linux")]
+use lap_core::t_http;
+
+
 mod t_cmds;
-mod t_common;
-mod t_config;
-mod t_dedup;
 mod t_drag;
 mod t_embed;
-mod t_embedded_jpeg;
-mod t_events;
-mod t_face;
 mod t_fts;
-mod t_heif;
-mod t_http;
-mod t_image;
 mod t_af_area;
-mod t_jpeg;
-mod t_jxl;
-mod t_lens;
-mod t_libraw;
-mod t_raw_display;
-mod t_rt;
 mod t_menu;
-mod t_migration;
-mod t_montage;
-mod t_paths;
-mod t_tags;
-mod t_motion_photo;
 mod t_pasteboard;
 mod t_scopes;
 mod t_protocol;
-mod t_similar;
-mod t_sqlite;
-mod t_state;
-mod t_storage;
-mod t_cache_storage;
 mod t_startup;
-mod t_utils;
 mod t_video;
 mod t_vl;
-mod t_vl_protocol;
 mod t_vl_schedule;
-mod t_vl_tags;
-mod t_write;
 
 /// Desktop adapter for the process-level event sink: forwards emitted events
 /// to the Tauri shell. Lives here (not in `t_events`) so the sink module stays

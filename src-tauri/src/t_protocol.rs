@@ -1,7 +1,7 @@
 use tauri::{Builder, Wry};
 
-use crate::t_raw_display::{RawDisplayOptions, RawPreviewMode};
-use crate::{t_image, t_sqlite};
+use lap_core::t_raw_display::{RawDisplayOptions, RawPreviewMode};
+use lap_core::{t_image, t_sqlite};
 
 fn text_response(status: http::StatusCode, body: &str) -> http::Response<Vec<u8>> {
     http::Response::builder()
@@ -14,65 +14,10 @@ fn text_response(status: http::StatusCode, body: &str) -> http::Response<Vec<u8>
         .unwrap()
 }
 
-pub(crate) fn detect_image_mime(data: &[u8]) -> &'static str {
-    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
-        "image/png"
-    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
-        "image/jpeg"
-    } else if data.starts_with(&[0x47, 0x49, 0x46, 0x38]) {
-        "image/gif"
-    } else if data.starts_with(&[0x49, 0x49, 0x2A, 0x00])
-        || data.starts_with(&[0x4D, 0x4D, 0x00, 0x2A])
-        || data.starts_with(&[0x4D, 0x4D, 0x00, 0x2B])
-        || data.starts_with(&[0x49, 0x49, 0x2B, 0x00])
-    {
-        "image/tiff"
-    } else if data.starts_with(b"BM") {
-        "image/bmp"
-    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
-        "image/webp"
-    } else {
-        detect_isobmff_mime(data)
-    }
-}
-
-fn detect_isobmff_mime(data: &[u8]) -> &'static str {
-    if data.len() < 16 || &data[4..8] != b"ftyp" {
-        return "application/octet-stream";
-    }
-
-    let box_size = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
-    if box_size < 16 || box_size > data.len() {
-        return "application/octet-stream";
-    }
-
-    match &data[8..12] {
-        b"avif" | b"avis" => "image/avif",
-        b"heic" | b"heix" | b"hevc" | b"hevx" => "image/heic",
-        b"mif1" | b"heif" => "image/heif",
-        _ => {
-            for brand in data[16..box_size].chunks(4) {
-                if brand.len() < 4 {
-                    break;
-                }
-                match brand {
-                    b"avif" | b"avis" => return "image/avif",
-                    b"heic" | b"heix" | b"hevc" | b"hevx" => {
-                        return "image/heic";
-                    }
-                    b"mif1" | b"heif" => return "image/heif",
-                    _ => {}
-                }
-            }
-            "application/octet-stream"
-        }
-    }
-}
-
 fn image_response(data: Vec<u8>) -> http::Response<Vec<u8>> {
     http::Response::builder()
         .status(http::StatusCode::OK)
-        .header(http::header::CONTENT_TYPE, detect_image_mime(&data))
+        .header(http::header::CONTENT_TYPE, lap_core::t_common::detect_image_mime(&data))
         .header(http::header::CACHE_CONTROL, "max-age=31536000, immutable")
         .header(http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(http::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS")
@@ -150,11 +95,11 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
             let thumbnail_size = query.split('&').find_map(|p| p.strip_prefix("size=").and_then(|v| v.parse::<u32>().ok()))
                 .unwrap_or(512).clamp(64,2048);
             let repair = query.split('&').any(|p| p == "repair=true");
-            crate::t_rt::spawn(async move {
+            lap_core::t_rt::spawn(async move {
                 if !repair {
                     let lookup_library = library_id.clone();
-                    let cached = crate::t_rt::spawn_blocking(move || {
-                        crate::t_config::with_current_library(&lookup_library, || {
+                    let cached = lap_core::t_rt::spawn_blocking(move || {
+                        lap_core::t_config::with_current_library(&lookup_library, || {
                             let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                             let path = file.file_path.as_deref().unwrap_or_default();
                             if let Some(thumb) = t_sqlite::AThumb::get_thumb_if_available(file_id, path, false, file.album_accessible)? {
@@ -169,9 +114,9 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 let Ok(permit) = permits.acquire_owned().await else {
                     responder.respond(text_response(http::StatusCode::SERVICE_UNAVAILABLE, "thumbnail queue closed")); return;
                 };
-                let result = crate::t_rt::spawn_blocking(move || {
+                let result = lap_core::t_rt::spawn_blocking(move || {
                     let _permit = permit;
-                    crate::t_config::with_current_library(&library_id, || {
+                    lap_core::t_config::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                         let previous = t_sqlite::AThumb::fetch_record(file_id)?.and_then(|(thumb, _)| thumb.id);
                         let thumb = t_sqlite::AThumb::get_or_create_thumb(file_id, file.file_path.as_deref().unwrap_or_default(),
@@ -179,8 +124,8 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                             thumbnail_size, options, repair && t_sqlite::AThumb::auto_repair_allowed(&file, thumbnail_size, options), file.duration.map(|d| d as u64), None, repair)?;
                         if repair && thumb.as_ref().is_some_and(|thumb| thumb.error_code == 0 && thumb.thumb_data.is_some()
                             && previous != thumb.id) {
-                            crate::t_events::emit(
-                                crate::t_events::names::THUMBNAIL_READY,
+                            lap_core::t_events::emit(
+                                lap_core::t_events::names::THUMBNAIL_READY,
                                 serde_json::json!({ "library_id": library_id, "album_id": file.album_id,
                                     "file_ids": [file_id], "invalidate": true, "metadata_changed": false }));
                         }
@@ -220,11 +165,11 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
             }
 
             let library_id = path.trim_start_matches('/').split('/').next().unwrap_or("default").to_string();
-            crate::t_rt::spawn(async move {
+            lap_core::t_rt::spawn(async move {
                 // Scheme callbacks can run on the UI thread. Never wait for a
                 // library lock, configuration IO or SQLite there.
-                let lookup = crate::t_rt::spawn_blocking(move || {
-                    crate::t_config::with_current_library(&library_id, || {
+                let lookup = lap_core::t_rt::spawn_blocking(move || {
+                    lap_core::t_config::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?
                             .ok_or_else(|| "File not found".to_string())?;
                         let companion = if !options.prefer_pair {
@@ -232,7 +177,7 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                         } else if cached_only && file.media_subtype.as_deref() == Some("raw_jpeg_pair") {
                             file.live_photo_video_id.and_then(|id| t_sqlite::AFile::get_file_info(id).ok().flatten())
                         } else {
-                            crate::t_raw_display::paired_file(file_id, options)
+                            lap_core::t_raw_display::paired_file(file_id, options)
                         };
                         Ok((file, companion))
                     })
@@ -268,8 +213,8 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 if for_editing {
                     // Use exactly the same pixels (including decoder fallbacks)
                     // that get_edited_image applies the crop and adjustments to.
-                    let result = crate::t_rt::spawn_blocking(move || {
-                        crate::t_rt::block_on(t_image::get_generated_preview_bytes(&file_path))
+                    let result = lap_core::t_rt::spawn_blocking(move || {
+                        lap_core::t_rt::block_on(t_image::get_generated_preview_bytes(&file_path))
                     }).await;
                     responder.respond(match result {
                         Ok(Ok(Some(data))) => image_response(data),

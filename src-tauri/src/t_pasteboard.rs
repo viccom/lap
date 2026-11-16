@@ -303,7 +303,7 @@ pub async fn copy_files_to_clipboard(
     {
         return Err(format!("File is unavailable: {}", path));
     }
-    let preview = crate::t_image::clipboard_preview_png(&file_paths).await;
+    let preview = lap_core::t_image::clipboard_preview_png(&file_paths).await;
     copy_files_and_image(app_handle, &file_paths, preview.as_deref()).await?;
     Ok(file_paths.len())
 }

@@ -98,7 +98,7 @@ pub async fn start_file_drag(
                 source.unlisten(id);
             }
         }
-        crate::t_events::emit(crate::t_events::names::NATIVE_FILE_DRAG_ACTIVE, active);
+        lap_core::t_events::emit(lap_core::t_events::names::NATIVE_FILE_DRAG_ACTIVE, active);
     }));
     let request_id = uuid::Uuid::new_v4().to_string();
     let key = format!("{}:{request_id}", window.label());
@@ -124,7 +124,7 @@ pub async fn start_file_drag(
         .send(format!("Preparing:{request_id}"))
         .map_err(|e| e.to_string())?;
     let preview = normalize_drag_preview(&preview)?;
-    let paths = crate::t_rt::spawn_blocking(move || validate_paths(paths))
+    let paths = lap_core::t_rt::spawn_blocking(move || validate_paths(paths))
         .await
         .map_err(|e| e.to_string())??;
     let (tx, rx) = tokio::sync::oneshot::channel();

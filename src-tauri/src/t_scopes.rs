@@ -17,7 +17,7 @@ pub fn authorize_directory_scope(
 }
 
 pub fn restore_album_scopes(app_handle: &tauri::AppHandle) -> Result<(), String> {
-    let albums = crate::t_sqlite::Album::get_all_albums()?;
+    let albums = lap_core::t_sqlite::Album::get_all_albums()?;
 
     for album in albums {
         authorize_directory_scope(app_handle, &album.path)?;

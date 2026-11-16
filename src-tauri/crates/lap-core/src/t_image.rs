@@ -1253,7 +1253,7 @@ pub fn copy_image_to_clipboard(img: DynamicImage) -> bool {
     false
 }
 
-pub(crate) fn is_heic_path(file_path: &str) -> bool {
+pub fn is_heic_path(file_path: &str) -> bool {
     matches!(
         t_utils::get_file_extension(file_path)
             .unwrap_or_default()
@@ -1290,7 +1290,7 @@ fn should_generate_preview_for_file(file_path: &str, file_type: i64) -> bool {
         || is_avif_path(file_path)
 }
 
-pub(crate) async fn get_generated_preview_bytes(
+pub async fn get_generated_preview_bytes(
     file_path: &str,
 ) -> Result<Option<Vec<u8>>, String> {
     let file_type = t_utils::get_file_type(file_path).unwrap_or(0);

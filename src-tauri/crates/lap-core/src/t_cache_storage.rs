@@ -19,7 +19,7 @@ const DIRECTORY_NAME: &str = "lap-thumbnail-cache";
 static MIGRATION: Mutex<Option<(String, Arc<MigrationCancellation>)>> = Mutex::new(None);
 
 #[derive(Default)]
-pub(crate) struct MigrationCancellation(AtomicU8);
+pub struct MigrationCancellation(AtomicU8);
 
 impl MigrationCancellation {
     pub(crate) fn check(&self) -> Result<(), CacheChangeError> {
@@ -51,7 +51,7 @@ impl MigrationCancellation {
     }
 }
 
-pub(crate) struct MigrationOperation {
+pub struct MigrationOperation {
     pub cancellation: Arc<MigrationCancellation>,
 }
 

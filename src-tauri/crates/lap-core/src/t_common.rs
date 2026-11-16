@@ -194,3 +194,62 @@ pub const VL_ANTHROPIC_VERSION: &str = "2023-06-01";
 pub const VL_MAX_TOKENS: usize = 1500;
 /// The gateway may take a long time before the first byte.
 pub const VL_REQUEST_TIMEOUT_SECS: u64 = 180;
+
+// ------------------------------------------------------------------
+// Media type sniffing (moved from the desktop t_protocol in phase 3 so the
+// core can classify bytes without the shell).
+
+pub fn detect_image_mime(data: &[u8]) -> &'static str {
+    if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+        "image/png"
+    } else if data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "image/jpeg"
+    } else if data.starts_with(&[0x47, 0x49, 0x46, 0x38]) {
+        "image/gif"
+    } else if data.starts_with(&[0x49, 0x49, 0x2A, 0x00])
+        || data.starts_with(&[0x4D, 0x4D, 0x00, 0x2A])
+        || data.starts_with(&[0x4D, 0x4D, 0x00, 0x2B])
+        || data.starts_with(&[0x49, 0x49, 0x2B, 0x00])
+    {
+        "image/tiff"
+    } else if data.starts_with(b"BM") {
+        "image/bmp"
+    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
+        "image/webp"
+    } else {
+        detect_isobmff_mime(data)
+    }
+}
+
+fn detect_isobmff_mime(data: &[u8]) -> &'static str {
+    if data.len() < 16 || &data[4..8] != b"ftyp" {
+        return "application/octet-stream";
+    }
+
+    let box_size = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
+    if box_size < 16 || box_size > data.len() {
+        return "application/octet-stream";
+    }
+
+    match &data[8..12] {
+        b"avif" | b"avis" => "image/avif",
+        b"heic" | b"heix" | b"hevc" | b"hevx" => "image/heic",
+        b"mif1" | b"heif" => "image/heif",
+        _ => {
+            for brand in data[16..box_size].chunks(4) {
+                if brand.len() < 4 {
+                    break;
+                }
+                match brand {
+                    b"avif" | b"avis" => return "image/avif",
+                    b"heic" | b"heix" | b"hevc" | b"hevx" => {
+                        return "image/heic";
+                    }
+                    b"mif1" | b"heif" => return "image/heif",
+                    _ => {}
+                }
+            }
+            "application/octet-stream"
+        }
+    }
+}
