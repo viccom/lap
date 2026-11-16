@@ -33,7 +33,7 @@ use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tauri::{AppHandle, State};
 
 // Scoped refreshes and RAW thumbnail requests can open several connections.
@@ -48,21 +48,6 @@ static FILE_PATH_CLIPBOARD: Mutex<Option<arboard::Clipboard>> = Mutex::new(None)
 
 // The index cancellation token lives in `t_state`, next to the other
 // process-level state the core owns.
-pub struct ImportCancellation(pub Arc<Mutex<ImportState>>);
-
-pub struct ImportState {
-    cancelled: bool,
-    running: bool,
-}
-
-impl Default for ImportState {
-    fn default() -> Self {
-        Self {
-            cancelled: false,
-            running: false,
-        }
-    }
-}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -283,9 +268,8 @@ pub async fn change_thumbnail_cache_location(
     operation_id: String,
     allow_missing_source: Option<bool>,
     on_progress: tauri::ipc::Channel<crate::t_cache_storage::CacheProgress>,
-    status_state: State<'_, t_face::FaceIndexingStatus>,
 ) -> Result<crate::t_cache_storage::CacheChangeResult, crate::t_cache_storage::CacheChangeError> {
-    ensure_db_storage_change_allowed(&status_state)?;
+    ensure_db_storage_change_allowed()?;
     let operation = crate::t_cache_storage::MigrationOperation::begin(operation_id)?;
     crate::t_rt::spawn_blocking(move || {
         let _guard = cache_migration_library_guard(&operation.cancellation)?;
@@ -332,9 +316,7 @@ pub fn is_using_custom_db_storage() -> Result<bool, String> {
     t_storage::is_using_custom_db_storage()
 }
 
-fn ensure_db_storage_change_allowed(
-    status_state: &State<t_face::FaceIndexingStatus>,
-) -> Result<(), String> {
+fn ensure_db_storage_change_allowed() -> Result<(), String> {
     if t_storage::is_db_migration_in_progress() {
         return Err("Database storage migration is already in progress.".to_string());
     }
@@ -348,7 +330,7 @@ fn ensure_db_storage_change_allowed(
         );
     }
 
-    if *status_state.0.lock().unwrap() {
+    if *crate::t_state::face_indexing_status().0.lock().unwrap() {
         return Err("Cannot change database storage while face indexing is running.".to_string());
     }
 
@@ -365,9 +347,8 @@ fn ensure_db_storage_change_allowed(
 #[tauri::command]
 pub async fn change_db_storage_dir(
     new_dir: String,
-    status_state: State<'_, t_face::FaceIndexingStatus>,
 ) -> Result<t_storage::DbStorageChangeResult, String> {
-    ensure_db_storage_change_allowed(&status_state)?;
+    ensure_db_storage_change_allowed()?;
     crate::t_rt::spawn_blocking(move || {
         let _guard = t_config::library_refresh_lock()
             .write()
@@ -383,10 +364,8 @@ pub async fn change_db_storage_dir(
 }
 
 #[tauri::command]
-pub async fn reset_db_storage_dir(
-    status_state: State<'_, t_face::FaceIndexingStatus>,
-) -> Result<t_storage::DbStorageChangeResult, String> {
-    ensure_db_storage_change_allowed(&status_state)?;
+pub async fn reset_db_storage_dir() -> Result<t_storage::DbStorageChangeResult, String> {
+    ensure_db_storage_change_allowed()?;
     crate::t_rt::spawn_blocking(move || {
         let _guard = t_config::library_refresh_lock()
             .write()
@@ -2408,14 +2387,13 @@ pub async fn import_file(
 /// Import media from a folder and organize it below the album root by date.
 #[tauri::command]
 pub fn import_and_organize(
-    _app_handle: AppHandle,
-    state: State<ImportCancellation>,
     album_id: i64,
     source_path: String,
     destination_path: String,
     layout: String,
     completed_paths: Vec<String>,
 ) -> Result<(), String> {
+    let state = crate::t_state::import_cancellation();
     {
         let mut import = state
             .0
@@ -2467,8 +2445,8 @@ pub fn import_and_organize(
 }
 
 #[tauri::command]
-pub fn cancel_import_and_organize(state: State<ImportCancellation>) -> Result<(), String> {
-    state
+pub fn cancel_import_and_organize() -> Result<(), String> {
+    crate::t_state::import_cancellation()
         .0
         .lock()
         .map_err(|_| "Import cancellation state is unavailable")?
@@ -4110,18 +4088,12 @@ pub fn similar_has_scan(scope_key: String) -> Result<bool, String> {
 
 /// index faces for all images in the current library
 #[tauri::command]
-pub fn index_faces(
-    state: State<t_face::FaceState>,
-    cancel_state: State<t_face::FaceIndexCancellation>,
-    status_state: State<t_face::FaceIndexingStatus>,
-    progress_state: State<t_face::FaceIndexProgressState>,
-    cluster_epsilon: Option<f32>,
-) -> Result<(), String> {
+pub fn index_faces(cluster_epsilon: Option<f32>) -> Result<(), String> {
     t_face::run_face_indexing(
-        (*state).clone(),
-        (*cancel_state).clone(),
-        (*status_state).clone(),
-        (*progress_state).clone(),
+        crate::t_state::face().clone(),
+        crate::t_state::face_index_cancellation().clone(),
+        crate::t_state::face_indexing_status().clone(),
+        crate::t_state::face_index_progress().clone(),
         cluster_epsilon,
     )
 }
@@ -4142,8 +4114,8 @@ pub fn get_face_stats() -> Result<t_face::FaceStats, String> {
 
 /// cancel face indexing
 #[tauri::command]
-pub fn cancel_face_index(state: State<t_face::FaceIndexCancellation>) -> Result<(), String> {
-    *state.0.lock().unwrap() = true;
+pub fn cancel_face_index() -> Result<(), String> {
+    *crate::t_state::face_index_cancellation().0.lock().unwrap() = true;
 
     Ok(())
 }
@@ -4156,13 +4128,10 @@ pub fn reset_faces() -> Result<(), String> {
 
 /// check if face indexing is running, return (is_running, progress)
 #[tauri::command]
-pub fn is_face_indexing(
-    status_state: State<t_face::FaceIndexingStatus>,
-    progress_state: State<t_face::FaceIndexProgressState>,
-) -> Result<(bool, Option<t_face::FaceIndexProgress>), String> {
-    let is_running = *status_state.0.lock().unwrap();
+pub fn is_face_indexing() -> Result<(bool, Option<t_face::FaceIndexProgress>), String> {
+    let is_running = *crate::t_state::face_indexing_status().0.lock().unwrap();
     let progress = if is_running {
-        Some(progress_state.0.lock().unwrap().clone())
+        Some(crate::t_state::face_index_progress().0.lock().unwrap().clone())
     } else {
         None
     };

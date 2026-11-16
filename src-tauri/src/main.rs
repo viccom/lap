@@ -164,26 +164,6 @@ async fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(t_video::VideoManager::default())
-        .manage(t_face::FaceState(std::sync::Arc::new(
-            std::sync::Mutex::new(t_face::FaceEngine::new()),
-        )))
-        .manage(t_cmds::ImportCancellation(std::sync::Arc::new(std::sync::Mutex::new(
-            t_cmds::ImportState::default(),
-        ))))
-        .manage(t_face::FaceIndexCancellation(std::sync::Arc::new(
-            std::sync::Mutex::new(false),
-        )))
-        .manage(t_face::FaceIndexingStatus(std::sync::Arc::new(
-            std::sync::Mutex::new(false),
-        )))
-        .manage(t_face::FaceIndexProgressState(std::sync::Arc::new(
-            std::sync::Mutex::new(t_face::FaceIndexProgress {
-                current: 0,
-                total: 0,
-                faces_found: 0,
-                phase: "indexing".to_string(),
-            }),
-        )))
         .manage(t_dedup::DedupState::default())
         .manage(t_similar::SimilarState::default())
         .manage(t_vl::VlState::default())

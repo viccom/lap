@@ -80,6 +80,72 @@ pub fn ai() -> &'static crate::t_ai::AiState {
     AI.get_or_init(|| crate::t_ai::AiState(Mutex::new(crate::t_ai::AiEngine::new())))
 }
 
+/// The shared face engine (`Arc<Mutex<FaceEngine>>`): one instance for the
+/// index command and every face query that loads models through it.
+static FACE: OnceLock<crate::t_face::FaceState> = OnceLock::new();
+
+pub fn face() -> &'static crate::t_face::FaceState {
+    FACE.get_or_init(|| {
+        crate::t_face::FaceState(Arc::new(Mutex::new(crate::t_face::FaceEngine::new())))
+    })
+}
+
+/// Face indexing cancellation flag: `true` means "stop".
+static FACE_INDEX_CANCELLATION: OnceLock<crate::t_face::FaceIndexCancellation> = OnceLock::new();
+
+pub fn face_index_cancellation() -> &'static crate::t_face::FaceIndexCancellation {
+    FACE_INDEX_CANCELLATION
+        .get_or_init(|| crate::t_face::FaceIndexCancellation(Arc::new(Mutex::new(false))))
+}
+
+/// Face indexing running flag; storage migration refuses to run while it is
+/// set, so both sides must read one instance.
+static FACE_INDEXING_STATUS: OnceLock<crate::t_face::FaceIndexingStatus> = OnceLock::new();
+
+pub fn face_indexing_status() -> &'static crate::t_face::FaceIndexingStatus {
+    FACE_INDEXING_STATUS.get_or_init(|| crate::t_face::FaceIndexingStatus(Arc::new(Mutex::new(false))))
+}
+
+/// Face indexing progress snapshot the status command reads while a scan runs.
+static FACE_INDEX_PROGRESS: OnceLock<crate::t_face::FaceIndexProgressState> = OnceLock::new();
+
+pub fn face_index_progress() -> &'static crate::t_face::FaceIndexProgressState {
+    FACE_INDEX_PROGRESS.get_or_init(|| {
+        crate::t_face::FaceIndexProgressState(Arc::new(Mutex::new(
+            crate::t_face::FaceIndexProgress {
+                current: 0,
+                total: 0,
+                faces_found: 0,
+                phase: "indexing".to_string(),
+            },
+        )))
+    })
+}
+
+/// Import-and-organize state: `running` guards re-entry, `cancelled` is the
+/// stop flag the worker polls.
+pub struct ImportState {
+    pub cancelled: bool,
+    pub running: bool,
+}
+
+impl Default for ImportState {
+    fn default() -> Self {
+        Self {
+            cancelled: false,
+            running: false,
+        }
+    }
+}
+
+pub struct ImportCancellation(pub Arc<Mutex<ImportState>>);
+
+static IMPORT_CANCELLATION: OnceLock<ImportCancellation> = OnceLock::new();
+
+pub fn import_cancellation() -> &'static ImportCancellation {
+    IMPORT_CANCELLATION.get_or_init(|| ImportCancellation(Arc::new(Mutex::new(ImportState::default()))))
+}
+
 /// Initialize every registered process state up front. The host entry point
 /// calls this first so time-anchored state (like `StartupState::started`)
 /// reflects process start rather than the first late reader; library-only
@@ -87,6 +153,11 @@ pub fn ai() -> &'static crate::t_ai::AiState {
 pub fn init_process_states() {
     let _ = startup();
     let _ = ai();
+    let _ = face();
+    let _ = face_index_cancellation();
+    let _ = face_indexing_status();
+    let _ = face_index_progress();
+    let _ = import_cancellation();
 }
 
 #[cfg(test)]
@@ -132,6 +203,14 @@ mod tests {
         let state = StartupState::default();
         assert!(!state.background_started.swap(true, Ordering::SeqCst));
         assert!(state.background_started.swap(true, Ordering::SeqCst));
+    }
+
+    #[test]
+    fn face_status_is_shared_between_the_index_and_migration_guard() {
+        // The storage-migration guard refuses to run while face indexing is
+        // active; that only works if both read the same flag instance.
+        assert!(std::ptr::eq(face_indexing_status(), face_indexing_status()));
+        assert!(!*face_indexing_status().0.lock().unwrap());
     }
 
     #[test]
