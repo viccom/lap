@@ -416,14 +416,11 @@ pub fn edit_library(id: &str, name: &str) -> Result<(), String> {
 
 /// remove a library (also deletes the database file)
 #[tauri::command]
-pub async fn remove_library(
-    id: String,
-    vl_state: tauri::State<'_, crate::t_vl::VlState>,
-) -> Result<(), String> {
+pub async fn remove_library(id: String) -> Result<(), String> {
     // A live image-understanding run keeps writing evidence into the library
     // database; deleting the file under it would corrupt the run. Wait for
     // (or cancel) the run first.
-    if let Some(run_id) = vl_state.active_run_for_library(&id) {
+    if let Some(run_id) = crate::t_state::vl().active_run_for_library(&id) {
         return Err(format!(
             "该图库还有正在运行的图片理解任务（{run_id}），请先取消或等待其完成"
         ));

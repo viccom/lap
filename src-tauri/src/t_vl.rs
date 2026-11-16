@@ -2682,7 +2682,6 @@ pub fn get_vl_config() -> Result<VlConfigView, String> {
 /// Store the gateway settings. `api_key` of `None` keeps the stored key.
 #[tauri::command]
 pub fn set_vl_config(
-    state: tauri::State<'_, VlState>,
     gateway_url: String,
     api_key: Option<String>,
     model: String,
@@ -2704,7 +2703,7 @@ pub fn set_vl_config(
     )?;
     // Apply the new ceiling to live dispatching immediately; runs already
     // executing keep their acquired permits until they complete.
-    state.set_call_permits(effective_max_concurrency(max_concurrency));
+    crate::t_state::vl().set_call_permits(effective_max_concurrency(max_concurrency));
     Ok(view)
 }
 
@@ -2759,20 +2758,11 @@ pub fn delete_vl_template(id: i64) -> Result<bool, String> {
 /// Queue an analysis run and return its UUID.
 #[tauri::command]
 pub fn run_vl_analysis(
-    app_handle: tauri::AppHandle,
-    state: tauri::State<'_, VlState>,
     file_ids: Vec<i64>,
     template_id: i64,
     force: bool,
 ) -> Result<String, String> {
-    let owned = VlState {
-        runs: state.runs.clone(),
-        cancel_flags: state.cancel_flags.clone(),
-        queue: state.queue.clone(),
-        in_flight: state.in_flight.clone(),
-        call_permits: state.call_permits.clone(),
-    };
-    start_run(&app_handle, &owned, file_ids, template_id, force)
+    start_run(crate::t_state::vl(), file_ids, template_id, force)
 }
 
 /// The annotations of one file, newest first.
@@ -2791,11 +2781,8 @@ pub fn get_vl_calls(file_id: i64) -> Result<Vec<VlCall>, String> {
 /// request finishes (or times out) and the pending files are not started.
 /// Runs from previous sessions are history — they cannot be cancelled.
 #[tauri::command]
-pub fn cancel_vl_run(
-    app_handle: tauri::AppHandle,
-    state: tauri::State<'_, VlState>,
-    run_id: String,
-) -> Result<(), String> {
+pub fn cancel_vl_run(run_id: String) -> Result<(), String> {
+    let state = crate::t_state::vl();
     // A run that still waits for a slot is not running yet: drop it from the
     // queue and finalize its row so it can never start later.
     if state.queue.remove_queued(&run_id) {
@@ -2803,7 +2790,7 @@ pub fn cancel_vl_run(
             .run_status(&run_id)
             .ok_or_else(|| format!("未找到运行 {run_id}"))?;
         let db_path = crate::t_storage::get_library_db_path(&status.library_id)?;
-        finish_run(&state, &app_handle, &db_path, &run_id, "cancelled", None);
+        finish_run(state, &db_path, &run_id, "cancelled", None);
         return Ok(());
     }
     let flag = state
@@ -2824,26 +2811,16 @@ pub fn cancel_vl_run(
 /// Retry the failed files of one run as a fresh run against the same library
 /// and template. Failed files carry no annotation, so `force` stays off.
 #[tauri::command]
-pub fn retry_vl_run(
-    app_handle: tauri::AppHandle,
-    state: tauri::State<'_, VlState>,
-    run_id: String,
-) -> Result<String, String> {
-    let owned = VlState {
-        runs: state.runs.clone(),
-        cancel_flags: state.cancel_flags.clone(),
-        queue: state.queue.clone(),
-        in_flight: state.in_flight.clone(),
-        call_permits: state.call_permits.clone(),
-    };
-    retry_run(&app_handle, &owned, &run_id)
+pub fn retry_vl_run(run_id: String) -> Result<String, String> {
+    retry_run(crate::t_state::vl(), &run_id)
 }
 
 /// Delete one run and its call evidence from the history. Live runs must be
 /// cancelled first — deleting the row under a working run would orphan its
 /// evidence writes.
 #[tauri::command]
-pub fn delete_vl_run(state: tauri::State<'_, VlState>, run_id: String) -> Result<(), String> {
+pub fn delete_vl_run(run_id: String) -> Result<(), String> {
+    let state = crate::t_state::vl();
     // A run this process still works on must be cancelled, not deleted.
     if let Some(status) = state.run_status(&run_id)
         && (status.state == "queued" || status.state == "running")
@@ -2915,11 +2892,7 @@ fn locate_run_db_path(run_id: &str) -> Option<String> {
 
 /// Retry: locate the owning library, collect the failed file ids and start a
 /// fresh run for them.
-fn retry_run(
-    app_handle: &tauri::AppHandle,
-    state: &VlState,
-    run_id: &str,
-) -> Result<String, String> {
+fn retry_run(state: &VlState, run_id: &str) -> Result<String, String> {
     let config = crate::t_config::load_app_config()?;
     for library in &config.libraries {
         let Ok(db_path) = crate::t_storage::get_library_db_path(&library.id) else {
@@ -2955,7 +2928,6 @@ fn retry_run(
             db_path,
         };
         return start_run_for_library(
-            app_handle,
             state,
             &context,
             failed,
@@ -3082,7 +3054,8 @@ pub async fn list_vl_models() -> Result<VlModelList, String> {
 /// live task owns (a previous session, a died task) is marked `interrupted`,
 /// so a restart never shows a run as still working.
 #[tauri::command]
-pub fn list_vl_runs(state: tauri::State<'_, VlState>) -> Result<Vec<VlRunRecord>, String> {
+pub fn list_vl_runs() -> Result<Vec<VlRunRecord>, String> {
+    let state = crate::t_state::vl();
     let config = crate::t_config::load_app_config()?;
     let active = state.active_run_ids();
     let mut all: Vec<VlRunRecord> = Vec::new();
@@ -3445,21 +3418,19 @@ pub(crate) fn validate_run_files(conn: &Connection, file_ids: &[i64]) -> Result<
 }
 
 pub fn start_run(
-    app_handle: &tauri::AppHandle,
     state: &VlState,
     file_ids: Vec<i64>,
     template_id: i64,
     force: bool,
 ) -> Result<String, String> {
     let library = current_library_context()?;
-    start_run_for_library(app_handle, state, &library, file_ids, template_id, force, "manual")
+    start_run_for_library(state, &library, file_ids, template_id, force, "manual")
 }
 
 /// Queue an analysis run against an explicit library. The retry path and the
 /// scheduler use this so they stay independent of the library the UI shows;
 /// `source` records who started it (`manual` / `scheduled`, v28 column).
 pub fn start_run_for_library(
-    app_handle: &tauri::AppHandle,
     state: &VlState,
     library: &LibraryContext,
     file_ids: Vec<i64>,
@@ -3545,22 +3516,22 @@ pub fn start_run_for_library(
         crate::t_events::names::VL_ANALYSIS_PROGRESS,
         status_payload(state, &run_id),
     );
-    pump_queue(app_handle, state);
+    pump_queue(state);
 
     Ok(run_id)
 }
 
 /// Start as many waiting runs as the queue has free slots for. Each job gets
 /// its own worker; a worker releases its slot and pumps again when it ends.
-fn pump_queue(app_handle: &tauri::AppHandle, state: &VlState) {
+fn pump_queue(state: &VlState) {
     for job in state.queue.take_ready() {
-        spawn_run_worker(app_handle.clone(), state.clone(), job);
+        spawn_run_worker(state.clone(), job);
     }
 }
 
 /// Run one queued job to completion. The first statement takes the slot guard,
 /// so a panic anywhere in the worker still frees the slot on unwind.
-fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRun) {
+fn spawn_run_worker(state: VlState, job: PendingRun) {
     let slot = ActiveSlot {
         queue: state.queue.clone(),
     };
@@ -3582,9 +3553,9 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
         .and_then(|flags| flags.get(&run_id).map(|flag| flag.load(Ordering::SeqCst)))
         .unwrap_or(false);
     if cancelled_already {
-        finish_run(&state, &app_handle, &db_path, &run_id, "cancelled", None);
+        finish_run(&state, &db_path, &run_id, "cancelled", None);
         drop(slot);
-        pump_queue(&app_handle, &state);
+        pump_queue(&state);
         return;
     }
 
@@ -3599,7 +3570,6 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
     // of leaving `running` behind. The panicking worker's guard was already
     // dropped during unwind, so the slot is free before this pumps.
     let supervisor_state = state.clone();
-    let supervisor_handle = app_handle.clone();
     let run_id_for_supervisor = run_id.clone();
     let db_path_for_supervisor = db_path.clone();
 
@@ -3628,14 +3598,13 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
                 eprintln!("Failed to create the VL gateway client: {}", error);
                 finish_run(
                     &state,
-                    &app_handle,
                     &library.db_path,
                     &run_id,
                     "failed",
                     Some(&message),
                 );
                 drop(slot);
-                pump_queue(&app_handle, &state);
+                pump_queue(&state);
                 return;
             }
         };
@@ -3681,7 +3650,6 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
         };
         finish_run(
             &state,
-            &app_handle,
             &library.db_path,
             &run_id,
             final_state,
@@ -3689,7 +3657,7 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
         );
         // Free the slot before pumping: otherwise the queued runs never see it.
         drop(slot);
-        pump_queue(&app_handle, &state);
+        pump_queue(&state);
     });
 
     // The supervisor waits on the join handle with the clones it kept above.
@@ -3698,14 +3666,13 @@ fn spawn_run_worker(app_handle: tauri::AppHandle, state: VlState, job: PendingRu
             let message = format!("理解任务异常终止: {join_error}");
             finish_run(
                 &supervisor_state,
-                &supervisor_handle,
                 &db_path_for_supervisor,
                 &run_id_for_supervisor,
                 "failed",
                 Some(&message),
             );
             // The panicking worker's guard freed its slot during unwind.
-            pump_queue(&supervisor_handle, &supervisor_state);
+            pump_queue(&supervisor_state);
         }
     });
 }
@@ -3831,7 +3798,6 @@ async fn process_run_files(
 /// `queued`, rows).
 fn finish_run(
     state: &VlState,
-    _app_handle: &tauri::AppHandle,
     db_path: &str,
     run_id: &str,
     final_state: &str,

@@ -169,6 +169,16 @@ pub fn video_manager() -> &'static crate::t_video::VideoManager {
     VIDEO_MANAGER.get_or_init(crate::t_video::VideoManager::default)
 }
 
+/// The VL analysis registry: run statuses, cancel flags, the queue and the
+/// global LLM call permits. Shared by the VL commands, the run workers and
+/// the v28 task scheduler, and read by `remove_library` to refuse deleting a
+/// library with a live run.
+static VL: OnceLock<crate::t_vl::VlState> = OnceLock::new();
+
+pub fn vl() -> &'static crate::t_vl::VlState {
+    VL.get_or_init(crate::t_vl::VlState::default)
+}
+
 /// Initialize every registered process state up front. The host entry point
 /// calls this first so time-anchored state (like `StartupState::started`)
 /// reflects process start rather than the first late reader; library-only
@@ -184,6 +194,7 @@ pub fn init_process_states() {
     let _ = dedup();
     let _ = similar();
     let _ = video_manager();
+    let _ = vl();
 }
 
 #[cfg(test)]

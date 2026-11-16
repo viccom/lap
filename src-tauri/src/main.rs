@@ -163,7 +163,6 @@ async fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .manage(t_vl::VlState::default())
         .setup(|_app| {
             t_startup::mark("setup-started");
             t_events::set_sink(std::sync::Arc::new(TauriEventSink(_app.handle().clone())));
@@ -221,7 +220,7 @@ async fn main() {
 
             // Scheduled VL runs tick in the background for as long as the
             // app lives; see t_vl_schedule.rs.
-            t_vl_schedule::spawn_scheduler(_app.handle().clone());
+            t_vl_schedule::spawn_scheduler();
 
             // Open devtools in development mode
             // #[cfg(debug_assertions)] // only include this block in debug builds

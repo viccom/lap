@@ -12,7 +12,6 @@
 //! The scheduler only runs while the app lives; no OS-level wake-up.
 use chrono::Timelike;
 use serde::{Deserialize, Serialize};
-use tauri::Manager;
 
 use crate::t_config::load_app_config;
 use crate::t_vl::{start_run_for_library, LibraryContext, VlState, VlStore};
@@ -74,13 +73,12 @@ pub fn task_is_expired(date: &str, now_date: &str) -> bool {
 // ----------------------------------------------------------------------------
 
 /// Start the background clock. One task per app; it dies with the runtime.
-pub fn spawn_scheduler(app_handle: tauri::AppHandle) {
-    let state: tauri::State<'_, VlState> = app_handle.state();
-    let state = state.inner().clone();
+pub fn spawn_scheduler() {
+    let state = crate::t_state::vl().clone();
     crate::t_rt::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(TICK_SECS)).await;
-            if let Err(e) = run_due_tasks(&app_handle, &state) {
+            if let Err(e) = run_due_tasks(&state) {
                 eprintln!("VL task scheduler tick failed: {e}");
             }
         }
@@ -88,7 +86,7 @@ pub fn spawn_scheduler(app_handle: tauri::AppHandle) {
 }
 
 /// Fire and expire every due task across the configured libraries.
-fn run_due_tasks(app_handle: &tauri::AppHandle, state: &VlState) -> Result<(), String> {
+fn run_due_tasks(state: &VlState) -> Result<(), String> {
     let now = chrono::Local::now();
     let now_date = now.format("%Y-%m-%d").to_string();
     let now_minutes = now.hour() * 60 + now.minute();
@@ -124,7 +122,7 @@ fn run_due_tasks(app_handle: &tauri::AppHandle, state: &VlState) -> Result<(), S
             if !task_is_due(&time, &pending_date(&conn, &task_id)?, &now_date, now_minutes) {
                 continue;
             }
-            let outcome = fire_task(app_handle, state, &context, template_id, &file_ids, force);
+            let outcome = fire_task(state, &context, template_id, &file_ids, force);
             match outcome {
                 Ok(run_id) => {
                     eprintln!("VL task {task_id} fired run {run_id}");
@@ -216,7 +214,6 @@ fn mark_task(
 /// Start the run of one due task. Files that left the library since queueing
 /// drop out silently; an empty remainder fails the task instead of the run.
 fn fire_task(
-    app_handle: &tauri::AppHandle,
     state: &VlState,
     context: &LibraryContext,
     template_id: i64,
@@ -240,7 +237,6 @@ fn fire_task(
         return Err("任务中的文件已不在图库中".to_string());
     }
     start_run_for_library(
-        app_handle,
         state,
         context,
         files,
