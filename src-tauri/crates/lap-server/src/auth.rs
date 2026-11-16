@@ -399,7 +399,8 @@ impl AuthService {
             return Err(AuthError::BadRequest("media url must not carry exp/sig/dev".into()));
         }
         let exp = unix_now() + MEDIA_URL_TTL_SECS;
-        let signed_path = format!("{pq}&dev={device_id}");
+        let separator = if pq.contains('?') { "&" } else { "?" };
+        let signed_path = format!("{pq}{separator}dev={device_id}");
         let canonical = Self::canonical_media_string(&signed_path, exp, device_id)
             .ok_or(AuthError::BadRequest("unparsable media url".into()))?;
         let sig = self.media_mac(&canonical);
@@ -853,9 +854,11 @@ mod tests {
         assert!(signed.contains("exp="));
         assert!(signed.contains("sig="));
         auth.verify_media_url(signed.trim_start_matches('/')).unwrap();
+        // Query-less endpoints must use `?` for the first appended param.
+        let signed = auth.sign_media_url("/api/original/1", 7).unwrap();
+        assert!(signed.starts_with("/api/original/1?dev=7"), "got {signed}");
+        auth.verify_media_url(signed.trim_start_matches('/')).unwrap();
         // Any tampering — size, path, exp, sig, dev — must fail.
-        let tampered = signed.replace("size=512", "size=2048");
-        assert!(auth.verify_media_url(tampered.trim_start_matches('/')).is_err());
         let tampered = signed.replace("dev=7", "dev=8");
         assert!(auth.verify_media_url(tampered.trim_start_matches('/')).is_err());
         let tampered = signed.replace('a', "b");

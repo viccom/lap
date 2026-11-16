@@ -10,6 +10,7 @@ mod bridge;
 mod bridge_gen;
 mod flags;
 mod lock;
+mod media;
 mod sse;
 
 use std::net::SocketAddr;
@@ -30,7 +31,7 @@ fn server_info_value() -> serde_json::Value {
         "pathSeparator": std::path::MAIN_SEPARATOR,
         "capabilities": {
             "auth": true,
-            "media": false,
+            "media": true,
         },
     })
 }
@@ -66,6 +67,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
 
     // /api/cmd and /api/events sit behind the §3.6 whitelist middleware;
     // server_info and /api/auth stay open (client discovery + first token).
+    // Media routes authenticate via the §3.5 HMAC signature themselves.
     let protected = axum::Router::new()
         .route("/api/cmd/{name}", post(cmd_handler))
         .route("/api/events", get(sse::events_handler))
@@ -74,6 +76,12 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
             auth::whitelist_middleware,
         ))
         .with_state(boot.bus.clone());
+    let media_router = axum::Router::new()
+        .route("/api/thumb/{library_id}/{file_id}", get(media::thumb_handler))
+        .route("/api/preview/{library_id}/{file_id}", get(media::preview_handler))
+        .route("/api/original/{file_id}", get(media::original_handler))
+        .route("/api/video/{file_id}", get(media::video_handler))
+        .with_state(boot.auth.clone());
     let auth_router = axum::Router::new()
         .route("/api/auth/status", get(auth::auth_status))
         .route("/api/auth/setup", post(auth::auth_setup))
@@ -82,10 +90,12 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
         .route("/api/auth/pairing-code", post(auth::auth_pairing_code))
         .route("/api/auth/devices", get(auth::devices_list))
         .route("/api/auth/devices/{id}", axum::routing::delete(auth::device_revoke))
+        .route("/api/media/sign", post(media::media_sign_handler))
         .with_state(boot.auth.clone());
     let app = axum::Router::new()
         .route("/api/server_info", get(server_info))
         .merge(protected)
+        .merge(media_router)
         .merge(auth_router);
     let addr = format!("{}:{}", flags.host, flags.port);
     let listener = tokio::net::TcpListener::bind(&addr)
