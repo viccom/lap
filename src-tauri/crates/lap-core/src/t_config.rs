@@ -809,10 +809,10 @@ fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
     write_atomic_ex(path, content, false)
 }
 
-/// Atomic write for the API key: the file is created owner-only on unix so
-/// other users of the machine cannot read the key. app-config.json keeps the
-/// default permissions.
-fn write_atomic_private(path: &Path, content: &str) -> Result<(), String> {
+/// Atomic write for secret files (the VL API key, the lapd admin password
+/// hash): the file is created owner-only on unix so other users of the
+/// machine cannot read it. app-config.json keeps the default permissions.
+pub fn write_atomic_private(path: &Path, content: &str) -> Result<(), String> {
     write_atomic_ex(path, content, true)
 }
 

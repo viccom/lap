@@ -18,6 +18,14 @@ futures = "0.3.32"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.149"
 tokio = { version = "1.50.0", features = ["full"] }
+# Auth (batch 3.3): Argon2id password hashing; token MAC via blake3 keyed
+# mode; device-token hashing via sha2; token encoding via base64url.
+argon2 = "0.5"
+base64 = "0.22.1"
+blake3 = "1.8.3"
+rand = "0.8"
+rusqlite = { version = "0.32.1", features = ["bundled", "collation"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 # `start_paused` time control for the SSE coalescing tests.

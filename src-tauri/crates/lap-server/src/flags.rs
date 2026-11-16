@@ -16,6 +16,9 @@ FLAGS:
     --data-dir <DIR>   Override the app data directory (config, libraries,
                        lock file). Used verbatim; no `.debug` suffix.
     --library <ID>     Serve this library instead of the configured one
+    --set-admin-password <PW>
+                       Set the admin password (Argon2id) and exit; refuses
+                       if a password already exists
     -h, --help         Print this help";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -28,6 +31,8 @@ pub struct Flags {
     pub data_dir: Option<PathBuf>,
     /// Switch to this library at boot instead of the configured current one.
     pub library: Option<String>,
+    /// Set the admin password (Argon2id) and exit.
+    pub set_admin_password: Option<String>,
 }
 
 impl Default for Flags {
@@ -37,6 +42,7 @@ impl Default for Flags {
             port: 17860,
             data_dir: None,
             library: None,
+            set_admin_password: None,
         }
     }
 }
@@ -60,6 +66,9 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Flags, String> {
             }
             "--data-dir" => flags.data_dir = Some(PathBuf::from(take_value(&name, inline, &mut iter)?)),
             "--library" => flags.library = Some(take_value(&name, inline, &mut iter)?),
+            "--set-admin-password" => {
+                flags.set_admin_password = Some(take_value(&name, inline, &mut iter)?)
+            }
             other => return Err(format!("unknown flag: {other}")),
         }
     }

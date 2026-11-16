@@ -21,6 +21,18 @@ pub struct Boot {
     pub data_dir: PathBuf,
     /// The SSE fan-out the process EventSink forwards into.
     pub bus: std::sync::Arc<crate::sse::EventBus>,
+    /// Authentication state (device tokens, pairing, MAC key).
+    pub auth: std::sync::Arc<crate::auth::AuthService>,
+}
+
+/// Data-dir resolution shared by the boot chain and the
+/// `--set-admin-password` one-shot path.
+pub fn resolve_data_dir(flags: &Flags) -> Result<PathBuf, String> {
+    if let Some(dir) = &flags.data_dir {
+        t_config::set_data_dir_override(dir.clone());
+    }
+    t_config::set_app_identifier("com.julyx10.lap");
+    t_config::get_app_data_dir()
 }
 
 pub fn run(flags: &Flags) -> Result<Boot, String> {
@@ -34,17 +46,13 @@ pub fn run(flags: &Flags) -> Result<Boot, String> {
     let bus = crate::sse::EventBus::new();
     lap_core::t_events::set_sink(crate::sse::SseSink::new(bus.clone()));
 
-    if let Some(dir) = &flags.data_dir {
-        t_config::set_data_dir_override(dir.clone());
-    }
-    t_config::set_app_identifier("com.julyx10.lap");
+    let data_dir = resolve_data_dir(flags)?;
 
     // Paths: lapd resolves resources next to the executable (installed and
     // portable layouts both keep `resources/` beside the binary); when
     // running from a dev target directory, the repo layout serves. The cache
     // dir follows the data root so debug builds stay isolated from the
     // installed app's caches.
-    let data_dir = t_config::get_app_data_dir()?;
     t_paths::set_paths(PathsConfig {
         resource_dir: resource_dir_candidate(),
         app_cache_dir: Some(data_dir.clone()),
@@ -77,7 +85,21 @@ pub fn run(flags: &Flags) -> Result<Boot, String> {
     // so 0 is the faithful eager equivalent.
     t_startup::finish_startup(0);
 
-    Ok(Boot { lock: guard, data_dir, bus })
+    let auth = std::sync::Arc::new(crate::auth::AuthService::open(&data_dir)?);
+    if auth.password_set() {
+        // §3.6: the pairing code travels over the console — the operator
+        // reads it where the server runs.
+        let code = auth.mint_pairing_code();
+        println!(
+            "lapd: pairing code {code} (valid 5 minutes) — POST /api/auth/pair {{\"code\": \"{code}\", \"deviceName\": \"…\"}}"
+        );
+    } else {
+        println!(
+            "lapd: no admin password set — POST /api/auth/setup {{\"password\": \"…\"}} from localhost, or run `lapd --set-admin-password <pw>`"
+        );
+    }
+
+    Ok(Boot { lock: guard, data_dir, bus, auth })
 }
 
 fn resource_dir_candidate() -> Option<PathBuf> {

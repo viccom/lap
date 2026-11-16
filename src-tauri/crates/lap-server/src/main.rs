@@ -1,7 +1,10 @@
 //! `lapd` — the standalone Lap server (serverization plan, phase 3).
-//! Batch 3.2 skeleton: flags, lock file, shared boot chain, server_info.
-//! The command bridge and SSE land in the following 3.2 commits.
+//! Batch 3.3: authentication (Argon2id admin password, pairing-code device
+//! tokens, rate limits) on top of the 3.2 command bridge and SSE. Media
+//! endpoints land in the following 3.3 commits.
 
+mod auth;
+mod auth_store;
 mod boot;
 mod bridge;
 mod bridge_gen;
@@ -9,6 +12,7 @@ mod flags;
 mod lock;
 mod sse;
 
+use std::net::SocketAddr;
 use std::process::ExitCode;
 
 use axum::extract::Path;
@@ -25,7 +29,7 @@ fn server_info_value() -> serde_json::Value {
         "platform": std::env::consts::OS,
         "pathSeparator": std::path::MAIN_SEPARATOR,
         "capabilities": {
-            "auth": false,
+            "auth": true,
             "media": false,
         },
     })
@@ -56,14 +60,27 @@ async fn cmd_handler(Path(name): Path<String>, body: String) -> Response {
 
 async fn serve(flags: flags::Flags) -> Result<(), String> {
     // boot::run installs the SSE sink as the process EventSink before any
-    // boot stage can emit; the returned bus backs the /api/events route.
+    // boot stage can emit, and opens the auth store; the returned handles
+    // back the /api/events and /api/auth routes.
     let boot = boot::run(&flags)?;
 
+    let sse_router = axum::Router::new()
+        .route("/api/events", get(sse::events_handler))
+        .with_state(boot.bus.clone());
+    let auth_router = axum::Router::new()
+        .route("/api/auth/status", get(auth::auth_status))
+        .route("/api/auth/setup", post(auth::auth_setup))
+        .route("/api/auth/login", post(auth::auth_login))
+        .route("/api/auth/pair", post(auth::auth_pair))
+        .route("/api/auth/pairing-code", post(auth::auth_pairing_code))
+        .route("/api/auth/devices", get(auth::devices_list))
+        .route("/api/auth/devices/{id}", axum::routing::delete(auth::device_revoke))
+        .with_state(boot.auth.clone());
     let app = axum::Router::new()
         .route("/api/server_info", get(server_info))
         .route("/api/cmd/{name}", post(cmd_handler))
-        .route("/api/events", get(sse::events_handler))
-        .with_state(boot.bus.clone());
+        .merge(sse_router)
+        .merge(auth_router);
     let addr = format!("{}:{}", flags.host, flags.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -74,10 +91,14 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
         env!("CARGO_PKG_VERSION"),
         boot.data_dir.display()
     );
-    // `boot` (and its lock file guard) must outlive the server loop.
-    axum::serve(listener, app)
-        .await
-        .map_err(|e| format!("server error: {e}"))?;
+    // `boot` (and its lock file guard) must outlive the server loop;
+    // ConnectInfo feeds the loopback checks (setup, admin commands).
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .map_err(|e| format!("server error: {e}"))?;
     drop(boot);
     Ok(())
 }
@@ -96,12 +117,40 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    if let Some(password) = &flags.set_admin_password {
+        return match set_admin_password_once(&flags, password) {
+            Ok(message) => {
+                println!("lapd: {message}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("lapd: {e}");
+                ExitCode::from(1)
+            }
+        };
+    }
     match serve(flags).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("lapd: {e}");
             ExitCode::from(1)
         }
+    }
+}
+
+/// `--set-admin-password`: resolve the data dir, hash once, exit. Refuses
+/// to overwrite an existing password (rotation is deliberate, not a side
+/// effect of service setup).
+fn set_admin_password_once(flags: &flags::Flags, password: &str) -> Result<String, String> {
+    let data_dir = boot::resolve_data_dir(flags)?;
+    match auth::AuthService::set_admin_password(&data_dir, password) {
+        Ok(()) => Ok(format!(
+            "admin password set ({}), no server started",
+            auth::admin_password_hash_path(&data_dir).display()
+        )),
+        Err(auth::AuthError::Conflict(m)) => Err(m.to_string()),
+        Err(auth::AuthError::BadRequest(m)) => Err(m),
+        Err(other) => Err(format!("{other:?}")),
     }
 }
 
