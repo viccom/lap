@@ -73,9 +73,9 @@ pub fn ensure_ai(app: &AppHandle, model: Option<i64>) -> Result<(), String> {
             mark(app, "ai-load-started");
             // Text-model selection validates dimensions against the loaded vision
             // model and can roll back to the default text model on failure.
-            engine.load_models(app)?;
+            engine.load_models()?;
             if let Some(model) = model {
-                engine.set_text_model(app, t_ai::ImageSearchTextModel::from_i64(model))?;
+                engine.set_text_model(t_ai::ImageSearchTextModel::from_i64(model))?;
             }
             mark(app, "ai-ready");
             Ok(())
@@ -111,10 +111,7 @@ pub fn finish_startup(app: AppHandle, model: i64) {
     mark(&app, "first-content-ready");
     // Pin the bundled models dir for the optional-model fallback; before
     // this runs the executable directory serves (see t_config).
-    if let Ok(resource) = app
-        .path()
-        .resolve("models", tauri::path::BaseDirectory::Resource)
-    {
+    if let Ok(resource) = crate::t_paths::resolve_resource("models") {
         crate::t_config::set_resource_models_dir(resource);
     }
     if app
@@ -127,7 +124,7 @@ pub fn finish_startup(app: AppHandle, model: i64) {
     let library_id = crate::t_config::current_library_id().ok();
     tauri::async_runtime::spawn_blocking(move || {
         // A missing optional multilingual pack should not prevent vision indexing.
-        let model = if model == 1 && !t_ai::AiEngine::is_multilingual_model_available(&app) {
+        let model = if model == 1 && !t_ai::AiEngine::is_multilingual_model_available() {
             0
         } else {
             model

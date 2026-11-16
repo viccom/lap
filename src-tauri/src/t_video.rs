@@ -23,7 +23,6 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
 static SIDE_CAR_DIR: OnceCell<PathBuf> = OnceCell::new();
@@ -43,7 +42,7 @@ fn thumbnail_ffmpeg_threads() -> usize {
     if logical_cores <= 8 { 2 } else { 4 }
 }
 
-pub fn init_ffmpeg_path(app: &AppHandle) {
+pub fn init_ffmpeg_path() {
     // 1. In development, prioritize the source directory
     #[cfg(debug_assertions)]
     {
@@ -55,8 +54,8 @@ pub fn init_ffmpeg_path(app: &AppHandle) {
         }
     }
 
-    // 2. Production: use resource_dir
-    if let Ok(res_dir) = app.path().resource_dir() {
+    // 2. Production: use the resource directory pinned by the shell (t_paths).
+    if let Ok(res_dir) = crate::t_paths::resource_dir() {
         let _ = SIDE_CAR_DIR.set(res_dir.join("ffmpeg"));
     }
 }
@@ -1102,8 +1101,8 @@ pub enum VideoAction {
     Transcode,
 }
 
-pub fn init_video_cache(app: &AppHandle) {
-    if let Ok(d) = app.path().app_cache_dir().map(|d| d.join("video_cache")) {
+pub fn init_video_cache() {
+    if let Ok(d) = crate::t_paths::video_cache_dir() {
         if !d.exists() {
             let _ = std::fs::create_dir_all(&d);
         }
@@ -1112,7 +1111,6 @@ pub fn init_video_cache(app: &AppHandle) {
 
 #[tauri::command]
 pub async fn clear_video_cache(
-    app: AppHandle,
     state: tauri::State<'_, VideoManager>,
 ) -> Result<(), String> {
     {
@@ -1127,7 +1125,7 @@ pub async fn clear_video_cache(
     // Windows Fix: Give the OS a moment to release file handles after killing processes
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    if let Ok(d) = app.path().app_cache_dir().map(|d| d.join("video_cache")) {
+    if let Ok(d) = crate::t_paths::video_cache_dir() {
         if d.exists() {
             let _ = tokio::fs::remove_dir_all(&d).await;
             let _ = tokio::fs::create_dir_all(&d).await;
@@ -1185,7 +1183,6 @@ pub async fn cancel_video_prepare(
 /// Prepares a video for playback with a single probe and an optimized retry loop.
 #[tauri::command]
 pub async fn prepare_video(
-    app: AppHandle,
     state: tauri::State<'_, VideoManager>,
     file_path: String,
     player_id: String,
@@ -1274,11 +1271,7 @@ pub async fn prepare_video(
     #[cfg(target_os = "macos")]
     let mut try_software_enc = false;
 
-    let temp_dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|e| e.to_string())?
-        .join("video_cache");
+    let temp_dir = crate::t_paths::video_cache_dir()?;
     if !temp_dir.exists() {
         let _ = tokio::fs::create_dir_all(&temp_dir).await;
     }

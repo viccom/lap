@@ -22,7 +22,6 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{AppHandle, Manager};
 use tokenizers::Tokenizer;
 use tokio::io::AsyncWriteExt;
 
@@ -208,14 +207,14 @@ impl AiEngine {
         }
     }
 
-    pub fn load_models(&mut self, app: &AppHandle) -> Result<(), String> {
+    pub fn load_models(&mut self) -> Result<(), String> {
         if self.text_model.is_some() && self.vision_model.is_some() {
             return Ok(());
         }
 
         println!("Loading AI Models...");
 
-        let resource_dir = Self::resource_model_dir(app)?;
+        let resource_dir = Self::resource_model_dir()?;
         let vision_model_path = resource_dir.join(t_common::AI_VISION_MODEL);
         // Load Vision Model
         if self.vision_model.is_none() {
@@ -224,7 +223,7 @@ impl AiEngine {
         }
 
         if self.text_model.is_none() {
-            self.set_text_model(app, ImageSearchTextModel::Default)?;
+            self.set_text_model(ImageSearchTextModel::Default)?;
         }
 
         println!("AI Models Loaded Successfully!");
@@ -242,7 +241,7 @@ impl AiEngine {
             .map_err(|e| format!("Failed to load {} model from {:?}: {}", model_name, path, e))
     }
 
-    fn resource_model_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    fn resource_model_dir() -> Result<PathBuf, String> {
         #[cfg(debug_assertions)]
         {
             let manifest_dir = env!("CARGO_MANIFEST_DIR");
@@ -252,34 +251,29 @@ impl AiEngine {
             }
         }
 
-        app.path()
-            .resolve("models", tauri::path::BaseDirectory::Resource)
+        crate::t_paths::resolve_resource("models")
             .map_err(|e| format!("Failed to resolve resource path: {}", e))
     }
 
-    fn multilingual_model_dir(_app: &AppHandle) -> Result<PathBuf, String> {
+    fn multilingual_model_dir() -> Result<PathBuf, String> {
         crate::t_config::get_app_data_dir().map(|dir| dir.join("models").join("multilingual"))
     }
 
     /// The read location for the multilingual model, resolved through the
     /// fallback; a location is always returned so missing files can be
     /// reported against the app-data install target.
-    fn multilingual_read_dir(app: &AppHandle) -> Result<PathBuf, String> {
-        let install = Self::multilingual_model_dir(app)?;
-        let resource = app
-            .path()
-            .resolve("models", tauri::path::BaseDirectory::Resource)
-            .ok();
+    fn multilingual_read_dir() -> Result<PathBuf, String> {
+        let install = Self::multilingual_model_dir()?;
+        let resource = crate::t_paths::resolve_resource("models").ok();
         Ok(resolve_multilingual_model_dir(&install, resource.as_deref()).unwrap_or(install))
     }
 
     fn text_model_paths(
-        app: &AppHandle,
         model: ImageSearchTextModel,
     ) -> Result<TextModelPaths, String> {
         let model_dir = match model {
-            ImageSearchTextModel::Default => Self::resource_model_dir(app)?,
-            ImageSearchTextModel::Multilingual => Self::multilingual_read_dir(app)?,
+            ImageSearchTextModel::Default => Self::resource_model_dir()?,
+            ImageSearchTextModel::Multilingual => Self::multilingual_read_dir()?,
         };
 
         Ok(TextModelPaths {
@@ -288,39 +282,35 @@ impl AiEngine {
         })
     }
 
-    pub fn is_multilingual_model_available(app: &AppHandle) -> bool {
-        let Ok(install) = Self::multilingual_model_dir(app) else {
+    pub fn is_multilingual_model_available() -> bool {
+        let Ok(install) = Self::multilingual_model_dir() else {
             return false;
         };
         restore_interrupted_multilingual_model(&install);
-        let resource = app
-            .path()
-            .resolve("models", tauri::path::BaseDirectory::Resource)
-            .ok();
+        let resource = crate::t_paths::resolve_resource("models").ok();
         resolve_multilingual_model_dir(&install, resource.as_deref()).is_some()
     }
 
-    pub fn model_status(&self, app: &AppHandle) -> ImageSearchModelStatus {
+    pub fn model_status(&self) -> ImageSearchModelStatus {
         ImageSearchModelStatus {
             active_model: self.text_model_kind.as_i64(),
-            multilingual_available: Self::is_multilingual_model_available(app),
+            multilingual_available: Self::is_multilingual_model_available(),
         }
     }
 
     pub fn set_text_model(
         &mut self,
-        app: &AppHandle,
         model: ImageSearchTextModel,
     ) -> Result<(), String> {
         if self.text_model.is_some() && self.text_model_kind == model {
             return Ok(());
         }
 
-        let paths = Self::text_model_paths(app, model)?;
+        let paths = Self::text_model_paths(model)?;
         if model == ImageSearchTextModel::Multilingual {
             // Only the app-data install dir is writable and carries backups;
             // the read dir may have fallen back to the bundled resource copy.
-            if let Ok(install) = Self::multilingual_model_dir(app) {
+            if let Ok(install) = Self::multilingual_model_dir() {
                 restore_interrupted_multilingual_model(&install);
             }
         }
@@ -752,12 +742,12 @@ async fn open_model_download(
     Ok((response, file, content_length, append))
 }
 
-pub async fn download_multilingual_text_model(app: AppHandle) -> Result<(), String> {
+pub async fn download_multilingual_text_model() -> Result<(), String> {
     let _download_guard = MULTILINGUAL_DOWNLOAD_LOCK
         .try_lock()
         .map_err(|_| "A multilingual model download is already running".to_string())?;
     let download_id = MULTILINGUAL_MODEL_DOWNLOAD_ID.fetch_add(1, Ordering::SeqCst) + 1;
-    let model_dir = AiEngine::multilingual_model_dir(&app)?;
+    let model_dir = AiEngine::multilingual_model_dir()?;
     clean_multilingual_download_temp_dirs(&model_dir).await;
     let temp_dir = model_dir.with_extension("download");
     tokio::fs::create_dir_all(&temp_dir)
@@ -978,9 +968,9 @@ pub async fn download_multilingual_text_model(app: AppHandle) -> Result<(), Stri
     Ok(())
 }
 
-pub async fn cancel_multilingual_text_model_download(app: AppHandle) -> Result<(), String> {
+pub async fn cancel_multilingual_text_model_download() -> Result<(), String> {
     MULTILINGUAL_MODEL_DOWNLOAD_ID.fetch_add(1, Ordering::SeqCst);
-    let model_dir = AiEngine::multilingual_model_dir(&app)?;
+    let model_dir = AiEngine::multilingual_model_dir()?;
     clean_multilingual_download_temp_dirs(&model_dir).await;
     Ok(())
 }

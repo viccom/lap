@@ -12,7 +12,6 @@ use ort::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Manager};
 
 /// Short side at or above which `process_image` detects on a libjpeg-turbo 1/2
 /// decode instead of the full image. Below this the full decode is cheaper than
@@ -84,15 +83,13 @@ impl FaceEngine {
         }
     }
 
-    pub fn load_models(&mut self, app: &AppHandle) -> Result<(), String> {
+    pub fn load_models(&mut self) -> Result<(), String> {
         if self.detection_model.is_some() {
             return Ok(());
         }
 
         // Resolve paths
-        let resource_dir = app
-            .path()
-            .resolve("models", tauri::path::BaseDirectory::Resource)
+        let resource_dir = crate::t_paths::resolve_resource("models")
             .map_err(|e| format!("Failed to resolve resource path: {}", e))?;
 
         self.load_models_from_dir(&resource_dir)
@@ -853,7 +850,6 @@ fn aligned_face_crop(img: &DynamicImage, kps: &[(f32, f32); 5]) -> Option<image:
 pub struct FaceState(pub std::sync::Arc<Mutex<FaceEngine>>);
 
 pub fn run_face_indexing(
-    app_handle: AppHandle,
     face_state: FaceState,
     cancel_token_struct: FaceIndexCancellation,
     status_token_struct: FaceIndexingStatus,
@@ -899,7 +895,7 @@ pub fn run_face_indexing(
         {
             let mut engine = face_state.0.lock().unwrap();
             if !engine.is_loaded() {
-                if let Err(e) = engine.load_models(&app_handle) {
+                if let Err(e) = engine.load_models() {
                     eprintln!("Failed to load face models: {}", e);
                     crate::t_events::emit(
                         crate::t_events::names::FACE_INDEX_FINISHED,

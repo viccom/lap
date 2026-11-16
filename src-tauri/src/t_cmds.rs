@@ -4097,7 +4097,7 @@ pub async fn get_image_search_model_status(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app_handle.state::<t_ai::AiState>();
         let ai_engine = state.0.lock().map_err(|e| e.to_string())?;
-        Ok(ai_engine.model_status(&app_handle))
+        Ok(ai_engine.model_status())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -4112,22 +4112,20 @@ pub async fn set_image_search_model(
         crate::t_startup::ensure_ai(&app_handle, Some(model))?;
         let state = app_handle.state::<t_ai::AiState>();
         let ai_engine = state.0.lock().map_err(|e| e.to_string())?;
-        Ok(ai_engine.model_status(&app_handle))
+        Ok(ai_engine.model_status())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn download_multilingual_image_search_model(app_handle: AppHandle) -> Result<(), String> {
-    t_ai::download_multilingual_text_model(app_handle).await
+pub async fn download_multilingual_image_search_model() -> Result<(), String> {
+    t_ai::download_multilingual_text_model().await
 }
 
 #[tauri::command]
-pub async fn cancel_multilingual_image_search_model_download(
-    app_handle: AppHandle,
-) -> Result<(), String> {
-    t_ai::cancel_multilingual_text_model_download(app_handle).await
+pub async fn cancel_multilingual_image_search_model_download() -> Result<(), String> {
+    t_ai::cancel_multilingual_text_model_download().await
 }
 
 /// generate embedding for a file
@@ -4245,7 +4243,6 @@ pub fn similar_has_scan(scope_key: String) -> Result<bool, String> {
 /// index faces for all images in the current library
 #[tauri::command]
 pub fn index_faces(
-    app_handle: tauri::AppHandle,
     state: State<t_face::FaceState>,
     cancel_state: State<t_face::FaceIndexCancellation>,
     status_state: State<t_face::FaceIndexingStatus>,
@@ -4253,7 +4250,6 @@ pub fn index_faces(
     cluster_epsilon: Option<f32>,
 ) -> Result<(), String> {
     t_face::run_face_indexing(
-        app_handle,
         (*state).clone(),
         (*cancel_state).clone(),
         (*status_state).clone(),

@@ -44,6 +44,7 @@ mod t_raw_display;
 mod t_menu;
 mod t_migration;
 mod t_montage;
+mod t_paths;
 mod t_tags;
 mod t_motion_photo;
 mod t_pasteboard;
@@ -189,7 +190,18 @@ async fn main() {
         .setup(|_app| {
             t_startup::mark(&_app.handle(), "setup-started");
             t_events::set_sink(std::sync::Arc::new(TauriEventSink(_app.handle().clone())));
-            t_video::init_ffmpeg_path(&_app.handle());
+            // Pin the directories the core needs so it never reaches for an
+            // AppHandle (see t_paths). Seeded verbatim from Tauri so the
+            // resolved locations stay byte-identical.
+            {
+                let resource_dir = _app.path().resource_dir().ok();
+                let app_cache_dir = _app.path().app_cache_dir().ok();
+                t_paths::set_paths(t_paths::PathsConfig {
+                    resource_dir,
+                    app_cache_dir,
+                });
+            }
+            t_video::init_ffmpeg_path();
             t_config::set_app_identifier(&_app.config().identifier);
             t_menu::install_app_menu(&_app.handle())?;
 
@@ -221,7 +233,7 @@ async fn main() {
             t_http::init_video_http_server();
 
             // Cleanup video cache
-            t_video::init_video_cache(&_app.handle());
+            t_video::init_video_cache();
 
             if !t_sqlite::is_database_corrupted() {
                 if let Err(e) = t_utils::restore_album_scopes(&_app.handle()) {
