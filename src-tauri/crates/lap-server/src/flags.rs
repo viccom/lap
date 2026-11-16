@@ -16,6 +16,8 @@ FLAGS:
     --data-dir <DIR>   Override the app data directory (config, libraries,
                        lock file). Used verbatim; no `.debug` suffix.
     --library <ID>     Serve this library instead of the configured one
+    --web-dir <DIR>    Serve the Web client build from this directory
+                       (default: resources/web beside the executable)
     --set-admin-password <PW>
                        Set the admin password (Argon2id) and exit; refuses
                        if a password already exists
@@ -31,6 +33,8 @@ pub struct Flags {
     pub data_dir: Option<PathBuf>,
     /// Switch to this library at boot instead of the configured current one.
     pub library: Option<String>,
+    /// Serve the Web client build from this directory (phase 4).
+    pub web_dir: Option<PathBuf>,
     /// Set the admin password (Argon2id) and exit.
     pub set_admin_password: Option<String>,
 }
@@ -42,6 +46,7 @@ impl Default for Flags {
             port: 17860,
             data_dir: None,
             library: None,
+            web_dir: None,
             set_admin_password: None,
         }
     }
@@ -66,6 +71,7 @@ pub fn parse<I: IntoIterator<Item = String>>(args: I) -> Result<Flags, String> {
             }
             "--data-dir" => flags.data_dir = Some(PathBuf::from(take_value(&name, inline, &mut iter)?)),
             "--library" => flags.library = Some(take_value(&name, inline, &mut iter)?),
+            "--web-dir" => flags.web_dir = Some(PathBuf::from(take_value(&name, inline, &mut iter)?)),
             "--set-admin-password" => {
                 flags.set_admin_password = Some(take_value(&name, inline, &mut iter)?)
             }
@@ -113,6 +119,14 @@ mod tests {
         let f = parse(args(&["--host", "0.0.0.0", "--data-dir", "D:\\tmp\\lapdata"])).unwrap();
         assert_eq!(f.host, "0.0.0.0");
         assert_eq!(f.data_dir.as_deref(), Some(std::path::Path::new("D:\\tmp\\lapdata")));
+    }
+
+    #[test]
+    fn web_dir_is_taken_verbatim_in_both_forms() {
+        let spaced = parse(args(&["--web-dir", "D:\\web build"])).unwrap();
+        let inline = parse(args(&["--web-dir=D:\\web build"])).unwrap();
+        assert_eq!(spaced, inline);
+        assert_eq!(spaced.web_dir.as_deref(), Some(std::path::Path::new("D:\\web build")));
     }
 
     #[test]

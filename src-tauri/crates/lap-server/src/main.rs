@@ -13,11 +13,13 @@ mod lock;
 mod media;
 mod shutdown;
 mod sse;
+mod static_files;
 
 use std::net::SocketAddr;
 use std::process::ExitCode;
 
 use axum::extract::Path;
+use axum::http::Uri;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 
@@ -33,6 +35,7 @@ fn server_info_value() -> serde_json::Value {
         "capabilities": {
             "auth": true,
             "media": true,
+            "web": static_files::web_enabled(),
         },
     })
 }
@@ -58,6 +61,22 @@ async fn cmd_handler(Path(name): Path<String>, body: String) -> Response {
         }
     };
     bridge::handle_command(&name, &parsed).await.map(Json).into_response()
+}
+
+/// Serve the Web client for every route not claimed by an API router. `/api/*`
+/// paths are never served from the SPA shell — an unknown API route must 404,
+/// not hand back index.html with a 200 (phase 4, batch 4.1).
+async fn static_fallback(
+    axum::extract::State(web): axum::extract::State<Option<static_files::WebRoot>>,
+    uri: Uri,
+) -> Response {
+    let Some(web) = web else {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    };
+    if uri.path().starts_with("/api/") {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
+    static_files::serve(&web, &uri).await
 }
 
 async fn serve(flags: flags::Flags) -> Result<(), String> {
@@ -102,11 +121,25 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
         .route("/api/auth/devices/{id}", axum::routing::delete(auth::device_revoke))
         .route("/api/media/sign", post(media::media_sign_handler))
         .with_state(boot.auth.clone());
+    // Phase 4: serve the same Vue build the desktop shell embeds. `--web-dir`
+    // wins; otherwise look for `resources/web` beside the executable. When
+    // absent, /api keeps working and the browser simply has no shell (the
+    // desktop client is unaffected).
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.to_path_buf()));
+    let web = static_files::WebRoot::resolve(flags.web_dir.as_deref(), exe_dir.as_deref());
+    static_files::set_web_enabled(web.is_some());
+    if let Some(root) = &web {
+        println!("lapd: serving Web client from {}", root.path().display());
+    }
     let app = axum::Router::new()
         .route("/api/server_info", get(server_info))
         .merge(protected)
         .merge(media_router)
-        .merge(auth_router);
+        .merge(auth_router)
+        .fallback(static_fallback)
+        .with_state(web);
     let addr = format!("{}:{}", flags.host, flags.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
@@ -211,6 +244,7 @@ mod tests {
         assert_eq!(info["platform"], std::env::consts::OS);
         assert!(info["capabilities"]["auth"].is_boolean());
         assert!(info["capabilities"]["media"].is_boolean());
+        assert!(info["capabilities"]["web"].is_boolean());
     }
 
     /// Commands deliberately NOT on the HTTP bridge, hand-pinned so a newly
