@@ -195,7 +195,7 @@ pub fn eligible_count(
 }
 
 pub fn start_scan(
-    state: tauri::State<'_, SimilarState>,
+    state: &'static SimilarState,
     scope_key: String,
     source_version: i64,
     similarity_threshold: f32,
@@ -254,10 +254,10 @@ pub fn start_scan(
     Ok(())
 }
 
-pub fn cancel_scan(state: tauri::State<'_, SimilarState>) {
+pub fn cancel_scan(state: &'static SimilarState) {
     state.cancel_flag.store(true, Ordering::SeqCst);
 }
-pub fn get_status(state: tauri::State<'_, SimilarState>) -> SimilarScanStatus {
+pub fn get_status(state: &'static SimilarState) -> SimilarScanStatus {
     state.status.lock().unwrap().clone()
 }
 

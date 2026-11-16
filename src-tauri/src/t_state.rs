@@ -146,6 +146,21 @@ pub fn import_cancellation() -> &'static ImportCancellation {
     IMPORT_CANCELLATION.get_or_init(|| ImportCancellation(Arc::new(Mutex::new(ImportState::default()))))
 }
 
+/// The dedup scan runner: one instance so `dedup_start_scan`'s CAS re-entry
+/// guard, the status command and the cancel command all see the same scan.
+static DEDUP: OnceLock<crate::t_dedup::DedupState> = OnceLock::new();
+
+pub fn dedup() -> &'static crate::t_dedup::DedupState {
+    DEDUP.get_or_init(crate::t_dedup::DedupState::default)
+}
+
+/// Same pattern as [`dedup`] for the similar-photo scan.
+static SIMILAR: OnceLock<crate::t_similar::SimilarState> = OnceLock::new();
+
+pub fn similar() -> &'static crate::t_similar::SimilarState {
+    SIMILAR.get_or_init(crate::t_similar::SimilarState::default)
+}
+
 /// Initialize every registered process state up front. The host entry point
 /// calls this first so time-anchored state (like `StartupState::started`)
 /// reflects process start rather than the first late reader; library-only
@@ -158,6 +173,8 @@ pub fn init_process_states() {
     let _ = face_indexing_status();
     let _ = face_index_progress();
     let _ = import_cancellation();
+    let _ = dedup();
+    let _ = similar();
 }
 
 #[cfg(test)]

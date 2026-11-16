@@ -34,7 +34,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
 
 // Scoped refreshes and RAW thumbnail requests can open several connections.
 // Keep their library stable until all reads and writes have completed.
@@ -4013,7 +4013,6 @@ pub async fn search_similar_images(
 
 #[tauri::command]
 pub fn similar_start_scan(
-    state: State<t_similar::SimilarState>,
     scope_key: String,
     source_version: i64,
     similarity_threshold: f32,
@@ -4023,7 +4022,7 @@ pub fn similar_start_scan(
     keep_rules: Option<crate::t_dedup::KeepRules>,
 ) -> Result<(), String> {
     t_similar::start_scan(
-        state,
+        crate::t_state::similar(),
         scope_key,
         source_version,
         similarity_threshold,
@@ -4035,15 +4034,13 @@ pub fn similar_start_scan(
 }
 
 #[tauri::command]
-pub fn similar_get_scan_status(
-    state: State<t_similar::SimilarState>,
-) -> t_similar::SimilarScanStatus {
-    t_similar::get_status(state)
+pub fn similar_get_scan_status() -> t_similar::SimilarScanStatus {
+    t_similar::get_status(crate::t_state::similar())
 }
 
 #[tauri::command]
-pub fn similar_cancel_scan(state: State<t_similar::SimilarState>) {
-    t_similar::cancel_scan(state)
+pub fn similar_cancel_scan() {
+    t_similar::cancel_scan(crate::t_state::similar())
 }
 
 #[tauri::command]
@@ -4182,7 +4179,6 @@ pub fn get_person_thumbnail(person_id: i64) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub fn dedup_start_scan(
-    state: tauri::State<'_, crate::t_dedup::DedupState>,
     params: Option<crate::t_sqlite::QueryParams>,
     collection_id: Option<i64>,
     file_ids: Option<Vec<i64>>,
@@ -4190,7 +4186,7 @@ pub fn dedup_start_scan(
     group_raw_pairs: Option<bool>,
 ) -> Result<(), String> {
     crate::t_dedup::start_scan(
-        state,
+        crate::t_state::dedup(),
         params,
         collection_id,
         file_ids,
@@ -4200,21 +4196,13 @@ pub fn dedup_start_scan(
 }
 
 #[tauri::command]
-pub fn dedup_get_scan_status(
-    state: tauri::State<'_, crate::t_dedup::DedupState>,
-) -> Result<crate::t_dedup::DedupScanStatus, String> {
-    let mut status = state.status.lock().unwrap().clone();
-    status.is_scanning = state.is_scanning.load(std::sync::atomic::Ordering::SeqCst);
-    Ok(status.clone())
+pub fn dedup_get_scan_status() -> Result<crate::t_dedup::DedupScanStatus, String> {
+    Ok(crate::t_dedup::get_scan_status(crate::t_state::dedup()))
 }
 
 #[tauri::command]
-pub fn dedup_cancel_scan(
-    state: tauri::State<'_, crate::t_dedup::DedupState>,
-) -> Result<(), String> {
-    state
-        .cancel_flag
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+pub fn dedup_cancel_scan() -> Result<(), String> {
+    crate::t_dedup::cancel_scan(crate::t_state::dedup());
     Ok(())
 }
 

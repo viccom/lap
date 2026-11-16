@@ -97,7 +97,7 @@ const RAW_PAIR_MEMBER_SQL: &str = "(a.media_subtype IS 'raw_jpeg_pair' AND EXIST
 // ----------------------------------------------------------------------------
 
 pub fn start_scan(
-    dedup_state: tauri::State<'_, DedupState>,
+    dedup_state: &'static DedupState,
     query_params: Option<QueryParams>,
     collection_id: Option<i64>,
     file_ids: Option<Vec<i64>>,
@@ -167,6 +167,18 @@ pub fn start_scan(
     });
 
     Ok(())
+}
+
+/// Snapshot the scan status with the live scanning flag folded in.
+pub fn get_scan_status(dedup_state: &'static DedupState) -> DedupScanStatus {
+    let mut status = dedup_state.status.lock().unwrap().clone();
+    status.is_scanning = dedup_state.is_scanning.load(Ordering::SeqCst);
+    status
+}
+
+/// Ask a running scan to stop; the worker checks the flag between batches.
+pub fn cancel_scan(dedup_state: &'static DedupState) {
+    dedup_state.cancel_flag.store(true, Ordering::SeqCst);
 }
 
 fn scan_and_hash_files(
