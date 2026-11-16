@@ -338,6 +338,17 @@ pub fn read_exif_permissive(file_path: &str) -> Option<exif::Exif> {
     })
 }
 
+/// Header-only pixel dimensions (no full decode). Used to decide whether a
+/// libjpeg-turbo half-scale decode is worth attempting for face detection.
+pub(crate) fn jpeg_dimensions(file_path: &str) -> Result<(u32, u32), String> {
+    let result = panic::catch_unwind(|| imagesize::size(file_path));
+    match result {
+        Ok(Ok(d)) => Ok((d.width as u32, d.height as u32)),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err("Panic while reading image dimensions".to_string()),
+    }
+}
+
 pub fn get_image_orientation(file_path: &str) -> i32 {
     let data = match File::open(file_path) {
         Ok(mut f) => {

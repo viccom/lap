@@ -14,6 +14,11 @@ use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager};
 
+/// Short side at or above which `process_image` detects on a libjpeg-turbo 1/2
+/// decode instead of the full image. Below this the full decode is cheaper than
+/// the extra scaled pass.
+const DETECT_HALF_DECODE_MIN_DIM: u32 = 600;
+
 // cancellation token for face indexing
 #[derive(Clone)]
 pub struct FaceIndexCancellation(pub Arc<Mutex<bool>>);
@@ -455,13 +460,60 @@ impl FaceEngine {
         &mut self,
         image_path: &str,
     ) -> Result<(Vec<FaceData>, (u32, u32)), String> {
-        let img = image::open(image_path).map_err(|e| format!("Failed to open image: {}", e))?;
-        // `image::open` does NOT apply EXIF orientation. Rotate to display
-        // space so bboxes land in the same space as the thumbnail path and
-        // every consumer (stored dims are display dims).
+        // `image::open` does NOT apply EXIF orientation; rotate to display space
+        // so bboxes land in the same space as every other source and consumer.
         let orientation = crate::t_image::get_image_orientation(image_path);
+
+        // Fast path for large JPEGs. Detection always ends at a 640px input, so
+        // detecting on a libjpeg-turbo 1/2 decode (DCT-domain, cheap) loses no
+        // recall — verified equal on 60 real photos — while cutting the
+        // detection cost ~3x (the full-image -> 640 resample dominates). The
+        // full original is decoded only when a face is found, which most photos
+        // do not have, and the box is mapped back to full-resolution pixels for
+        // the 90px source gate and the alignment warp, so embeddings are
+        // unchanged.
+        if crate::t_image::is_jpeg_path(image_path) {
+            if let Some((detect, faces)) = self.half_scale_detect(image_path, orientation) {
+                if faces.is_empty() {
+                    return Ok((Vec::new(), (detect.width(), detect.height())));
+                }
+                let img = image::open(image_path)
+                    .map_err(|e| format!("Failed to open image: {}", e))?;
+                let img = crate::t_image::apply_orientation(img, orientation);
+                return self.finish_faces(&detect, &img, faces);
+            }
+        }
+
+        let img = image::open(image_path).map_err(|e| format!("Failed to open image: {}", e))?;
         let img = crate::t_image::apply_orientation(img, orientation);
         self.process_dynamic_image(&img)
+    }
+
+    /// Decode `image_path` at 1/2 via libjpeg-turbo (oriented) and detect on it.
+    /// Returns None when the file is too small for a half-scale decode to pay
+    /// off or the decode fails; the caller then falls back to the full image.
+    fn half_scale_detect(
+        &mut self,
+        image_path: &str,
+        orientation: i32,
+    ) -> Option<(DynamicImage, Vec<FaceBox>)> {
+        let (w0, h0) = crate::t_image::jpeg_dimensions(image_path).ok()?;
+        if w0.min(h0) < DETECT_HALF_DECODE_MIN_DIM {
+            return None;
+        }
+        // Force exactly 1/2: the shim picks the largest 1/2^n with both dims
+        // >= 2*target, and min_dim/3 keeps 2*target <= min_dim < 4*target.
+        let target = (w0.min(h0) / 3).max(1);
+        let (pixels, w, h) =
+            crate::t_jpeg::decode_rgb8_scaled(image_path, target, target).ok()?;
+        // Guard against a denom of 1 (then this decode was pointless).
+        if w.max(h) >= w0.max(h0) {
+            return None;
+        }
+        let buf = image::RgbImage::from_raw(w, h, pixels)?;
+        let detect = crate::t_image::apply_orientation(DynamicImage::ImageRgb8(buf), orientation);
+        let faces = self.detect_faces(&detect).ok()?;
+        Some((detect, faces))
     }
 
     pub fn process_image_from_bytes(
@@ -482,6 +534,36 @@ impl FaceEngine {
         img: &DynamicImage,
     ) -> Result<(Vec<FaceData>, (u32, u32)), String> {
         let faces = self.detect_faces(img)?;
+        self.finish_faces(img, img, faces)
+    }
+
+    /// Run the quality gates and the embedding for faces already detected on
+    /// `detect_img`, sampling gate/warp pixels from `embed_img` (usually the
+    /// full-resolution original). Boxes are mapped from the detection source
+    /// onto the embedding source first.
+    fn finish_faces(
+        &mut self,
+        detect_img: &DynamicImage,
+        embed_img: &DynamicImage,
+        mut faces: Vec<FaceBox>,
+    ) -> Result<(Vec<FaceData>, (u32, u32)), String> {
+        // Map boxes from the detection source onto the embedding source.
+        let sx = embed_img.width() as f32 / detect_img.width().max(1) as f32;
+        let sy = embed_img.height() as f32 / detect_img.height().max(1) as f32;
+        if (sx - 1.0).abs() > 1e-6 || (sy - 1.0).abs() > 1e-6 {
+            for face in &mut faces {
+                face.x *= sx;
+                face.y *= sy;
+                face.width *= sx;
+                face.height *= sy;
+                if let Some(kps) = face.landmarks.as_mut() {
+                    for (kx, ky) in kps.iter_mut() {
+                        *kx *= sx;
+                        *ky *= sy;
+                    }
+                }
+            }
+        }
 
         let mut results = Vec::new();
         for face in faces {
@@ -502,7 +584,7 @@ impl FaceEngine {
             }
 
             // Filter 4: Skip blurry faces
-            let blur_score = self.calculate_blur_score(img, &face);
+            let blur_score = self.calculate_blur_score(embed_img, &face);
             if blur_score < t_common::MIN_BLUR_SCORE {
                 continue;
             }
@@ -510,13 +592,13 @@ impl FaceEngine {
             // Get embedding for quality face. A single face failing to embed
             // (e.g. a degenerate alignment) must not discard the other faces
             // this file already yielded — skip just that one.
-            let embedding = match self.get_face_embedding(img, &face) {
+            let embedding = match self.get_face_embedding(embed_img, &face) {
                 Ok(embedding) => embedding,
                 Err(e) => {
                     eprintln!(
                         "Skipping one face of a {}x{} image: {e}",
-                        img.width(),
-                        img.height()
+                        embed_img.width(),
+                        embed_img.height()
                     );
                     continue;
                 }
@@ -527,7 +609,7 @@ impl FaceEngine {
             });
         }
 
-        Ok((results, (img.width(), img.height())))
+        Ok((results, (embed_img.width(), embed_img.height())))
     }
 
     /// Calculate blur score using Variance of Laplacian
@@ -1317,6 +1399,112 @@ mod tests {
             worst >= 0.45,
             "same-person best-pair cosine {worst:.3} below the cluster merge boundary 0.45"
         );
+    }
+
+    /// Diagnostic: verify half-scale detection recall == full-scale recall over
+    /// many real photos. LAP_FACE_RECALL=path1;path2;...
+    #[test]
+    fn face_halfscale_recall_parity_local() {
+        let Ok(spec) = std::env::var("LAP_FACE_RECALL") else {
+            eprintln!("LAP_FACE_RECALL not set; skipping");
+            return;
+        };
+        let models_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/models");
+        let mut engine = FaceEngine::new();
+        engine.load_models_from_dir(&models_dir).expect("models load");
+        let (mut n, mut mismatch, mut total_full, mut total_half) = (0, 0, 0, 0);
+        for path in spec.split(';').filter(|s| !s.trim().is_empty()) {
+            let Ok(full) = image::open(path) else { continue };
+            let orient = crate::t_image::get_image_orientation(path);
+            let full = crate::t_image::apply_orientation(full, orient);
+            if !crate::t_image::is_jpeg_path(path) {
+                continue;
+            }
+            let (w0, h0) = (full.width(), full.height());
+            if w0.min(h0) < 600 {
+                continue;
+            }
+            let tgt = (w0.min(h0) / 3).max(1);
+            let Ok((px, w, h)) = crate::t_jpeg::decode_rgb8_scaled(path, tgt, tgt) else {
+                continue;
+            };
+            let half = crate::t_image::apply_orientation(
+                DynamicImage::ImageRgb8(image::RgbImage::from_raw(w, h, px).unwrap()),
+                orient,
+            );
+            let cf = engine.detect_faces(&full).map(|f| f.len()).unwrap_or(0);
+            let ch = engine.detect_faces(&half).map(|f| f.len()).unwrap_or(0);
+            n += 1;
+            total_full += cf;
+            total_half += ch;
+            if cf != ch {
+                mismatch += 1;
+                println!("MISMATCH {}: full={cf} half={ch}", path.rsplit(['/', '\\']).next().unwrap());
+            }
+        }
+        println!("photos={n} mismatches={mismatch} total_faces full={total_full} half={total_half}");
+        assert_eq!(mismatch, 0, "half-scale detection changed recall");
+    }
+
+    /// Diagnostic: rigorous warm-cache cost breakdown per real decode path.
+    /// LAP_FACE_COST=paths
+    #[test]
+    fn face_cost_breakdown_local() {
+        use std::time::{Duration, Instant};
+        let Ok(spec) = std::env::var("LAP_FACE_COST") else {
+            eprintln!("LAP_FACE_COST not set; skipping");
+            return;
+        };
+        let models_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/models");
+        let mut engine = FaceEngine::new();
+        engine.load_models_from_dir(&models_dir).expect("models load");
+
+        for path in spec.split(';').filter(|s| !s.trim().is_empty()) {
+            let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+            // warm-cache min-of-3 per stage, sequenced (no false sharing).
+            let mut decode_full = Duration::MAX;
+            for _ in 0..3 {
+                let t = Instant::now();
+                let i = image::open(path).unwrap();
+                std::hint::black_box(&i);
+                decode_full = decode_full.min(t.elapsed());
+            }
+            let img = image::open(path).unwrap();
+            let mut detect_full = Duration::MAX;
+            for _ in 0..3 {
+                let t = Instant::now();
+                std::hint::black_box(engine.detect_faces(&img).map(|f| f.len()).unwrap_or(0));
+                detect_full = detect_full.min(t.elapsed());
+            }
+            let (w0, h0) = (img.width(), img.height());
+            let tgt = (w0.min(h0) / 3).max(1);
+            let mut turbo_half = Duration::MAX;
+            for _ in 0..3 {
+                let t = Instant::now();
+                std::hint::black_box(crate::t_jpeg::decode_rgb8_scaled(path, tgt, tgt).ok());
+                turbo_half = turbo_half.min(t.elapsed());
+            }
+            let (px, w, h) = crate::t_jpeg::decode_rgb8_scaled(path, tgt, tgt).unwrap();
+            let half = DynamicImage::ImageRgb8(image::RgbImage::from_raw(w, h, px).unwrap());
+            let mut detect_half = Duration::MAX;
+            for _ in 0..3 {
+                let t = Instant::now();
+                std::hint::black_box(engine.detect_faces(&half).map(|f| f.len()).unwrap_or(0));
+                detect_half = detect_half.min(t.elapsed());
+            }
+            let kept = engine.process_image(path).map(|r| r.0.len()).unwrap_or(0);
+            let mut total = Duration::MAX;
+            for _ in 0..3 {
+                let t = Instant::now();
+                std::hint::black_box(engine.process_image(path).map(|r| r.0.len()).unwrap_or(0));
+                total = total.min(t.elapsed());
+            }
+            println!("== {name} full={w0}x{h0}");
+            println!(
+                "   decode_full={decode_full:?} detect_640={detect_full:?} turbo1/2_decode={turbo_half:?} detect_on_1/2={detect_half:?}"
+            );
+            println!("   kept={kept} process_image_total={total:?}");
+        }
     }
 
     /// Diagnostic: dump per-face pre-gate stats (confidence, source size, blur
