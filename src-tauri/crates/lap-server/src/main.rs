@@ -64,8 +64,15 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     // back the /api/events and /api/auth routes.
     let boot = boot::run(&flags)?;
 
-    let sse_router = axum::Router::new()
+    // /api/cmd and /api/events sit behind the §3.6 whitelist middleware;
+    // server_info and /api/auth stay open (client discovery + first token).
+    let protected = axum::Router::new()
+        .route("/api/cmd/{name}", post(cmd_handler))
         .route("/api/events", get(sse::events_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            boot.auth.clone(),
+            auth::whitelist_middleware,
+        ))
         .with_state(boot.bus.clone());
     let auth_router = axum::Router::new()
         .route("/api/auth/status", get(auth::auth_status))
@@ -78,8 +85,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
         .with_state(boot.auth.clone());
     let app = axum::Router::new()
         .route("/api/server_info", get(server_info))
-        .route("/api/cmd/{name}", post(cmd_handler))
-        .merge(sse_router)
+        .merge(protected)
         .merge(auth_router);
     let addr = format!("{}:{}", flags.host, flags.port);
     let listener = tokio::net::TcpListener::bind(&addr)

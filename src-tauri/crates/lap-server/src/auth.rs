@@ -29,7 +29,7 @@ use crate::auth_store::{AuthStore, SCOPE_ADMIN, SCOPE_STANDARD};
 pub const COOKIE_NAME: &str = "lapd_token";
 /// §3.5: signed media URLs are valid for 10 minutes.
 #[allow(dead_code)] // consumed by the media endpoints (batch 3.3 follow-up)
-pub const MEDIA_URL_TTL_SECS: u64 = 600;
+    pub const MEDIA_URL_TTL_SECS: u64 = 600;
 const PAIRING_TTL: Duration = Duration::from_secs(300);
 const LOGIN_WINDOW: Duration = Duration::from_secs(60);
 const LOGIN_LIMIT: u32 = 5;
@@ -162,7 +162,7 @@ pub fn admin_password_hash_path(data_dir: &Path) -> PathBuf {
 }
 
 #[allow(dead_code)] // consume time in the media endpoints (follow-up commit)
-fn unix_now() -> u64 {
+    fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -338,12 +338,12 @@ impl AuthService {
 
     /// Per-device command rate limit (§3.6: 60/min/device).
     #[allow(dead_code)] // consume in the whitelist middleware (follow-up commit)
-pub fn check_cmd_rate(&self, token_id: i64) -> bool {
+    pub fn check_cmd_rate(&self, token_id: i64) -> bool {
         self.cmd_limiter.check(&token_id.to_string())
     }
 
     #[allow(dead_code)] // consume in the whitelist middleware (follow-up commit)
-pub fn is_loopback_or_admin(
+    pub fn is_loopback_or_admin(
         &self,
         token: Option<&crate::auth_store::TokenRow>,
         remote_ip: Option<std::net::IpAddr>,
@@ -355,12 +355,12 @@ pub fn is_loopback_or_admin(
     // -- signed media URLs (§3.5) ------------------------------------------
 
     #[allow(dead_code)] // consume in the media endpoints (follow-up commit)
-fn media_mac(&self, canonical: &str) -> String {
+    fn media_mac(&self, canonical: &str) -> String {
         blake3::keyed_hash(&self.mac_key, canonical.as_bytes()).to_hex().to_string()
     }
 
     #[allow(dead_code)] // consume in the media endpoints (follow-up commit)
-fn canonical_media_string(path_and_query: &str, exp: u64, device_id: i64) -> Option<String> {
+    fn canonical_media_string(path_and_query: &str, exp: u64, device_id: i64) -> Option<String> {
         // Split path?query, drop `exp` and `sig` (keep everything else in
         // received order), and rebuild the MAC input deterministically.
         let (path, query) = match path_and_query.split_once('?') {
@@ -383,7 +383,7 @@ fn canonical_media_string(path_and_query: &str, exp: u64, device_id: i64) -> Opt
 
     /// Sign one media URL for a device: appends `dev`, `exp`, `sig`.
     #[allow(dead_code)] // consume in the media endpoints (follow-up commit)
-pub fn sign_media_url(&self, url: &str, device_id: i64) -> Result<String, AuthError> {
+    pub fn sign_media_url(&self, url: &str, device_id: i64) -> Result<String, AuthError> {
         let url = url.trim();
         if url.len() > 2048 {
             return Err(AuthError::BadRequest("media url too long".into()));
@@ -409,7 +409,7 @@ pub fn sign_media_url(&self, url: &str, device_id: i64) -> Result<String, AuthEr
     /// Verify a signed media request: expiry first, then the MAC over the
     /// canonical string rebuilt from the received query.
     #[allow(dead_code)] // consume in the media endpoints (follow-up commit)
-pub fn verify_media_url(&self, path_and_query: &str) -> Result<(), AuthError> {
+    pub fn verify_media_url(&self, path_and_query: &str) -> Result<(), AuthError> {
         let (_path, query) = path_and_query
             .split_once('?')
             .ok_or(AuthError::Forbidden("missing media signature".into()))?;
@@ -573,6 +573,62 @@ pub async fn auth_pair(
         .to_string();
     let (token, scope, id) = auth.pair(&code, &device_name, &addr.ip().to_string())?;
     credential_response(&token, scope, &device_name, id)
+}
+
+impl AuthService {
+    /// The §3.6 default-deny decision for one protected request. `command`
+    /// is `Some` on `/api/cmd/{name}` (whitelist + scope + rate limit) and
+    /// `None` on token-only routes (`/api/events`).
+    pub fn authorize_request(
+        &self,
+        headers: &HeaderMap,
+        command: Option<&str>,
+        remote_ip: Option<std::net::IpAddr>,
+    ) -> Result<crate::auth_store::TokenRow, AuthError> {
+        let token = self
+            .authenticate(headers)
+            .ok_or(AuthError::Unauthorized("authentication required".into()))?;
+        let loopback = remote_ip.is_some_and(|ip| ip.is_loopback());
+        if let Some(name) = command {
+            let exposure = crate::bridge_gen::EXPOSURES
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, exposure)| *exposure)
+                .ok_or(AuthError::Forbidden("command not whitelisted".into()))?;
+            if exposure == "admin" && token.scope != SCOPE_ADMIN && !loopback {
+                return Err(AuthError::Forbidden("admin scope required".into()));
+            }
+            if exposure == "admin" {
+                // Attempt-level audit: rejected admin attempts are the
+                // interesting ones (plan §3.6 记录管理员操作).
+                self.store.audit("admin_cmd", &format!("device={} cmd={name}", token.id));
+            }
+            if !self.check_cmd_rate(token.id) {
+                return Err(AuthError::RateLimited("command rate limit exceeded".into()));
+            }
+        }
+        Ok(token)
+    }
+}
+
+/// axum adapter wrapping the protected router (`/api/cmd/*`, `/api/events`,
+/// later the signed media routes).
+pub async fn whitelist_middleware(
+    State(auth): State<std::sync::Arc<AuthService>>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let command = request
+        .uri()
+        .path()
+        .strip_prefix("/api/cmd/")
+        .map(|rest| rest.to_string());
+    if let Err(e) = auth.authorize_request(&headers, command.as_deref(), Some(addr.ip())) {
+        return e.into_response();
+    }
+    next.run(request).await
 }
 
 fn credential_response(token: &str, scope: &str, device_name: &str, id: i64) -> Result<Response, AuthError> {
@@ -836,5 +892,90 @@ mod tests {
         assert!(ct_eq(b"abc", b"abc"));
         assert!(!ct_eq(b"abc", b"abd"));
         assert!(!ct_eq(b"abc", b"abcd"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn whitelist_decisions_follow_the_exposure_axis() {
+        let dir = scratch("whitelist");
+        AuthService::set_admin_password(&dir, "pw").unwrap();
+        let auth = AuthService::open(&dir).unwrap();
+        let lan: std::net::IpAddr = "10.0.0.5".parse().unwrap();
+        let loopback: std::net::IpAddr = "127.0.0.1".parse().unwrap();
+
+        let mut headers = HeaderMap::new();
+        // No token → 401 before anything else.
+        assert!(matches!(
+            auth.authorize_request(&headers, Some("get_app_config"), Some(lan)),
+            Err(AuthError::Unauthorized(_))
+        ));
+        // Password login → standard scope.
+        let (token, _scope, _id) = auth.login("pw", "web", "10.0.0.5").unwrap();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {token}").parse().unwrap(),
+        );
+        // read/write commands: any valid token, from anywhere.
+        auth.authorize_request(&headers, Some("get_app_config"), Some(lan)).unwrap();
+        // admin command from a standard-scope LAN device → 403.
+        assert!(matches!(
+            auth.authorize_request(&headers, Some("index_album"), Some(lan)),
+            Err(AuthError::Forbidden(_))
+        ));
+        // ...but from loopback any authenticated token may.
+        auth.authorize_request(&headers, Some("index_album"), Some(loopback)).unwrap();
+        // Names outside the whitelist → 403 (B/C/internal alike).
+        assert!(matches!(
+            auth.authorize_request(&headers, Some("set_desktop_wallpaper"), Some(lan)),
+            Err(AuthError::Forbidden(_))
+        ));
+        assert!(matches!(
+            auth.authorize_request(&headers, Some("totally_unknown"), Some(lan)),
+            Err(AuthError::Forbidden(_))
+        ));
+
+        // A paired (admin-scope) device runs admin commands from the LAN.
+        let code = auth.mint_pairing_code();
+        let (admin_token, scope, _id) = auth.pair(&code, "desktop", "10.0.0.5").unwrap();
+        assert_eq!(scope, SCOPE_ADMIN);
+        let mut admin_headers = HeaderMap::new();
+        admin_headers.insert(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {admin_token}").parse().unwrap(),
+        );
+        auth.authorize_request(&admin_headers, Some("index_album"), Some(lan)).unwrap();
+
+        // Token-only routes (events) need just a valid token.
+        auth.authorize_request(&admin_headers, None, Some(lan)).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn command_rate_limit_is_per_device() {
+        let dir = scratch("cmd-rate");
+        AuthService::set_admin_password(&dir, "pw").unwrap();
+        let auth = AuthService::open(&dir).unwrap();
+        let (token_a, ..) = auth.login("pw", "a", "10.0.0.1").unwrap();
+        let (token_b, ..) = auth.login("pw", "b", "10.0.0.2").unwrap();
+        let headers_for = |t: &str| {
+            let mut h = HeaderMap::new();
+            h.insert(
+                axum::http::header::AUTHORIZATION,
+                format!("Bearer {t}").parse().unwrap(),
+            );
+            h
+        };
+        let lan: std::net::IpAddr = "10.0.0.1".parse().unwrap();
+        for _ in 0..CMD_LIMIT {
+            auth.authorize_request(&headers_for(&token_a), Some("get_app_config"), Some(lan))
+                .unwrap();
+        }
+        assert!(matches!(
+            auth.authorize_request(&headers_for(&token_a), Some("get_app_config"), Some(lan)),
+            Err(AuthError::RateLimited(_))
+        ));
+        // Device B is unaffected by A's window.
+        auth.authorize_request(&headers_for(&token_b), Some("get_app_config"), Some(lan))
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
