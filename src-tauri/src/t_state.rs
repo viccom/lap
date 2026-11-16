@@ -6,9 +6,10 @@
 //! has to manage them.
 //!
 //! Each entry is a `OnceLock` holding the value for the life of the process,
-//! mirroring the existing pattern in `t_config` and `t_events`. Commands that
-//! still take `State<T>` for values registered elsewhere keep working; a value
-//! must never live in both places, or the two copies would drift.
+//! mirroring the existing pattern in `t_config` and `t_events`. No command
+//! takes an injected `State<T>` anymore — they all read this registry — and a
+//! value must never also live behind a Tauri handle, or the two copies would
+//! drift.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{
