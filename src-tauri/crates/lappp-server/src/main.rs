@@ -28,7 +28,7 @@ use axum::routing::{get, post};
 /// grow when the web client consumes it.
 fn server_info_value() -> serde_json::Value {
     serde_json::json!({
-        "name": "lapd",
+        "name": "lappp-server",
         "version": env!("CARGO_PKG_VERSION"),
         "platform": std::env::consts::OS,
         "pathSeparator": std::path::MAIN_SEPARATOR,
@@ -131,7 +131,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     let web = static_files::WebRoot::resolve(flags.web_dir.as_deref(), exe_dir.as_deref());
     static_files::set_web_enabled(web.is_some());
     if let Some(root) = &web {
-        println!("lapd: serving Web client from {}", root.path().display());
+        println!("lappp-server: serving Web client from {}", root.path().display());
     }
     let app = axum::Router::new()
         .route("/api/server_info", get(server_info))
@@ -146,7 +146,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
         .map_err(|e| format!("cannot bind {addr}: {e}"))?;
 
     println!(
-        "lapd {} listening on http://{addr} (data: {})",
+        "lappp-server {} listening on http://{addr} (data: {})",
         env!("CARGO_PKG_VERSION"),
         boot.data_dir.display()
     );
@@ -158,7 +158,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     )
     .with_graceful_shutdown(async move {
         shutdown.wait().await;
-        println!("lapd: shutting down — no new commands accepted");
+        println!("lappp-server: shutting down — no new commands accepted");
     })
     .await;
 
@@ -168,7 +168,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     signal_watcher.abort();
     control_watcher.abort();
     println!(
-        "lapd: stopped{}",
+        "lappp-server: stopped{}",
         if warnings.is_empty() {
             String::new()
         } else {
@@ -191,18 +191,18 @@ async fn main() -> ExitCode {
     let flags = match flags::parse(argv) {
         Ok(flags) => flags,
         Err(e) => {
-            eprintln!("lapd: {e}\n\n{}", flags::USAGE);
+            eprintln!("lappp-server: {e}\n\n{}", flags::USAGE);
             return ExitCode::from(2);
         }
     };
     if let Some(password) = &flags.set_admin_password {
         return match set_admin_password_once(&flags, password) {
             Ok(message) => {
-                println!("lapd: {message}");
+                println!("lappp-server: {message}");
                 ExitCode::SUCCESS
             }
             Err(e) => {
-                eprintln!("lapd: {e}");
+                eprintln!("lappp-server: {e}");
                 ExitCode::from(1)
             }
         };
@@ -210,7 +210,7 @@ async fn main() -> ExitCode {
     match serve(flags).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("lapd: {e}");
+            eprintln!("lappp-server: {e}");
             ExitCode::from(1)
         }
     }
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn server_info_shape_is_minimal_and_honest() {
         let info = server_info_value();
-        assert_eq!(info["name"], "lapd");
+        assert_eq!(info["name"], "lappp-server");
         assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(info["platform"], std::env::consts::OS);
         // The Web client adopts this separator for the library's stored paths

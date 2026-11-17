@@ -52,7 +52,7 @@ pub fn conflicting_server(data_dir: &Path, own_pid: u32) -> Option<String> {
 }
 
 /// Read `{pid, port, …}` from a lock body. The lock file is written by
-/// `lap-server::lock` with those exact keys (see `crates/lap-server/src/lock.rs`).
+/// `lappp-server::lock` with those exact keys (see `crates/lappp-server/src/lock.rs`).
 fn parse_lock_owner(body: &str) -> Option<(u32, u16)> {
     let value: serde_json::Value = serde_json::from_str(body).ok()?;
     let pid = u32::try_from(value.get("pid")?.as_u64()?).ok()?;
@@ -61,7 +61,7 @@ fn parse_lock_owner(body: &str) -> Option<(u32, u16)> {
 }
 
 /// Cross-platform pid liveness without new dependencies. Mirrors
-/// `lap-server::lock::pid_alive` (the shell does not depend on lap-server).
+/// `lappp-server::lock::pid_alive` (the shell does not depend on lappp-server).
 /// When the check cannot decide (another user's process) it reports "alive":
 /// wrongly taking over a live writer is the dangerous direction, so an
 /// undecidable pid must not be reclaimed.
@@ -119,15 +119,15 @@ mod tests {
     #[test]
     fn data_dir_flag_accepts_both_spellings_and_ignores_blank() {
         assert_eq!(
-            data_dir_from_args(&args(&["Lap.exe", "--data-dir", "C:/tmp/x"])),
+            data_dir_from_args(&args(&["lappp.exe", "--data-dir", "C:/tmp/x"])),
             Some(std::path::PathBuf::from("C:/tmp/x"))
         );
         assert_eq!(
-            data_dir_from_args(&args(&["Lap.exe", "--data-dir=C:/tmp/y"])),
+            data_dir_from_args(&args(&["lappp.exe", "--data-dir=C:/tmp/y"])),
             Some(std::path::PathBuf::from("C:/tmp/y"))
         );
-        assert_eq!(data_dir_from_args(&args(&["Lap.exe"])), None);
-        assert_eq!(data_dir_from_args(&args(&["Lap.exe", "--data-dir", "  "])), None);
+        assert_eq!(data_dir_from_args(&args(&["lappp.exe"])), None);
+        assert_eq!(data_dir_from_args(&args(&["lappp.exe", "--data-dir", "  "])), None);
     }
 
     #[test]

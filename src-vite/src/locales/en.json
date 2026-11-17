@@ -280,7 +280,7 @@
   },
   "welcome": {
     "add_album_title": "Start with a new album",
-    "add_album_description": "Select a folder and let Lap organize your photos and videos.",
+    "add_album_description": "Select a folder and let lappp organize your photos and videos.",
     "smart_album_title": "Organize with smart albums",
     "smart_album_description": "Use rules to automatically group photos that match your criteria.",
     "collection_title": "Group photos in collections",
@@ -332,7 +332,7 @@
         "skip_once": "Skip this file and continue",
         "file_label": "Last scanned file",
         "message": "The previous scan did not close normally.",
-        "message_with_file": "The previous scanning task did not exit cleanly.\n\nLast scanned file:\n{file}\n\nIf you continue, Lap will skip this file once and resume scanning."
+        "message_with_file": "The previous scanning task did not exit cleanly.\n\nLast scanned file:\n{file}\n\nIf you continue, lappp will skip this file once and resume scanning."
       }
     }
   },
@@ -1072,7 +1072,7 @@
       "failed": "Failed: {count}",
       "release_requested": "Release requested: {count}",
       "kept_local": "Kept on this device: {count}",
-      "kept_local_hint": "Files you keep on this device, or that Windows did not let Lap free up (Controlled folder access)."
+      "kept_local_hint": "Files you keep on this device, or that Windows did not let lappp free up (Controlled folder access)."
     },
     "image_editor": {
       "title": "Edit",
@@ -1369,7 +1369,7 @@
       "network": "Network error while loading video",
       "decode": "Video decoding error",
       "format": "Unsupported video format or the file is corrupted.",
-      "external_player_recommended": "This video needs compatibility transcoding before it can play here. For long videos, Lap recommends using an external player instead of waiting for background processing.",
+      "external_player_recommended": "This video needs compatibility transcoding before it can play here. For long videos, lappp recommends using an external player instead of waiting for background processing.",
       "unsafe_webview": "This video format is not supported for playback.",
       "open_in_external_app": "Open in external player",
       "open_in_external_app_named": "Open video in {app}...",
@@ -1627,7 +1627,7 @@
       "multilingual_model_download_message": "The multilingual photo search model is not installed. Download it to enable search in 50+ languages.",
       "download": "Download",
       "downloading_multilingual_model": "Downloading multilingual model",
-      "multilingual_model_download_success": "Multilingual search model is ready. Restart Lap to use it.",
+      "multilingual_model_download_success": "Multilingual search model is ready. Restart lappp to use it.",
       "multilingual_model_download_failed": "Failed to download multilingual search model",
       "similarity": "Search similarity",
       "similarity_hint": "Controls visual matches for keyword searches",
@@ -2155,7 +2155,7 @@
     "password": "Admin password",
     "password_placeholder": "Enter the admin password",
     "pair_code": "6-digit pairing code",
-    "pair_placeholder": "From the lapd console",
+    "pair_placeholder": "From the lappp-server console",
     "device_name": "Device name",
     "working": "Please wait…",
     "submit_setup": "Set password",
@@ -2163,6 +2163,6 @@
     "submit_pair": "Pair device",
     "setup_done": "Password set — sign in with it now",
     "failed_default": "Sign-in failed",
-    "hint_pairing_code": "The pairing code is printed by lapd at startup (valid 5 minutes)."
+    "hint_pairing_code": "The pairing code is printed by lappp-server at startup (valid 5 minutes)."
   }
 }

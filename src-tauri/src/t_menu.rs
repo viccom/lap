@@ -18,7 +18,7 @@ pub fn install_app_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let about_item =
         MenuItemBuilder::with_id("about", format!("About {}", app.package_info().name))
             .build(app)?;
-    let home_item = MenuItemBuilder::with_id("help_homepage", "Lap Home").build(app)?;
+    let home_item = MenuItemBuilder::with_id("help_homepage", "lappp Home").build(app)?;
     let release_notes_item =
         MenuItemBuilder::with_id("help_release_notes", "Release Notes").build(app)?;
     let readme_item = MenuItemBuilder::with_id("help_readme", "README").build(app)?;
@@ -158,7 +158,7 @@ pub fn install_client_menu<R: Runtime>(
     app: &AppHandle<R>,
     config: &crate::servers::ServersConfig,
 ) -> tauri::Result<()> {
-    let mut submenu = SubmenuBuilder::new(app, "Lap");
+    let mut submenu = SubmenuBuilder::new(app, "lappp");
     for (i, s) in config.servers.iter().enumerate() {
         let label = if config.current.as_deref() == Some(s.url.as_str()) {
             format!("● {}", s.name)

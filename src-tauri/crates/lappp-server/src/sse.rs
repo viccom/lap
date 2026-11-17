@@ -16,7 +16,7 @@ use std::time::Duration;
 use axum::extract::State;
 use axum::response::sse::{Event as SseFrame, KeepAlive, Sse};
 use futures::stream::Stream;
-use lap_core::t_events::EventSink;
+use lappp_core::t_events::EventSink;
 
 const REPLAY_WINDOW: Duration = Duration::from_secs(30);
 const HEARTBEAT: Duration = Duration::from_secs(15);
@@ -225,7 +225,7 @@ fn render_frame(stamped: &Stamped) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lap_core::t_events::names;
+    use lappp_core::t_events::names;
 
     fn drain(bus: &Arc<EventBus>, last_seen: u64) -> Vec<(u64, String, serde_json::Value)> {
         bus.since(last_seen)

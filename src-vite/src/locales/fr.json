@@ -280,7 +280,7 @@
   },
   "welcome": {
     "add_album_title": "Commencez avec un nouvel album",
-    "add_album_description": "Sélectionnez un dossier et laissez Lap organiser vos photos et vidéos.",
+    "add_album_description": "Sélectionnez un dossier et laissez lappp organiser vos photos et vidéos.",
     "smart_album_title": "Organiser avec des albums intelligents",
     "smart_album_description": "Utilisez des règles pour regrouper automatiquement les photos qui vous intéressent.",
     "collection_title": "Regrouper les photos dans des collections",
@@ -332,7 +332,7 @@
         "skip_once": "Ignorer ce fichier et continuer",
         "file_label": "Dernier fichier analysé",
         "message": "La précédente analyse ne s'est pas terminée normalement.",
-        "message_with_file": "L’analyse précédente ne s’est pas terminée correctement.\n\nDernier fichier analysé :\n{file}\n\nSi vous continuez, Lap ignorera ce fichier une fois et reprendra l’analyse."
+        "message_with_file": "L’analyse précédente ne s’est pas terminée correctement.\n\nDernier fichier analysé :\n{file}\n\nSi vous continuez, lappp ignorera ce fichier une fois et reprendra l’analyse."
       }
     }
   },
@@ -1072,7 +1072,7 @@
       "failed": "Échecs : {count}",
       "release_requested": "Libération demandée : {count}",
       "kept_local": "Restés sur cet appareil : {count}",
-      "kept_local_hint": "Fichiers que vous gardez sur cet appareil, ou que Windows n'a pas laissé Lap libérer (Accès contrôlé aux dossiers)."
+      "kept_local_hint": "Fichiers que vous gardez sur cet appareil, ou que Windows n'a pas laissé lappp libérer (Accès contrôlé aux dossiers)."
     },
     "image_editor": {
       "title": "Modifier",
@@ -1369,7 +1369,7 @@
       "network": "Erreur réseau",
       "decode": "Erreur décodage",
       "format": "Format vidéo non supporté ou fichier corrompu.",
-      "external_player_recommended": "Cette vidéo nécessite un transcodage de compatibilité pour être lue ici. Pour les vidéos longues, Lap recommande d'utiliser un lecteur externe au lieu d'attendre le traitement en arrière-plan.",
+      "external_player_recommended": "Cette vidéo nécessite un transcodage de compatibilité pour être lue ici. Pour les vidéos longues, lappp recommande d'utiliser un lecteur externe au lieu d'attendre le traitement en arrière-plan.",
       "unsafe_webview": "Ce format vidéo n’est pas pris en charge pour la lecture.",
       "open_in_external_app": "Ouvrir dans un lecteur externe",
       "open_in_external_app_named": "Ouvrir la vidéo dans {app}...",
@@ -1627,7 +1627,7 @@
       "multilingual_model_download_message": "Le modèle de recherche de photos multilingue n'est pas installé. Téléchargez-le pour activer la recherche dans plus de 50 langues.",
       "download": "Télécharger",
       "downloading_multilingual_model": "Téléchargement du modèle multilingue",
-      "multilingual_model_download_success": "Le modèle de recherche multilingue est prêt. Redémarrez Lap pour l'utiliser.",
+      "multilingual_model_download_success": "Le modèle de recherche multilingue est prêt. Redémarrez lappp pour l'utiliser.",
       "multilingual_model_download_failed": "Échec du téléchargement du modèle de recherche multilingue",
       "similarity": "Similarité de recherche",
       "similarity_hint": "Contrôle les correspondances visuelles des recherches par mots-clés",

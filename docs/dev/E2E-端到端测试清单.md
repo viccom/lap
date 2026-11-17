@@ -18,7 +18,7 @@
 | 项 | 要求 |
 |---|---|
 | 构建 | `cd src-vite && npm run build:http`（`VITE_LAP_TRANSPORT=http`；**必须最后跑，dist 是共享 outDir**） |
-| 服务端 | `src-tauri/target/debug/lapd.exe`（debug 构建；`cargo build -p lapd` 或 `cargo build`） |
+| 服务端 | `src-tauri/target/debug/lappp-server.exe`（debug 构建；`cargo build -p lappp-server`），或用 `scripts/build-windows.ps1` 产出的 `lappp-server.exe` |
 | 数据隔离 | 一律用**临时 data-dir**，绝不指向真实库 `C:\Users\viccom\AppData\Local\com.julyx10.lap\` |
 | 浏览器 | IAB（ZCode in-app browser）；证据用 DOM/网络/磁盘，不依赖截图 |
 
@@ -216,7 +216,7 @@ Lap.exe --data-dir <temp>\desk &
 | 8.9 | 桌面客户端模式（自动锁检测） | 无 `--connect`，但 `<data>/lapd.lock` 有活的外来 pid → 自动进入客户端模式并连 `127.0.0.1:<port>`；不取锁、不建库 | ✅ 5-1 |
 | 8.10 | 内嵌模式回归（无参、无锁） | 照常启动并新建本地 `libraries/default.db`；对远端零请求 | ✅ 5-1 |
 | 8.11 | **完整版锁冲突拒启（6-1 取代 8.9）** | 完整版启动遇 `<data>/lapd.lock` 活的外来 pid → 打印提示并 **exit=1**，**不建库** | ✅ 6-1 |
-| 8.12 | **薄客户端构建 + 连接（6-2）** | `cargo build --no-default-features --features client` 产出 exe（不链 `lap-core`，实测 165MB→14.9MB）→ 连真机 lapd 渲染远端登录页；数据目录零 `.db` | ✅ 6-2 |
+| 8.12 | **薄客户端构建 + 连接（6-2）** | `cargo build --no-default-features --features client` 产出 exe（不链 `lappp-core`，实测 165MB→14.9MB）→ 连真机 lapd 渲染远端登录页；数据目录零 `.db` | ✅ 6-2 |
 | 8.13 | **薄客户端多服务器（6-3）** | 预置 A/B 两台 + `current=A` → 菜单 `[● A][   B]` → 点 B → 配置 `current` 持久化为 B、连接切到 B、菜单变 `[   A][● B]`；重启（无 `LAP_CONNECT`）**记住并加载 B** | ✅ 6-3 |
 | 8.14 | **薄客户端首次运行（无服务器）** | 服务器列表为空 → 打开本地选择页（`picker://` 自定义 scheme，Rust `include_str!` 内嵌）→ 可增删/连接 | ✅ 6-3 |
 
@@ -236,7 +236,7 @@ npm run build && npm run build:http          # 都须 exit=0；build:http 最后
 source docs/dev/build-env.sh
 cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo test --workspace  # 基线 654/0/10
 # 薄客户端（阶段 6 feature）：servers 单测
-cargo test -p Lap --no-default-features --features client  # 5/5
+cargo test -p lappp --no-default-features --features client  # 5/5
 ```
 
 **门禁与本文档的关系**：门禁是"单元/契约"层；本文 §1–§8 是"运行时真跑"层。二者
@@ -269,7 +269,7 @@ cargo test -p Lap --no-default-features --features client  # 5/5
 | `ImageEditor` / `Montage` | §6 全 |
 | PWA / `main.js` 启动 | §8.1–8.4 |
 | `main.rs` 启动链 / `t_client`（锁检测） | §8.10–8.11（**完整版锁冲突须拒启、内嵌不得被误切**） |
-| `Cargo.toml` feature / `run_client`（薄客户端） | §8.12–8.14（两 feature 都要 build + test；薄客户端不得链 `lap-core`） |
+| `Cargo.toml` feature / `run_client`（薄客户端） | §8.12–8.14（两 feature 都要 build + test；薄客户端不得链 `lappp-core`） |
 | `servers.rs` / `client_cmds.rs` / `t_menu`（thin client） | §8.13–8.14（多服务器切换 + 持久化 + 菜单标记） |
 | 任何删除/写盘路径 | 对应条目的**磁盘/DB 复核**（不只 UI） |
 

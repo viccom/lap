@@ -1,14 +1,14 @@
-//! lapd CLI flags (serverization plan §3.8): `--host`, `--port`,
+//! lappp-server CLI flags (serverization plan §3.8): `--host`, `--port`,
 //! `--data-dir`, `--library`. Hand-rolled parsing — four flags are not worth
 //! a new dependency.
 
 use std::path::PathBuf;
 
 pub const USAGE: &str = "\
-lapd — the standalone Lap server
+lappp-server — the standalone lappp server
 
 USAGE:
-    lapd [FLAGS]
+    lappp-server [FLAGS]
 
 FLAGS:
     --host <ADDR>      Bind address (default: 127.0.0.1 — loopback only)

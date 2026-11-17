@@ -156,7 +156,7 @@ async fn wait_for_signal() {
 /// should see (a busy checkpoint is worth reporting, not worth refusing
 /// the exit over).
 pub async fn run_shutdown_sequence(data_dir: &std::path::Path) -> Vec<String> {
-    let report = lap_core::t_shutdown::terminate_background_tasks().await;
+    let report = lappp_core::t_shutdown::terminate_background_tasks().await;
     println!(
         "lapd: cancelling background work — index albums: {}, vl runs: {}, video processes: {}, import: {}, face: {}, dedup: {}, similar: {}",
         report.index_albums.len(),
@@ -172,16 +172,16 @@ pub async fn run_shutdown_sequence(data_dir: &std::path::Path) -> Vec<String> {
     // checkpoint below does not race a writer.
     let deadline = tokio::time::Instant::now() + BACKGROUND_GRACE;
     while tokio::time::Instant::now() < deadline {
-        if lap_core::t_shutdown::background_tasks_idle() {
+        if lappp_core::t_shutdown::background_tasks_idle() {
             break;
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    if !lap_core::t_shutdown::background_tasks_idle() {
+    if !lappp_core::t_shutdown::background_tasks_idle() {
         println!("lapd: background work did not finish within the grace period; continuing");
     }
 
-    let warnings = lap_core::t_shutdown::flush_wal(data_dir);
+    let warnings = lappp_core::t_shutdown::flush_wal(data_dir);
     for warning in &warnings {
         eprintln!("lapd: {warning}");
     }

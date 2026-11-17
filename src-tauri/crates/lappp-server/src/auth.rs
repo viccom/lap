@@ -245,7 +245,7 @@ impl AuthService {
             .hash_password(password.as_bytes(), &salt)
             .map_err(|e| AuthError::Internal(format!("hashing password: {e}")))?
             .to_string();
-        lap_core::t_config::write_atomic_private(&path, &hash)
+        lappp_core::t_config::write_atomic_private(&path, &hash)
             .map_err(|e| AuthError::Internal(format!("writing password hash: {e}")))
     }
 

@@ -1,5 +1,5 @@
 /**
- * lap-core build script: the four vendored C image libraries (LibRaw,
+ * lappp-core build script: the four vendored C image libraries (LibRaw,
  * libjpeg-turbo, libheif, libde265) plus build metadata. Everything is
  * relative to this crate; the third_party submodules stay at the workspace
  * root (src-tauri/third_party), reached via ../../third_party.

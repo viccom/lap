@@ -11,7 +11,7 @@
     </transition>
 
     <!-- Title Bar -->
-    <TitleBar v-if="showDesktopTitleBar" titlebar="Lap" viewName="Home" :icon="iconLogo"/>
+    <TitleBar v-if="showDesktopTitleBar" titlebar="lappp" viewName="Home" :icon="iconLogo"/>
 
     <!-- Main Content -->
     <div class="flex-1 flex overflow-hidden">
@@ -557,7 +557,7 @@ onMounted(async () => {
       console.error('Failed to get app name:', e);
     }
   } else {
-    appName.value = document.title || 'Lap';
+    appName.value = document.title || 'lappp';
   }
 
 });

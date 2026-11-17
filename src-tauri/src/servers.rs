@@ -1,6 +1,6 @@
 //! Persisted server list for the thin client (`--features client`).
 //!
-//! The thin client has no local backend, so it cannot use `lap-core`'s
+//! The thin client has no local backend, so it cannot use `lappp-core`'s
 //! `AppConfig`. It keeps its own tiny JSON file listing the `lapd` servers the
 //! user has added, plus which one is current. The file lives in the same
 //! per-user data directory as the full app but under its own name, so the two
@@ -34,7 +34,7 @@ pub struct ServersConfig {
 }
 
 /// File name inside the app data directory.
-pub const FILE_NAME: &str = "lapd-servers.json";
+pub const FILE_NAME: &str = "lappp-servers.json";
 
 /// Normalize a user-entered URL: trim, add `http://` when no scheme is given,
 /// drop any trailing slash so comparisons and joins stay predictable. Blank or
@@ -130,7 +130,7 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or_default();
         let dir = std::env::temp_dir().join(format!(
-            "lap-servers-{tag}-{}-{nanos}",
+            "lappp-servers-{tag}-{}-{nanos}",
             std::process::id()
         ));
         std::fs::create_dir_all(&dir).unwrap();

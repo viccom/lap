@@ -1,27 +1,27 @@
 /**
  * Desktop command wrappers (serverization phase 3): thin
- * #[tauri::command] layers over lap_core::t_cmds. Signatures mirror the
+ * #[tauri::command] layers over lappp_core::t_cmds. Signatures mirror the
  * core functions verbatim; the contract guards pin them. Drag/clipboard
  * and fs-scope commands live here (desktop-only glue).
  */
 
-use lap_core::t_config::{self, AppConfig, Library, LibraryInfo, LibraryState};
-use lap_core::t_face;
-use lap_core::t_image;
-use lap_core::t_montage;
-use lap_core::t_raw_display::RawDisplayOptions;
-use lap_core::t_similar;
-use lap_core::t_sqlite::{
+use lappp_core::t_config::{self, AppConfig, Library, LibraryInfo, LibraryState};
+use lappp_core::t_face;
+use lappp_core::t_image;
+use lappp_core::t_montage;
+use lappp_core::t_raw_display::RawDisplayOptions;
+use lappp_core::t_similar;
+use lappp_core::t_sqlite::{
     ACamera, ACollection, ACollectionOrder, ACollectionSelectionCount, AFile, AFileCollection,
     AFolder, ALens, ALocation, ATag, ATagFileState, ATagSelectionCount, AThumb, ATimeLine, Album,
     AlbumDisplayOrder, GroupedQueryResult, ImageSearchParams, Person, PersonPage,
     PersonPageRequest, QueryParams, SmartQueryParams,
 };
-use lap_core::t_ai;
-use lap_core::t_sqlite;
-use lap_core::t_storage;
-use lap_core::t_utils;
-use lap_core::t_write;
+use lappp_core::t_ai;
+use lappp_core::t_sqlite;
+use lappp_core::t_storage;
+use lappp_core::t_utils;
+use lappp_core::t_write;
 
 use std::collections::HashMap;
 use std::io::Cursor;
@@ -31,7 +31,7 @@ use crate::t_pasteboard;
 use crate::t_scopes;
 
 #[allow(unused_imports)]
-use lap_core::t_cmds::*;
+use lappp_core::t_cmds::*;
 
 
 #[tauri::command]
@@ -39,7 +39,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
     // The blocking task reports whether the target library turned out to be corrupt, deciding from
     // create_db's returned error itself rather than re-reading the process-global flag afterwards
     // (which a concurrent switch could resolve against a different library).
-    let corrupted = lap_core::t_rt::spawn_blocking(move || -> Result<bool, String> {
+    let corrupted = lappp_core::t_rt::spawn_blocking(move || -> Result<bool, String> {
         let _guard = t_config::library_refresh_lock()
             .write()
             .map_err(|e| e.to_string())?;
@@ -59,7 +59,7 @@ pub async fn switch_library(app_handle: tauri::AppHandle, id: String) -> Result<
         return Ok(());
     }
     t_scopes::restore_album_scopes(&app_handle)?;
-    lap_core::t_rt::spawn_blocking(|| -> Result<(), String> {
+    lappp_core::t_rt::spawn_blocking(|| -> Result<(), String> {
         let mut albums = Album::get_all_albums()
             .map_err(|e| format!("Error while checking albums after switching library: {}", e))?;
         t_utils::refresh_all_album_accessibility(&mut albums);
@@ -113,7 +113,7 @@ pub fn add_album_by_path(
 ) -> Result<Album, String> {
     // No fs-scope authorization: the Web server reads the folder itself (see
     // the core doc). The desktop keeps using `add_album`, which authorizes.
-    lap_core::t_cmds::add_album_by_path(
+    lappp_core::t_cmds::add_album_by_path(
         folder_path,
         name,
         description,
@@ -172,13 +172,13 @@ pub async fn change_thumbnail_cache_location(
     new_dir: Option<String>,
     operation_id: String,
     allow_missing_source: Option<bool>,
-    on_progress: tauri::ipc::Channel<lap_core::t_cache_storage::CacheProgress>,
-) -> Result<lap_core::t_cache_storage::CacheChangeResult, lap_core::t_cache_storage::CacheChangeError> {
+    on_progress: tauri::ipc::Channel<lappp_core::t_cache_storage::CacheProgress>,
+) -> Result<lappp_core::t_cache_storage::CacheChangeResult, lappp_core::t_cache_storage::CacheChangeError> {
     ensure_db_storage_change_allowed()?;
-    let operation = lap_core::t_cache_storage::MigrationOperation::begin(operation_id)?;
-    lap_core::t_rt::spawn_blocking(move || {
+    let operation = lappp_core::t_cache_storage::MigrationOperation::begin(operation_id)?;
+    lappp_core::t_rt::spawn_blocking(move || {
         let _guard = cache_migration_library_guard(&operation.cancellation)?;
-        lap_core::t_cache_storage::change(
+        lappp_core::t_cache_storage::change(
             new_dir,
             allow_missing_source.unwrap_or(false),
             &operation.cancellation,
@@ -334,7 +334,7 @@ pub async fn set_desktop_wallpaper(
             .map_err(|error| format!("Failed to start GNOME wallpaper service: {error}"))?;
         if !output.status.success() {
             return Err(
-                "This Linux desktop environment does not support setting wallpapers from Lap"
+                "This Linux desktop environment does not support setting wallpapers from lappp"
                     .to_string(),
             );
         }
@@ -517,7 +517,7 @@ pub async fn import_from_drag(
 ) -> Result<Option<AFile>, String> {
     let url = crate::t_pasteboard::get_drag_image_url()
         .ok_or_else(|| "No image URL found in drag pasteboard".to_string())?;
-    lap_core::t_cmds::import_url_inner(&url, folder_id, folder_path).await
+    lappp_core::t_cmds::import_url_inner(&url, folder_id, folder_path).await
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -539,77 +539,77 @@ pub fn get_drag_payload() -> DragPayload {
 #[tauri::command]
 pub fn get_system_region_locale() -> Result<Option<String>, String>
 {
-    lap_core::t_cmds::get_system_region_locale()
+    lappp_core::t_cmds::get_system_region_locale()
 }
 
 
 #[tauri::command]
 pub fn get_app_config() -> Result<AppConfig, String>
 {
-    lap_core::t_cmds::get_app_config()
+    lappp_core::t_cmds::get_app_config()
 }
 
 
 #[tauri::command]
 pub fn get_supported_format_extensions() -> SupportedFormatExtensions
 {
-    lap_core::t_cmds::get_supported_format_extensions()
+    lappp_core::t_cmds::get_supported_format_extensions()
 }
 
 
 #[tauri::command]
 pub fn get_ffmpeg_backed_image_extensions() -> Vec<String>
 {
-    lap_core::t_cmds::get_ffmpeg_backed_image_extensions()
+    lappp_core::t_cmds::get_ffmpeg_backed_image_extensions()
 }
 
 
 #[tauri::command]
 pub fn check_gstreamer_available() -> bool
 {
-    lap_core::t_cmds::check_gstreamer_available()
+    lappp_core::t_cmds::check_gstreamer_available()
 }
 
 
 #[tauri::command]
 pub fn set_last_selected_item_index(index: i64) -> Result<(), String>
 {
-    lap_core::t_cmds::set_last_selected_item_index(index)
+    lappp_core::t_cmds::set_last_selected_item_index(index)
 }
 
 
 #[tauri::command]
-pub fn get_thumbnail_cache_location() -> Result<lap_core::t_cache_storage::CacheLocation, String>
+pub fn get_thumbnail_cache_location() -> Result<lappp_core::t_cache_storage::CacheLocation, String>
 {
-    lap_core::t_cmds::get_thumbnail_cache_location()
+    lappp_core::t_cmds::get_thumbnail_cache_location()
 }
 
 
 #[tauri::command]
-pub async fn get_thumbnail_cache_migration_count() -> Result<u64, lap_core::t_cache_storage::CacheChangeError>
+pub async fn get_thumbnail_cache_migration_count() -> Result<u64, lappp_core::t_cache_storage::CacheChangeError>
 {
-    lap_core::t_cmds::get_thumbnail_cache_migration_count().await
+    lappp_core::t_cmds::get_thumbnail_cache_migration_count().await
 }
 
 
 #[tauri::command]
 pub fn cancel_thumbnail_cache_migration(operation_id: String) -> Result<bool, String>
 {
-    lap_core::t_cmds::cancel_thumbnail_cache_migration(operation_id)
+    lappp_core::t_cmds::cancel_thumbnail_cache_migration(operation_id)
 }
 
 
 #[tauri::command]
 pub fn get_db_storage_dir() -> Result<String, String>
 {
-    lap_core::t_cmds::get_db_storage_dir()
+    lappp_core::t_cmds::get_db_storage_dir()
 }
 
 
 #[tauri::command]
 pub fn is_using_custom_db_storage() -> Result<bool, String>
 {
-    lap_core::t_cmds::is_using_custom_db_storage()
+    lappp_core::t_cmds::is_using_custom_db_storage()
 }
 
 
@@ -618,98 +618,98 @@ pub async fn change_db_storage_dir(
     new_dir: String,
 ) -> Result<t_storage::DbStorageChangeResult, String>
 {
-    lap_core::t_cmds::change_db_storage_dir(new_dir).await
+    lappp_core::t_cmds::change_db_storage_dir(new_dir).await
 }
 
 
 #[tauri::command]
 pub async fn reset_db_storage_dir() -> Result<t_storage::DbStorageChangeResult, String>
 {
-    lap_core::t_cmds::reset_db_storage_dir().await
+    lappp_core::t_cmds::reset_db_storage_dir().await
 }
 
 
 #[tauri::command]
 pub fn add_library(name: &str) -> Result<Library, String>
 {
-    lap_core::t_cmds::add_library(name)
+    lappp_core::t_cmds::add_library(name)
 }
 
 
 #[tauri::command]
 pub fn hide_library(id: &str, hidden: bool) -> Result<(), String>
 {
-    lap_core::t_cmds::hide_library(id, hidden)
+    lappp_core::t_cmds::hide_library(id, hidden)
 }
 
 
 #[tauri::command]
 pub fn reorder_libraries(ids: Vec<String>) -> Result<(), String>
 {
-    lap_core::t_cmds::reorder_libraries(ids)
+    lappp_core::t_cmds::reorder_libraries(ids)
 }
 
 
 #[tauri::command]
 pub fn edit_library(id: &str, name: &str) -> Result<(), String>
 {
-    lap_core::t_cmds::edit_library(id, name)
+    lappp_core::t_cmds::edit_library(id, name)
 }
 
 
 #[tauri::command]
 pub async fn remove_library(id: String) -> Result<(), String>
 {
-    lap_core::t_cmds::remove_library(id).await
+    lappp_core::t_cmds::remove_library(id).await
 }
 
 
 #[tauri::command]
 pub fn is_database_corrupted() -> bool
 {
-    lap_core::t_cmds::is_database_corrupted()
+    lappp_core::t_cmds::is_database_corrupted()
 }
 
 
 #[tauri::command]
 pub async fn get_library_info(id: String) -> Result<LibraryInfo, String>
 {
-    lap_core::t_cmds::get_library_info(id).await
+    lappp_core::t_cmds::get_library_info(id).await
 }
 
 
 #[tauri::command]
 pub fn save_library_state(id: &str, state: LibraryState) -> Result<(), String>
 {
-    lap_core::t_cmds::save_library_state(id, state)
+    lappp_core::t_cmds::save_library_state(id, state)
 }
 
 
 #[tauri::command]
 pub fn get_library_state(id: &str) -> Result<LibraryState, String>
 {
-    lap_core::t_cmds::get_library_state(id)
+    lappp_core::t_cmds::get_library_state(id)
 }
 
 
 #[tauri::command]
 pub fn get_current_library_state() -> Result<LibraryState, String>
 {
-    lap_core::t_cmds::get_current_library_state()
+    lappp_core::t_cmds::get_current_library_state()
 }
 
 
 #[tauri::command]
 pub fn get_all_albums(refresh_accessibility: bool) -> Result<Vec<Album>, String>
 {
-    lap_core::t_cmds::get_all_albums(refresh_accessibility)
+    lappp_core::t_cmds::get_all_albums(refresh_accessibility)
 }
 
 
 #[tauri::command]
 pub fn get_all_album_folders(include_excluded: Option<bool>) -> Result<Vec<AFolder>, String>
 {
-    lap_core::t_cmds::get_all_album_folders(include_excluded)
+    lappp_core::t_cmds::get_all_album_folders(include_excluded)
 }
 
 
@@ -720,35 +720,35 @@ pub fn generate_directory_thumbnails(
     thumbnail_size: u32,
 ) -> Result<t_image::BatchThumbnailStats, String>
 {
-    lap_core::t_cmds::generate_directory_thumbnails(dir_path, output_dir, thumbnail_size)
+    lappp_core::t_cmds::generate_directory_thumbnails(dir_path, output_dir, thumbnail_size)
 }
 
 
 #[tauri::command]
 pub fn get_album(album_id: i64) -> Result<Album, String>
 {
-    lap_core::t_cmds::get_album(album_id)
+    lappp_core::t_cmds::get_album(album_id)
 }
 
 
 #[tauri::command]
 pub async fn check_album_accessibility(album_id: i64) -> Result<bool, String>
 {
-    lap_core::t_cmds::check_album_accessibility(album_id).await
+    lappp_core::t_cmds::check_album_accessibility(album_id).await
 }
 
 
 #[tauri::command]
 pub fn recount_album(album_id: i64) -> Result<Album, String>
 {
-    lap_core::t_cmds::recount_album(album_id)
+    lappp_core::t_cmds::recount_album(album_id)
 }
 
 
 #[tauri::command]
 pub fn get_album_visible_counts() -> Result<HashMap<i64, i64>, String>
 {
-    lap_core::t_cmds::get_album_visible_counts()
+    lappp_core::t_cmds::get_album_visible_counts()
 }
 
 
@@ -762,35 +762,35 @@ pub async fn edit_album(
     excluded_folders: Vec<String>,
 ) -> Result<usize, String>
 {
-    lap_core::t_cmds::edit_album(id, name, description, file_types, small_image_filter, excluded_folders).await
+    lappp_core::t_cmds::edit_album(id, name, description, file_types, small_image_filter, excluded_folders).await
 }
 
 
 #[tauri::command]
 pub async fn list_album_subfolders(path: String) -> Result<Vec<String>, String>
 {
-    lap_core::t_cmds::list_album_subfolders(path).await
+    lappp_core::t_cmds::list_album_subfolders(path).await
 }
 
 
 #[tauri::command]
 pub async fn remove_album(id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::remove_album(id).await
+    lappp_core::t_cmds::remove_album(id).await
 }
 
 
 #[tauri::command]
 pub fn reorder_albums(items: Vec<AlbumDisplayOrder>) -> Result<usize, String>
 {
-    lap_core::t_cmds::reorder_albums(items)
+    lappp_core::t_cmds::reorder_albums(items)
 }
 
 
 #[tauri::command]
 pub fn set_album_cover(id: i64, file_id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::set_album_cover(id, file_id)
+    lappp_core::t_cmds::set_album_cover(id, file_id)
 }
 
 
@@ -803,28 +803,28 @@ pub fn index_album(
     group_raw_jpeg_pairs: bool,
 ) -> Result<(), String>
 {
-    lap_core::t_cmds::index_album(album_id, thumbnail_size, raw_display_options, skip_file_path, group_raw_jpeg_pairs)
+    lappp_core::t_cmds::index_album(album_id, thumbnail_size, raw_display_options, skip_file_path, group_raw_jpeg_pairs)
 }
 
 
 #[tauri::command]
 pub fn cancel_indexing(album_id: i64) -> Result<(), String>
 {
-    lap_core::t_cmds::cancel_indexing(album_id)
+    lappp_core::t_cmds::cancel_indexing(album_id)
 }
 
 
 #[tauri::command]
-pub fn get_index_recovery_info() -> Option<lap_core::t_utils::IndexRecoveryInfo>
+pub fn get_index_recovery_info() -> Option<lappp_core::t_utils::IndexRecoveryInfo>
 {
-    lap_core::t_cmds::get_index_recovery_info()
+    lappp_core::t_cmds::get_index_recovery_info()
 }
 
 
 #[tauri::command]
 pub fn clear_index_recovery_info() -> Result<(), String>
 {
-    lap_core::t_cmds::clear_index_recovery_info()
+    lappp_core::t_cmds::clear_index_recovery_info()
 }
 
 
@@ -835,7 +835,7 @@ pub fn fetch_folder(
     sort: i64,
 ) -> Result<t_utils::FileNode, String>
 {
-    lap_core::t_cmds::fetch_folder(path, is_recursive, sort)
+    lappp_core::t_cmds::fetch_folder(path, is_recursive, sort)
 }
 
 
@@ -847,21 +847,21 @@ pub async fn count_folder(
     small_image_filter: Option<i64>,
 ) -> Result<(u64, u64, u64, u64, u64, u64, u64), String>
 {
-    lap_core::t_cmds::count_folder(path, file_types, excluded_folders, small_image_filter).await
+    lappp_core::t_cmds::count_folder(path, file_types, excluded_folders, small_image_filter).await
 }
 
 
 #[tauri::command]
 pub fn create_folder(path: &str, folder_name: &str) -> Option<String>
 {
-    lap_core::t_cmds::create_folder(path, folder_name)
+    lappp_core::t_cmds::create_folder(path, folder_name)
 }
 
 
 #[tauri::command]
 pub fn rename_folder(folder_path: &str, new_folder_name: &str) -> Option<String>
 {
-    lap_core::t_cmds::rename_folder(folder_path, new_folder_name)
+    lappp_core::t_cmds::rename_folder(folder_path, new_folder_name)
 }
 
 
@@ -873,7 +873,7 @@ pub fn move_folder(
     conflict_policy: &str,
 ) -> Result<String, String>
 {
-    lap_core::t_cmds::move_folder(folder_path, new_album_id, new_folder_path, conflict_policy)
+    lappp_core::t_cmds::move_folder(folder_path, new_album_id, new_folder_path, conflict_policy)
 }
 
 
@@ -884,7 +884,7 @@ pub fn move_folder_outside_library(
     conflict_policy: &str,
 ) -> Result<String, String>
 {
-    lap_core::t_cmds::move_folder_outside_library(folder_path, new_folder_path, conflict_policy)
+    lappp_core::t_cmds::move_folder_outside_library(folder_path, new_folder_path, conflict_policy)
 }
 
 
@@ -896,14 +896,14 @@ pub fn copy_folder(
     conflict_policy: &str,
 ) -> Result<String, String>
 {
-    lap_core::t_cmds::copy_folder(folder_path, new_folder_path, new_album_id, conflict_policy)
+    lappp_core::t_cmds::copy_folder(folder_path, new_folder_path, new_album_id, conflict_policy)
 }
 
 
 #[tauri::command]
 pub fn prepare_folder_delete(folder_path: &str, library_id: &str) -> Result<String, String>
 {
-    lap_core::t_cmds::prepare_folder_delete(folder_path, library_id)
+    lappp_core::t_cmds::prepare_folder_delete(folder_path, library_id)
 }
 
 
@@ -914,7 +914,7 @@ pub fn delete_folder(
     expected_identity: &str,
 ) -> Result<FolderTrashResult, String>
 {
-    lap_core::t_cmds::delete_folder(folder_path, library_id, expected_identity)
+    lappp_core::t_cmds::delete_folder(folder_path, library_id, expected_identity)
 }
 
 
@@ -925,56 +925,56 @@ pub fn delete_folder_permanently(
     expected_identity: &str,
 ) -> Result<usize, String>
 {
-    lap_core::t_cmds::delete_folder_permanently(folder_path, library_id, expected_identity)
+    lappp_core::t_cmds::delete_folder_permanently(folder_path, library_id, expected_identity)
 }
 
 
 #[tauri::command]
 pub fn reveal_path(path: &str) -> Result<(), String>
 {
-    lap_core::t_cmds::reveal_path(path)
+    lappp_core::t_cmds::reveal_path(path)
 }
 
 
 #[tauri::command]
 pub fn open_external_url(url: &str) -> Result<(), String>
 {
-    lap_core::t_cmds::open_external_url(url)
+    lappp_core::t_cmds::open_external_url(url)
 }
 
 
 #[tauri::command]
 pub fn get_external_app_display_name(app_path: &str) -> Result<String, String>
 {
-    lap_core::t_cmds::get_external_app_display_name(app_path)
+    lappp_core::t_cmds::get_external_app_display_name(app_path)
 }
 
 
 #[tauri::command]
 pub fn open_file_with_app(file_path: &str, app_path: &str) -> Result<(), String>
 {
-    lap_core::t_cmds::open_file_with_app(file_path, app_path)
+    lappp_core::t_cmds::open_file_with_app(file_path, app_path)
 }
 
 
 #[tauri::command]
 pub fn open_files_with_app(file_paths: Vec<String>, app_path: &str) -> Result<(), String>
 {
-    lap_core::t_cmds::open_files_with_app(file_paths, app_path)
+    lappp_core::t_cmds::open_files_with_app(file_paths, app_path)
 }
 
 
 #[tauri::command]
 pub async fn get_query_count_and_sum(params: QueryParams) -> Result<(i64, i64), String>
 {
-    lap_core::t_cmds::get_query_count_and_sum(params).await
+    lappp_core::t_cmds::get_query_count_and_sum(params).await
 }
 
 
 #[tauri::command]
 pub async fn get_query_time_line(params: QueryParams) -> Result<Vec<ATimeLine>, String>
 {
-    lap_core::t_cmds::get_query_time_line(params).await
+    lappp_core::t_cmds::get_query_time_line(params).await
 }
 
 
@@ -985,14 +985,14 @@ pub async fn get_query_files(
     limit: i64,
 ) -> Result<Vec<AFile>, String>
 {
-    lap_core::t_cmds::get_query_files(params, offset, limit).await
+    lappp_core::t_cmds::get_query_files(params, offset, limit).await
 }
 
 
 #[tauri::command]
 pub async fn get_files_by_ids(file_ids: Vec<i64>) -> Result<Vec<AFile>, String>
 {
-    lap_core::t_cmds::get_files_by_ids(file_ids).await
+    lappp_core::t_cmds::get_files_by_ids(file_ids).await
 }
 
 
@@ -1003,14 +1003,14 @@ pub async fn get_grouped_query_rows(
     limit: i64,
 ) -> Result<GroupedQueryResult, String>
 {
-    lap_core::t_cmds::get_grouped_query_rows(params, offset, limit).await
+    lappp_core::t_cmds::get_grouped_query_rows(params, offset, limit).await
 }
 
 
 #[tauri::command]
 pub async fn get_group_file_ids(params: QueryParams, group_id: String) -> Result<Vec<i64>, String>
 {
-    lap_core::t_cmds::get_group_file_ids(params, group_id).await
+    lappp_core::t_cmds::get_group_file_ids(params, group_id).await
 }
 
 
@@ -1020,14 +1020,14 @@ pub async fn get_grouped_file_position(
     file_id: i64,
 ) -> Result<Option<i64>, String>
 {
-    lap_core::t_cmds::get_grouped_file_position(params, file_id).await
+    lappp_core::t_cmds::get_grouped_file_position(params, file_id).await
 }
 
 
 #[tauri::command]
 pub async fn get_query_file_ids(params: QueryParams) -> Result<Vec<i64>, String>
 {
-    lap_core::t_cmds::get_query_file_ids(params).await
+    lappp_core::t_cmds::get_query_file_ids(params).await
 }
 
 
@@ -1036,7 +1036,7 @@ pub async fn get_library_visible_counts(
     id: Option<String>,
 ) -> Result<t_sqlite::LibraryVisibleCounts, String>
 {
-    lap_core::t_cmds::get_library_visible_counts(id).await
+    lappp_core::t_cmds::get_library_visible_counts(id).await
 }
 
 
@@ -1046,49 +1046,49 @@ pub async fn get_query_file_position(
     file_id: i64,
 ) -> Result<Option<i64>, String>
 {
-    lap_core::t_cmds::get_query_file_position(params, file_id).await
+    lappp_core::t_cmds::get_query_file_position(params, file_id).await
 }
 
 
 #[tauri::command]
 pub fn list_collections() -> Result<Vec<ACollection>, String>
 {
-    lap_core::t_cmds::list_collections()
+    lappp_core::t_cmds::list_collections()
 }
 
 
 #[tauri::command]
 pub fn get_collection_counts() -> Result<HashMap<i64, i64>, String>
 {
-    lap_core::t_cmds::get_collection_counts()
+    lappp_core::t_cmds::get_collection_counts()
 }
 
 
 #[tauri::command]
 pub fn create_collection(name: &str) -> Result<ACollection, String>
 {
-    lap_core::t_cmds::create_collection(name)
+    lappp_core::t_cmds::create_collection(name)
 }
 
 
 #[tauri::command]
 pub fn rename_collection(id: i64, name: &str) -> Result<usize, String>
 {
-    lap_core::t_cmds::rename_collection(id, name)
+    lappp_core::t_cmds::rename_collection(id, name)
 }
 
 
 #[tauri::command]
 pub fn delete_collection(id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::delete_collection(id)
+    lappp_core::t_cmds::delete_collection(id)
 }
 
 
 #[tauri::command]
 pub fn reorder_collections(items: Vec<ACollectionOrder>) -> Result<usize, String>
 {
-    lap_core::t_cmds::reorder_collections(items)
+    lappp_core::t_cmds::reorder_collections(items)
 }
 
 
@@ -1098,7 +1098,7 @@ pub fn add_files_to_collection(
     file_ids: Vec<i64>,
 ) -> Result<t_write::CollectionAddResult, String>
 {
-    lap_core::t_cmds::add_files_to_collection(collection_id, file_ids)
+    lappp_core::t_cmds::add_files_to_collection(collection_id, file_ids)
 }
 
 
@@ -1108,7 +1108,7 @@ pub fn remove_files_from_collection(
     file_ids: Vec<i64>,
 ) -> Result<usize, String>
 {
-    lap_core::t_cmds::remove_files_from_collection(collection_id, file_ids)
+    lappp_core::t_cmds::remove_files_from_collection(collection_id, file_ids)
 }
 
 
@@ -1117,28 +1117,28 @@ pub fn get_collection_selection_counts(
     file_ids: Vec<i64>,
 ) -> Result<Vec<ACollectionSelectionCount>, String>
 {
-    lap_core::t_cmds::get_collection_selection_counts(file_ids)
+    lappp_core::t_cmds::get_collection_selection_counts(file_ids)
 }
 
 
 #[tauri::command]
 pub fn clear_collection(collection_id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::clear_collection(collection_id)
+    lappp_core::t_cmds::clear_collection(collection_id)
 }
 
 
 #[tauri::command]
 pub fn get_collection_file_ids(collection_id: i64) -> Result<Vec<i64>, String>
 {
-    lap_core::t_cmds::get_collection_file_ids(collection_id)
+    lappp_core::t_cmds::get_collection_file_ids(collection_id)
 }
 
 
 #[tauri::command]
 pub fn get_file_collections(file_id: i64) -> Result<Vec<AFileCollection>, String>
 {
-    lap_core::t_cmds::get_file_collections(file_id)
+    lappp_core::t_cmds::get_file_collections(file_id)
 }
 
 
@@ -1148,7 +1148,7 @@ pub fn get_collection_count_and_sum(
     params: QueryParams,
 ) -> Result<(i64, i64), String>
 {
-    lap_core::t_cmds::get_collection_count_and_sum(collection_id, params)
+    lappp_core::t_cmds::get_collection_count_and_sum(collection_id, params)
 }
 
 
@@ -1160,7 +1160,7 @@ pub fn get_collection_files(
     limit: i64,
 ) -> Result<Vec<AFile>, String>
 {
-    lap_core::t_cmds::get_collection_files(collection_id, params, offset, limit)
+    lappp_core::t_cmds::get_collection_files(collection_id, params, offset, limit)
 }
 
 
@@ -1172,7 +1172,7 @@ pub fn get_collection_grouped_query_rows(
     limit: i64,
 ) -> Result<GroupedQueryResult, String>
 {
-    lap_core::t_cmds::get_collection_grouped_query_rows(collection_id, params, offset, limit)
+    lappp_core::t_cmds::get_collection_grouped_query_rows(collection_id, params, offset, limit)
 }
 
 
@@ -1183,7 +1183,7 @@ pub fn get_collection_group_file_ids(
     group_id: String,
 ) -> Result<Vec<i64>, String>
 {
-    lap_core::t_cmds::get_collection_group_file_ids(collection_id, params, group_id)
+    lappp_core::t_cmds::get_collection_group_file_ids(collection_id, params, group_id)
 }
 
 
@@ -1193,21 +1193,21 @@ pub fn get_collection_query_file_ids(
     params: QueryParams,
 ) -> Result<Vec<i64>, String>
 {
-    lap_core::t_cmds::get_collection_query_file_ids(collection_id, params)
+    lappp_core::t_cmds::get_collection_query_file_ids(collection_id, params)
 }
 
 
 #[tauri::command]
 pub async fn get_smart_query_count_and_sum(params: SmartQueryParams) -> Result<(i64, i64), String>
 {
-    lap_core::t_cmds::get_smart_query_count_and_sum(params).await
+    lappp_core::t_cmds::get_smart_query_count_and_sum(params).await
 }
 
 
 #[tauri::command]
 pub async fn get_smart_query_time_line(params: SmartQueryParams) -> Result<Vec<ATimeLine>, String>
 {
-    lap_core::t_cmds::get_smart_query_time_line(params).await
+    lappp_core::t_cmds::get_smart_query_time_line(params).await
 }
 
 
@@ -1218,7 +1218,7 @@ pub async fn get_smart_query_files(
     limit: i64,
 ) -> Result<Vec<AFile>, String>
 {
-    lap_core::t_cmds::get_smart_query_files(params, offset, limit).await
+    lappp_core::t_cmds::get_smart_query_files(params, offset, limit).await
 }
 
 
@@ -1229,7 +1229,7 @@ pub async fn get_smart_grouped_query_rows(
     limit: i64,
 ) -> Result<GroupedQueryResult, String>
 {
-    lap_core::t_cmds::get_smart_grouped_query_rows(params, offset, limit).await
+    lappp_core::t_cmds::get_smart_grouped_query_rows(params, offset, limit).await
 }
 
 
@@ -1239,14 +1239,14 @@ pub async fn get_smart_group_file_ids(
     group_id: String,
 ) -> Result<Vec<i64>, String>
 {
-    lap_core::t_cmds::get_smart_group_file_ids(params, group_id).await
+    lappp_core::t_cmds::get_smart_group_file_ids(params, group_id).await
 }
 
 
 #[tauri::command]
 pub async fn get_smart_query_file_ids(params: SmartQueryParams) -> Result<Vec<i64>, String>
 {
-    lap_core::t_cmds::get_smart_query_file_ids(params).await
+    lappp_core::t_cmds::get_smart_query_file_ids(params).await
 }
 
 
@@ -1256,7 +1256,7 @@ pub async fn get_smart_query_file_position(
     file_id: i64,
 ) -> Result<Option<i64>, String>
 {
-    lap_core::t_cmds::get_smart_query_file_position(params, file_id).await
+    lappp_core::t_cmds::get_smart_query_file_position(params, file_id).await
 }
 
 
@@ -1270,7 +1270,7 @@ pub fn get_folder_files(
     from_db_only: Option<bool>,
 ) -> (Vec<AFile>, u32, u32)
 {
-    lap_core::t_cmds::get_folder_files(file_type, sort_type, sort_order, folder_id, folder_path, from_db_only)
+    lappp_core::t_cmds::get_folder_files(file_type, sort_type, sort_order, folder_id, folder_path, from_db_only)
 }
 
 
@@ -1280,9 +1280,9 @@ pub async fn sync_album_folder_mtimes(
     folder_id: i64,
     folder_path: String,
     group_raw_jpeg_pairs: bool,
-) -> Result<lap_core::t_utils::FolderMtimeSyncResult, String>
+) -> Result<lappp_core::t_utils::FolderMtimeSyncResult, String>
 {
-    lap_core::t_cmds::sync_album_folder_mtimes(album_id, folder_id, folder_path, group_raw_jpeg_pairs).await
+    lappp_core::t_cmds::sync_album_folder_mtimes(album_id, folder_id, folder_path, group_raw_jpeg_pairs).await
 }
 
 
@@ -1292,49 +1292,49 @@ pub async fn refresh_album_subfolders(
     folder_path: String,
 ) -> Result<(), String>
 {
-    lap_core::t_cmds::refresh_album_subfolders(album_id, folder_path).await
+    lappp_core::t_cmds::refresh_album_subfolders(album_id, folder_path).await
 }
 
 
 #[tauri::command]
 pub fn is_directory_accessible(path: &str) -> bool
 {
-    lap_core::t_cmds::is_directory_accessible(path)
+    lappp_core::t_cmds::is_directory_accessible(path)
 }
 
 
 #[tauri::command]
 pub fn get_folder_thumb_count(file_type: i64, folder_id: i64) -> i64
 {
-    lap_core::t_cmds::get_folder_thumb_count(file_type, folder_id)
+    lappp_core::t_cmds::get_folder_thumb_count(file_type, folder_id)
 }
 
 
 #[tauri::command]
 pub async fn edit_image(params: t_image::EditParams) -> Result<bool, String>
 {
-    lap_core::t_cmds::edit_image(params).await
+    lappp_core::t_cmds::edit_image(params).await
 }
 
 
 #[tauri::command]
 pub async fn render_montage(params: t_montage::MontageParams) -> Result<Option<String>, String>
 {
-    lap_core::t_cmds::render_montage(params).await
+    lappp_core::t_cmds::render_montage(params).await
 }
 
 
 #[tauri::command]
 pub async fn copy_edited_image(params: t_image::EditParams) -> Result<bool, String>
 {
-    lap_core::t_cmds::copy_edited_image(params).await
+    lappp_core::t_cmds::copy_edited_image(params).await
 }
 
 
 #[tauri::command]
 pub fn copy_file_paths(file_paths: Vec<String>) -> Result<(), String>
 {
-    lap_core::t_cmds::copy_file_paths(file_paths)
+    lappp_core::t_cmds::copy_file_paths(file_paths)
 }
 
 
@@ -1342,10 +1342,10 @@ pub fn copy_file_paths(file_paths: Vec<String>) -> Result<(), String>
 pub async fn preview_batch_rename(
     library_id: String,
     file_ids: Vec<i64>,
-    options: lap_core::t_batch_rename::RenameOptions,
-) -> Result<lap_core::t_batch_rename::RenamePreview, String>
+    options: lappp_core::t_batch_rename::RenameOptions,
+) -> Result<lappp_core::t_batch_rename::RenamePreview, String>
 {
-    lap_core::t_cmds::preview_batch_rename(library_id, file_ids, options).await
+    lappp_core::t_cmds::preview_batch_rename(library_id, file_ids, options).await
 }
 
 
@@ -1353,11 +1353,11 @@ pub async fn preview_batch_rename(
 pub async fn batch_rename_files(
     library_id: String,
     file_ids: Vec<i64>,
-    options: lap_core::t_batch_rename::RenameOptions,
-    expected: Vec<lap_core::t_batch_rename::RenameItem>,
-) -> Result<lap_core::t_batch_rename::RenamePreview, String>
+    options: lappp_core::t_batch_rename::RenameOptions,
+    expected: Vec<lappp_core::t_batch_rename::RenameItem>,
+) -> Result<lappp_core::t_batch_rename::RenamePreview, String>
 {
-    lap_core::t_cmds::batch_rename_files(library_id, file_ids, options, expected).await
+    lappp_core::t_cmds::batch_rename_files(library_id, file_ids, options, expected).await
 }
 
 
@@ -1368,7 +1368,7 @@ pub fn rename_file(
     new_name: &str,
 ) -> Result<Option<String>, String>
 {
-    lap_core::t_cmds::rename_file(file_id, file_path, new_name)
+    lappp_core::t_cmds::rename_file(file_id, file_path, new_name)
 }
 
 
@@ -1382,21 +1382,21 @@ pub fn move_file(
     batch_id: Option<u64>,
 ) -> Result<String, String>
 {
-    lap_core::t_cmds::move_file(file_id, file_path, new_folder_id, new_folder_path, conflict_policy, batch_id)
+    lappp_core::t_cmds::move_file(file_id, file_path, new_folder_id, new_folder_path, conflict_policy, batch_id)
 }
 
 
 #[tauri::command]
 pub fn begin_file_transfer_batch() -> Result<u64, String>
 {
-    lap_core::t_cmds::begin_file_transfer_batch()
+    lappp_core::t_cmds::begin_file_transfer_batch()
 }
 
 
 #[tauri::command]
 pub fn end_file_transfer_batch(batch_id: u64)
 {
-    lap_core::t_cmds::end_file_transfer_batch(batch_id)
+    lappp_core::t_cmds::end_file_transfer_batch(batch_id)
 }
 
 
@@ -1409,7 +1409,7 @@ pub fn move_file_outside_library(
     batch_id: Option<u64>,
 ) -> Result<String, String>
 {
-    lap_core::t_cmds::move_file_outside_library(file_id, file_path, new_folder_path, conflict_policy, batch_id)
+    lappp_core::t_cmds::move_file_outside_library(file_id, file_path, new_folder_path, conflict_policy, batch_id)
 }
 
 
@@ -1421,7 +1421,7 @@ pub fn copy_file(
     batch_id: Option<u64>,
 ) -> Result<String, String>
 {
-    lap_core::t_cmds::copy_file(file_path, new_folder_path, conflict_policy, batch_id)
+    lappp_core::t_cmds::copy_file(file_path, new_folder_path, conflict_policy, batch_id)
 }
 
 
@@ -1433,7 +1433,7 @@ pub async fn import_file(
     library_id: Option<String>,
 ) -> Result<Option<AFile>, String>
 {
-    lap_core::t_cmds::import_file(file_path, folder_id, folder_path, library_id).await
+    lappp_core::t_cmds::import_file(file_path, folder_id, folder_path, library_id).await
 }
 
 
@@ -1446,14 +1446,14 @@ pub fn import_and_organize(
     completed_paths: Vec<String>,
 ) -> Result<(), String>
 {
-    lap_core::t_cmds::import_and_organize(album_id, source_path, destination_path, layout, completed_paths)
+    lappp_core::t_cmds::import_and_organize(album_id, source_path, destination_path, layout, completed_paths)
 }
 
 
 #[tauri::command]
 pub fn cancel_import_and_organize() -> Result<(), String>
 {
-    lap_core::t_cmds::cancel_import_and_organize()
+    lappp_core::t_cmds::cancel_import_and_organize()
 }
 
 
@@ -1464,7 +1464,7 @@ pub async fn import_url(
     folder_path: String,
 ) -> Result<Option<AFile>, String>
 {
-    lap_core::t_cmds::import_url(url, folder_id, folder_path).await
+    lappp_core::t_cmds::import_url(url, folder_id, folder_path).await
 }
 
 
@@ -1476,28 +1476,28 @@ pub async fn import_file_bytes(
     folder_path: String,
 ) -> Result<Option<AFile>, String>
 {
-    lap_core::t_cmds::import_file_bytes(bytes, name, folder_id, folder_path).await
+    lappp_core::t_cmds::import_file_bytes(bytes, name, folder_id, folder_path).await
 }
 
 
 #[tauri::command]
 pub fn delete_file(file_id: i64, file_path: &str) -> Result<BatchDeleteResult, String>
 {
-    lap_core::t_cmds::delete_file(file_id, file_path)
+    lappp_core::t_cmds::delete_file(file_id, file_path)
 }
 
 
 #[tauri::command]
 pub fn delete_file_permanently(file_id: i64, file_path: &str) -> Result<BatchDeleteResult, String>
 {
-    lap_core::t_cmds::delete_file_permanently(file_id, file_path)
+    lappp_core::t_cmds::delete_file_permanently(file_id, file_path)
 }
 
 
 #[tauri::command]
 pub fn delete_db_file(file_id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::delete_db_file(file_id)
+    lappp_core::t_cmds::delete_db_file(file_id)
 }
 
 
@@ -1507,14 +1507,14 @@ pub async fn batch_delete_files(
     permanently: bool,
 ) -> Result<BatchDeleteResult, String>
 {
-    lap_core::t_cmds::batch_delete_files(files, permanently).await
+    lappp_core::t_cmds::batch_delete_files(files, permanently).await
 }
 
 
 #[tauri::command]
 pub fn edit_file_comment(file_id: i64, comment: &str) -> Result<usize, String>
 {
-    lap_core::t_cmds::edit_file_comment(file_id, comment)
+    lappp_core::t_cmds::edit_file_comment(file_id, comment)
 }
 
 
@@ -1523,7 +1523,7 @@ pub async fn clean_unused_thumbnail_cache(
     library_id: Option<String>,
 ) -> Result<t_sqlite::ThumbnailCacheCleanupResult, String>
 {
-    lap_core::t_cmds::clean_unused_thumbnail_cache(library_id).await
+    lappp_core::t_cmds::clean_unused_thumbnail_cache(library_id).await
 }
 
 
@@ -1540,7 +1540,7 @@ pub async fn get_file_thumb(
     album_id: Option<i64>,
 ) -> Result<Option<AThumb>, String>
 {
-    lap_core::t_cmds::get_file_thumb(file_id, file_path, file_type, orientation, thumbnail_size, raw_display_options, force_regenerate, thumbnail_seek_percent, album_id).await
+    lappp_core::t_cmds::get_file_thumb(file_id, file_path, file_type, orientation, thumbnail_size, raw_display_options, force_regenerate, thumbnail_seek_percent, album_id).await
 }
 
 
@@ -1552,7 +1552,7 @@ pub async fn get_file_thumb_by_id(
     force_regenerate: bool,
 ) -> Result<Option<AThumb>, String>
 {
-    lap_core::t_cmds::get_file_thumb_by_id(file_id, thumbnail_size, raw_display_options, force_regenerate).await
+    lappp_core::t_cmds::get_file_thumb_by_id(file_id, thumbnail_size, raw_display_options, force_regenerate).await
 }
 
 
@@ -1564,14 +1564,14 @@ pub async fn get_file_thumbs(
     force_regenerate: bool,
 ) -> Result<Vec<Option<AThumb>>, String>
 {
-    lap_core::t_cmds::get_file_thumbs(files, thumbnail_size, raw_display_options, force_regenerate).await
+    lappp_core::t_cmds::get_file_thumbs(files, thumbnail_size, raw_display_options, force_regenerate).await
 }
 
 
 #[tauri::command]
 pub fn get_file_info(file_id: i64) -> Result<Option<AFile>, String>
 {
-    lap_core::t_cmds::get_file_info(file_id)
+    lappp_core::t_cmds::get_file_info(file_id)
 }
 
 
@@ -1582,44 +1582,44 @@ pub async fn get_file_metadata_details(
     request_id: String,
     force: Option<bool>,
     refresh_key: Option<String>,
-) -> Result<lap_core::metadata::embedded::Details, String>
+) -> Result<lappp_core::metadata::embedded::Details, String>
 {
-    lap_core::t_cmds::get_file_metadata_details(file_id, section, request_id, force, refresh_key).await
+    lappp_core::t_cmds::get_file_metadata_details(file_id, section, request_id, force, refresh_key).await
 }
 
 
 #[tauri::command]
 pub fn cancel_file_metadata_requests(request_ids: Vec<String>) -> Result<(), String>
 {
-    lap_core::t_cmds::cancel_file_metadata_requests(request_ids)
+    lappp_core::t_cmds::cancel_file_metadata_requests(request_ids)
 }
 
 
 #[tauri::command]
 pub fn prepare_motion_photo_video(file_id: i64) -> Result<String, String>
 {
-    lap_core::t_cmds::prepare_motion_photo_video(file_id)
+    lappp_core::t_cmds::prepare_motion_photo_video(file_id)
 }
 
 
 #[tauri::command]
 pub fn update_file_info(file_id: i64, file_path: &str) -> Result<Option<AFile>, String>
 {
-    lap_core::t_cmds::update_file_info(file_id, file_path)
+    lappp_core::t_cmds::update_file_info(file_id, file_path)
 }
 
 
 #[tauri::command]
 pub fn begin_file_refresh_batch(library_id: String) -> Result<u64, String>
 {
-    lap_core::t_cmds::begin_file_refresh_batch(library_id)
+    lappp_core::t_cmds::begin_file_refresh_batch(library_id)
 }
 
 
 #[tauri::command]
 pub fn end_file_refresh_batch(batch_id: u64)
 {
-    lap_core::t_cmds::end_file_refresh_batch(batch_id)
+    lappp_core::t_cmds::end_file_refresh_batch(batch_id)
 }
 
 
@@ -1631,7 +1631,7 @@ pub async fn change_video_thumbnail(
     seek_percent: u8,
 ) -> Result<Option<AThumb>, String>
 {
-    lap_core::t_cmds::change_video_thumbnail(library_id, file_id, thumbnail_size, seek_percent).await
+    lappp_core::t_cmds::change_video_thumbnail(library_id, file_id, thumbnail_size, seek_percent).await
 }
 
 
@@ -1644,7 +1644,7 @@ pub async fn refresh_selected_file_info(
     raw_display_options: Option<RawDisplayOptions>,
 ) -> Result<Option<FileRefreshResult>, String>
 {
-    lap_core::t_cmds::refresh_selected_file_info(library_id, file_id, batch_id, thumbnail_size, raw_display_options).await
+    lappp_core::t_cmds::refresh_selected_file_info(library_id, file_id, batch_id, thumbnail_size, raw_display_options).await
 }
 
 
@@ -1657,77 +1657,77 @@ pub async fn index_cloud_file(
     raw_display_options: RawDisplayOptions,
 ) -> Result<Option<FileRefreshResult>, String>
 {
-    lap_core::t_cmds::index_cloud_file(library_id, batch_id, file_id, thumbnail_size, raw_display_options).await
+    lappp_core::t_cmds::index_cloud_file(library_id, batch_id, file_id, thumbnail_size, raw_display_options).await
 }
 
 
 #[tauri::command]
 pub fn add_file_to_db(folder_id: i64, file_path: &str) -> Result<Option<AFile>, String>
 {
-    lap_core::t_cmds::add_file_to_db(folder_id, file_path)
+    lappp_core::t_cmds::add_file_to_db(folder_id, file_path)
 }
 
 
 #[tauri::command]
 pub fn check_file_exists(file_path: &str) -> bool
 {
-    lap_core::t_cmds::check_file_exists(file_path)
+    lappp_core::t_cmds::check_file_exists(file_path)
 }
 
 
 #[tauri::command]
 pub async fn is_cloud_only_file(file_path: String) -> bool
 {
-    lap_core::t_cmds::is_cloud_only_file(file_path).await
+    lappp_core::t_cmds::is_cloud_only_file(file_path).await
 }
 
 
 #[tauri::command]
 pub async fn check_file_accessibility(file_path: String) -> bool
 {
-    lap_core::t_cmds::check_file_accessibility(file_path).await
+    lappp_core::t_cmds::check_file_accessibility(file_path).await
 }
 
 
 #[tauri::command]
 pub fn set_file_rotate(file_id: i64, rotate: i32) -> Result<usize, String>
 {
-    lap_core::t_cmds::set_file_rotate(file_id, rotate)
+    lappp_core::t_cmds::set_file_rotate(file_id, rotate)
 }
 
 
 #[tauri::command]
 pub fn get_file_has_tags(file_id: i64) -> Result<bool, String>
 {
-    lap_core::t_cmds::get_file_has_tags(file_id)
+    lappp_core::t_cmds::get_file_has_tags(file_id)
 }
 
 
 #[tauri::command]
 pub fn get_favorite_folders() -> Result<Vec<AFolder>, String>
 {
-    lap_core::t_cmds::get_favorite_folders()
+    lappp_core::t_cmds::get_favorite_folders()
 }
 
 
 #[tauri::command]
 pub fn get_folder_favorite(folder_path: &str) -> Result<bool, String>
 {
-    lap_core::t_cmds::get_folder_favorite(folder_path)
+    lappp_core::t_cmds::get_folder_favorite(folder_path)
 }
 
 
 #[tauri::command]
 pub fn set_folder_favorite(folder_id: i64, is_favorite: bool) -> Result<usize, String>
 {
-    lap_core::t_cmds::set_folder_favorite(folder_id, is_favorite)
+    lappp_core::t_cmds::set_folder_favorite(folder_id, is_favorite)
 }
 
 
 #[tauri::command]
 pub fn get_folder_search_excluded(folder_path: &str) -> Result<bool, String>
 {
-    lap_core::t_cmds::get_folder_search_excluded(folder_path)
+    lappp_core::t_cmds::get_folder_search_excluded(folder_path)
 }
 
 
@@ -1738,28 +1738,28 @@ pub fn set_folder_search_excluded(
     is_excluded: bool,
 ) -> Result<usize, String>
 {
-    lap_core::t_cmds::set_folder_search_excluded(album_id, folder_path, is_excluded)
+    lappp_core::t_cmds::set_folder_search_excluded(album_id, folder_path, is_excluded)
 }
 
 
 #[tauri::command]
 pub fn set_file_favorite(file_id: i64, is_favorite: bool) -> Result<usize, String>
 {
-    lap_core::t_cmds::set_file_favorite(file_id, is_favorite)
+    lappp_core::t_cmds::set_file_favorite(file_id, is_favorite)
 }
 
 
 #[tauri::command]
 pub fn set_file_rating(file_id: i64, rating: i32) -> Result<usize, String>
 {
-    lap_core::t_cmds::set_file_rating(file_id, rating)
+    lappp_core::t_cmds::set_file_rating(file_id, rating)
 }
 
 
 #[tauri::command]
 pub fn set_file_culling_flag(file_id: i64, culling_flag: i32) -> Result<usize, String>
 {
-    lap_core::t_cmds::set_file_culling_flag(file_id, culling_flag)
+    lappp_core::t_cmds::set_file_culling_flag(file_id, culling_flag)
 }
 
 
@@ -1768,21 +1768,21 @@ pub fn batch_update_file_metadata(
     params: t_write::BatchFileMetadataUpdate,
 ) -> Result<usize, String>
 {
-    lap_core::t_cmds::batch_update_file_metadata(params)
+    lappp_core::t_cmds::batch_update_file_metadata(params)
 }
 
 
 #[tauri::command]
 pub fn get_xmp_import_settings() -> XmpImportSettings
 {
-    lap_core::t_cmds::get_xmp_import_settings()
+    lappp_core::t_cmds::get_xmp_import_settings()
 }
 
 
 #[tauri::command]
 pub fn set_xmp_import_settings(import_xmp_sidecars: bool)
 {
-    lap_core::t_cmds::set_xmp_import_settings(import_xmp_sidecars)
+    lappp_core::t_cmds::set_xmp_import_settings(import_xmp_sidecars)
 }
 
 
@@ -1790,93 +1790,93 @@ pub fn set_xmp_import_settings(import_xmp_sidecars: bool)
 pub async fn save_xmp_metadata(
     library_id: String,
     file_ids: Vec<i64>,
-) -> Result<lap_core::metadata::xmp::BatchResult, String>
+) -> Result<lappp_core::metadata::xmp::BatchResult, String>
 {
-    lap_core::t_cmds::save_xmp_metadata(library_id, file_ids).await
+    lappp_core::t_cmds::save_xmp_metadata(library_id, file_ids).await
 }
 
 
 #[tauri::command]
-pub fn get_tag_subtree_info(tag_id: i64) -> Result<lap_core::t_tags::SubtreeInfo, String>
+pub fn get_tag_subtree_info(tag_id: i64) -> Result<lappp_core::t_tags::SubtreeInfo, String>
 {
-    lap_core::t_cmds::get_tag_subtree_info(tag_id)
+    lappp_core::t_cmds::get_tag_subtree_info(tag_id)
 }
 
 
 #[tauri::command]
 pub fn move_tag(tag_id: i64, parent_id: Option<i64>) -> Result<(), String>
 {
-    lap_core::t_cmds::move_tag(tag_id, parent_id)
+    lappp_core::t_cmds::move_tag(tag_id, parent_id)
 }
 
 
 #[tauri::command]
 pub fn get_all_tags(sort: i64) -> Result<Vec<ATag>, String>
 {
-    lap_core::t_cmds::get_all_tags(sort)
+    lappp_core::t_cmds::get_all_tags(sort)
 }
 
 
 #[tauri::command]
 pub fn get_tag_counts() -> Result<HashMap<i64, i64>, String>
 {
-    lap_core::t_cmds::get_tag_counts()
+    lappp_core::t_cmds::get_tag_counts()
 }
 
 
 #[tauri::command]
 pub fn get_tag_name(tag_id: i64) -> Result<String, String>
 {
-    lap_core::t_cmds::get_tag_name(tag_id)
+    lappp_core::t_cmds::get_tag_name(tag_id)
 }
 
 
 #[tauri::command]
 pub fn create_tag(name: &str, parent_id: Option<i64>) -> Result<ATag, String>
 {
-    lap_core::t_cmds::create_tag(name, parent_id)
+    lappp_core::t_cmds::create_tag(name, parent_id)
 }
 
 
 #[tauri::command]
 pub fn rename_tag(tag_id: i64, new_name: &str) -> Result<usize, String>
 {
-    lap_core::t_cmds::rename_tag(tag_id, new_name)
+    lappp_core::t_cmds::rename_tag(tag_id, new_name)
 }
 
 
 #[tauri::command]
 pub fn delete_tag(tag_id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::delete_tag(tag_id)
+    lappp_core::t_cmds::delete_tag(tag_id)
 }
 
 
 #[tauri::command]
 pub fn get_tags_for_file(file_id: i64) -> Result<Vec<ATag>, String>
 {
-    lap_core::t_cmds::get_tags_for_file(file_id)
+    lappp_core::t_cmds::get_tags_for_file(file_id)
 }
 
 
 #[tauri::command]
 pub fn add_tag_to_file(file_id: i64, tag_id: i64) -> Result<(), String>
 {
-    lap_core::t_cmds::add_tag_to_file(file_id, tag_id)
+    lappp_core::t_cmds::add_tag_to_file(file_id, tag_id)
 }
 
 
 #[tauri::command]
 pub fn remove_tag_from_file(file_id: i64, tag_id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::remove_tag_from_file(file_id, tag_id)
+    lappp_core::t_cmds::remove_tag_from_file(file_id, tag_id)
 }
 
 
 #[tauri::command]
 pub fn get_tag_selection_counts(file_ids: Vec<i64>) -> Result<Vec<ATagSelectionCount>, String>
 {
-    lap_core::t_cmds::get_tag_selection_counts(file_ids)
+    lappp_core::t_cmds::get_tag_selection_counts(file_ids)
 }
 
 
@@ -1887,35 +1887,35 @@ pub fn apply_tags_to_files(
     remove_tag_ids: Vec<i64>,
 ) -> Result<Vec<ATagFileState>, String>
 {
-    lap_core::t_cmds::apply_tags_to_files(file_ids, add_tag_ids, remove_tag_ids)
+    lappp_core::t_cmds::apply_tags_to_files(file_ids, add_tag_ids, remove_tag_ids)
 }
 
 
 #[tauri::command]
 pub fn get_taken_dates(sort: i64) -> Result<Vec<(String, i64)>, String>
 {
-    lap_core::t_cmds::get_taken_dates(sort)
+    lappp_core::t_cmds::get_taken_dates(sort)
 }
 
 
 #[tauri::command]
 pub fn get_camera_info(sort: i64) -> Result<Vec<ACamera>, String>
 {
-    lap_core::t_cmds::get_camera_info(sort)
+    lappp_core::t_cmds::get_camera_info(sort)
 }
 
 
 #[tauri::command]
 pub fn get_lens_info(sort: i64) -> Result<Vec<ALens>, String>
 {
-    lap_core::t_cmds::get_lens_info(sort)
+    lappp_core::t_cmds::get_lens_info(sort)
 }
 
 
 #[tauri::command]
 pub fn get_location_info(sort: i64) -> Result<Vec<ALocation>, String>
 {
-    lap_core::t_cmds::get_location_info(sort)
+    lappp_core::t_cmds::get_location_info(sort)
 }
 
 
@@ -1924,42 +1924,42 @@ pub fn get_gps_map_points(
     params: t_sqlite::QueryParams,
 ) -> Result<Vec<t_sqlite::AGpsMapPoint>, String>
 {
-    lap_core::t_cmds::get_gps_map_points(params)
+    lappp_core::t_cmds::get_gps_map_points(params)
 }
 
 
 #[tauri::command]
 pub fn get_package_info() -> t_utils::PackageInfo
 {
-    lap_core::t_cmds::get_package_info()
+    lappp_core::t_cmds::get_package_info()
 }
 
 
 #[tauri::command]
 pub fn get_build_time() -> u64
 {
-    lap_core::t_cmds::get_build_time()
+    lappp_core::t_cmds::get_build_time()
 }
 
 
 #[tauri::command]
 pub fn get_storage_file_info() -> Result<t_utils::FileInfo, String>
 {
-    lap_core::t_cmds::get_storage_file_info()
+    lappp_core::t_cmds::get_storage_file_info()
 }
 
 
 #[tauri::command]
 pub fn check_ai_status() -> String
 {
-    lap_core::t_cmds::check_ai_status()
+    lappp_core::t_cmds::check_ai_status()
 }
 
 
 #[tauri::command]
 pub async fn get_image_search_model_status() -> Result<t_ai::ImageSearchModelStatus, String>
 {
-    lap_core::t_cmds::get_image_search_model_status().await
+    lappp_core::t_cmds::get_image_search_model_status().await
 }
 
 
@@ -1968,21 +1968,21 @@ pub async fn set_image_search_model(
     model: i64,
 ) -> Result<t_ai::ImageSearchModelStatus, String>
 {
-    lap_core::t_cmds::set_image_search_model(model).await
+    lappp_core::t_cmds::set_image_search_model(model).await
 }
 
 
 #[tauri::command]
 pub async fn download_multilingual_image_search_model() -> Result<(), String>
 {
-    lap_core::t_cmds::download_multilingual_image_search_model().await
+    lappp_core::t_cmds::download_multilingual_image_search_model().await
 }
 
 
 #[tauri::command]
 pub async fn cancel_multilingual_image_search_model_download() -> Result<(), String>
 {
-    lap_core::t_cmds::cancel_multilingual_image_search_model_download().await
+    lappp_core::t_cmds::cancel_multilingual_image_search_model_download().await
 }
 
 
@@ -1992,7 +1992,7 @@ pub async fn generate_embedding(
     library_id: Option<String>,
 ) -> Result<String, String>
 {
-    lap_core::t_cmds::generate_embedding(file_id, library_id).await
+    lappp_core::t_cmds::generate_embedding(file_id, library_id).await
 }
 
 
@@ -2002,7 +2002,7 @@ pub async fn search_similar_images(
     library_id: Option<String>,
 ) -> Result<Vec<AFile>, String>
 {
-    lap_core::t_cmds::search_similar_images(params, library_id).await
+    lappp_core::t_cmds::search_similar_images(params, library_id).await
 }
 
 
@@ -2014,24 +2014,24 @@ pub fn similar_start_scan(
     params: Option<QueryParams>,
     collection_id: Option<i64>,
     file_ids: Option<Vec<i64>>,
-    keep_rules: Option<lap_core::t_dedup::KeepRules>,
+    keep_rules: Option<lappp_core::t_dedup::KeepRules>,
 ) -> Result<(), String>
 {
-    lap_core::t_cmds::similar_start_scan(scope_key, source_version, similarity_threshold, params, collection_id, file_ids, keep_rules)
+    lappp_core::t_cmds::similar_start_scan(scope_key, source_version, similarity_threshold, params, collection_id, file_ids, keep_rules)
 }
 
 
 #[tauri::command]
 pub fn similar_get_scan_status() -> t_similar::SimilarScanStatus
 {
-    lap_core::t_cmds::similar_get_scan_status()
+    lappp_core::t_cmds::similar_get_scan_status()
 }
 
 
 #[tauri::command]
 pub fn similar_cancel_scan()
 {
-    lap_core::t_cmds::similar_cancel_scan()
+    lappp_core::t_cmds::similar_cancel_scan()
 }
 
 
@@ -2042,7 +2042,7 @@ pub fn similar_get_eligible_count(
     file_ids: Option<Vec<i64>>,
 ) -> Result<u64, String>
 {
-    lap_core::t_cmds::similar_get_eligible_count(params, collection_id, file_ids)
+    lappp_core::t_cmds::similar_get_eligible_count(params, collection_id, file_ids)
 }
 
 
@@ -2053,139 +2053,139 @@ pub fn similar_list_groups(
     offset: i64,
 ) -> Result<serde_json::Value, String>
 {
-    lap_core::t_cmds::similar_list_groups(scope_key, limit, offset)
+    lappp_core::t_cmds::similar_list_groups(scope_key, limit, offset)
 }
 
 
 #[tauri::command]
 pub fn similar_get_overview(scope_key: String) -> Result<serde_json::Value, String>
 {
-    lap_core::t_cmds::similar_get_overview(scope_key)
+    lappp_core::t_cmds::similar_get_overview(scope_key)
 }
 
 
 #[tauri::command]
 pub fn similar_get_group(group_id: i64, scope_key: String) -> Result<serde_json::Value, String>
 {
-    lap_core::t_cmds::similar_get_group(group_id, scope_key)
+    lappp_core::t_cmds::similar_get_group(group_id, scope_key)
 }
 
 
 #[tauri::command]
 pub fn similar_set_keep(group_id: i64, file_id: i64, scope_key: String) -> Result<(), String>
 {
-    lap_core::t_cmds::similar_set_keep(group_id, file_id, scope_key)
+    lappp_core::t_cmds::similar_set_keep(group_id, file_id, scope_key)
 }
 
 
 #[tauri::command]
 pub fn similar_has_scan(scope_key: String) -> Result<bool, String>
 {
-    lap_core::t_cmds::similar_has_scan(scope_key)
+    lappp_core::t_cmds::similar_has_scan(scope_key)
 }
 
 
 #[tauri::command]
 pub fn index_faces(cluster_epsilon: Option<f32>) -> Result<(), String>
 {
-    lap_core::t_cmds::index_faces(cluster_epsilon)
+    lappp_core::t_cmds::index_faces(cluster_epsilon)
 }
 
 
 #[tauri::command]
 pub fn get_face_stats() -> Result<t_face::FaceStats, String>
 {
-    lap_core::t_cmds::get_face_stats()
+    lappp_core::t_cmds::get_face_stats()
 }
 
 
 #[tauri::command]
 pub fn cancel_face_index() -> Result<(), String>
 {
-    lap_core::t_cmds::cancel_face_index()
+    lappp_core::t_cmds::cancel_face_index()
 }
 
 
 #[tauri::command]
 pub fn reset_faces() -> Result<(), String>
 {
-    lap_core::t_cmds::reset_faces()
+    lappp_core::t_cmds::reset_faces()
 }
 
 
 #[tauri::command]
 pub fn is_face_indexing() -> Result<(bool, Option<t_face::FaceIndexProgress>), String>
 {
-    lap_core::t_cmds::is_face_indexing()
+    lappp_core::t_cmds::is_face_indexing()
 }
 
 
 #[tauri::command]
 pub fn get_persons(sort: i64) -> Result<Vec<Person>, String>
 {
-    lap_core::t_cmds::get_persons(sort)
+    lappp_core::t_cmds::get_persons(sort)
 }
 
 
 #[tauri::command]
 pub fn get_persons_page(request: PersonPageRequest) -> Result<PersonPage, String>
 {
-    lap_core::t_cmds::get_persons_page(request)
+    lappp_core::t_cmds::get_persons_page(request)
 }
 
 
 #[tauri::command]
 pub fn rename_person(person_id: i64, name: String) -> Result<usize, String>
 {
-    lap_core::t_cmds::rename_person(person_id, name)
+    lappp_core::t_cmds::rename_person(person_id, name)
 }
 
 
 #[tauri::command]
 pub fn delete_person(person_id: i64) -> Result<usize, String>
 {
-    lap_core::t_cmds::delete_person(person_id)
+    lappp_core::t_cmds::delete_person(person_id)
 }
 
 
 #[tauri::command]
 pub fn get_faces_for_file(file_id: i64) -> Result<Vec<t_sqlite::Face>, String>
 {
-    lap_core::t_cmds::get_faces_for_file(file_id)
+    lappp_core::t_cmds::get_faces_for_file(file_id)
 }
 
 
 #[tauri::command]
 pub fn get_person_thumbnail(person_id: i64) -> Result<Option<String>, String>
 {
-    lap_core::t_cmds::get_person_thumbnail(person_id)
+    lappp_core::t_cmds::get_person_thumbnail(person_id)
 }
 
 
 #[tauri::command]
 pub fn dedup_start_scan(
-    params: Option<lap_core::t_sqlite::QueryParams>,
+    params: Option<lappp_core::t_sqlite::QueryParams>,
     collection_id: Option<i64>,
     file_ids: Option<Vec<i64>>,
-    keep_rules: Option<lap_core::t_dedup::KeepRules>,
+    keep_rules: Option<lappp_core::t_dedup::KeepRules>,
     group_raw_pairs: Option<bool>,
 ) -> Result<(), String>
 {
-    lap_core::t_cmds::dedup_start_scan(params, collection_id, file_ids, keep_rules, group_raw_pairs)
+    lappp_core::t_cmds::dedup_start_scan(params, collection_id, file_ids, keep_rules, group_raw_pairs)
 }
 
 
 #[tauri::command]
-pub fn dedup_get_scan_status() -> Result<lap_core::t_dedup::DedupScanStatus, String>
+pub fn dedup_get_scan_status() -> Result<lappp_core::t_dedup::DedupScanStatus, String>
 {
-    lap_core::t_cmds::dedup_get_scan_status()
+    lappp_core::t_cmds::dedup_get_scan_status()
 }
 
 
 #[tauri::command]
 pub fn dedup_cancel_scan() -> Result<(), String>
 {
-    lap_core::t_cmds::dedup_cancel_scan()
+    lappp_core::t_cmds::dedup_cancel_scan()
 }
 
 
@@ -2195,16 +2195,16 @@ pub fn dedup_list_groups(
     page_size: u32,
     sort_by: String, // E.g., "size_desc", "count_desc"
     filter: String,  // E.g., "all", "unreviewed"
-) -> Result<Vec<lap_core::t_dedup::DedupGroup>, String>
+) -> Result<Vec<lappp_core::t_dedup::DedupGroup>, String>
 {
-    lap_core::t_cmds::dedup_list_groups(page, page_size, sort_by, filter)
+    lappp_core::t_cmds::dedup_list_groups(page, page_size, sort_by, filter)
 }
 
 
 #[tauri::command]
-pub fn dedup_get_overview() -> Result<lap_core::t_dedup::DedupOverview, String>
+pub fn dedup_get_overview() -> Result<lappp_core::t_dedup::DedupOverview, String>
 {
-    lap_core::t_cmds::dedup_get_overview()
+    lappp_core::t_cmds::dedup_get_overview()
 }
 
 
@@ -2215,23 +2215,23 @@ pub fn dedup_set_keep(
     group_raw_pairs: Option<bool>,
 ) -> Result<(), String>
 {
-    lap_core::t_cmds::dedup_set_keep(group_id, file_id, group_raw_pairs)
+    lappp_core::t_cmds::dedup_set_keep(group_id, file_id, group_raw_pairs)
 }
 
 
 #[tauri::command]
 pub async fn dedup_delete(
-    request: lap_core::t_dedup::DedupDeleteRequest,
-) -> Result<lap_core::t_dedup::DedupDeleteResult, String>
+    request: lappp_core::t_dedup::DedupDeleteRequest,
+) -> Result<lappp_core::t_dedup::DedupDeleteResult, String>
 {
-    lap_core::t_cmds::dedup_delete(request).await
+    lappp_core::t_cmds::dedup_delete(request).await
 }
 
 
 #[tauri::command]
 pub fn get_db_storage_info() -> Result<Vec<t_storage::DbStorageInfo>, String>
 {
-    lap_core::t_cmds::get_db_storage_info()
+    lappp_core::t_cmds::get_db_storage_info()
 }
 
 
@@ -2241,14 +2241,14 @@ pub fn backup_databases(
     dest_path: String,
 ) -> Result<t_storage::BackupResult, String>
 {
-    lap_core::t_cmds::backup_databases(library_ids, dest_path)
+    lappp_core::t_cmds::backup_databases(library_ids, dest_path)
 }
 
 
 #[tauri::command]
 pub fn parse_backup_file(path: String) -> Result<t_storage::BackupMetaData, String>
 {
-    lap_core::t_cmds::parse_backup_file(path)
+    lappp_core::t_cmds::parse_backup_file(path)
 }
 
 
@@ -2258,5 +2258,5 @@ pub fn restore_databases(
     selections: Vec<t_storage::RestoreSelection>,
 ) -> Result<t_storage::RestoreResult, String>
 {
-    lap_core::t_cmds::restore_databases(backup_path, selections)
+    lappp_core::t_cmds::restore_databases(backup_path, selections)
 }

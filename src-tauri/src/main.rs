@@ -10,7 +10,7 @@
 
 /**
  * Main entry point for the Tauri application.
- * project: Lap
+ * project: lappp
  * author:  julyx10
  * date:    2024-08-08
  */
@@ -18,12 +18,12 @@ use tauri::Manager;
 #[cfg(feature = "embedded")]
 use tauri_plugin_aptabase::EventTracker;
 
-// The core lives in lap-core; importing the module names keeps the
+// The core lives in lappp-core; importing the module names keeps the
 // bare `t_x::…` paths below unchanged. (t_http is Linux-only.) The thin
-// client build (`--features client`) does not link lap-core, so all of this —
+// client build (`--features client`) does not link lappp-core, so all of this —
 // and every module that depends on it — is gated to `embedded`.
 #[cfg(feature = "embedded")]
-use lap_core::{
+use lappp_core::{
     t_config,
     t_events,
     t_paths,
@@ -31,7 +31,7 @@ use lap_core::{
     t_state,
 };
 #[cfg(all(feature = "embedded", target_os = "linux"))]
-use lap_core::t_http;
+use lappp_core::t_http;
 
 
 #[cfg(feature = "embedded")]
@@ -46,7 +46,7 @@ mod t_embed;
 mod t_fts;
 #[cfg(feature = "embedded")]
 mod t_af_area;
-// The menu module is Tauri-only (no lap-core), so it compiles in both builds.
+// The menu module is Tauri-only (no lappp-core), so it compiles in both builds.
 mod t_menu;
 #[cfg(feature = "client")]
 mod client_cmds;
@@ -162,7 +162,7 @@ async fn run_embedded() {
     // before anything reads the data path, so the lock probe below and the
     // embedded boot both resolve against it. Absent → the per-user default.
     if let Some(dir) = t_client::data_dir_from_args(&args) {
-        eprintln!("lap: data dir → {}", dir.display());
+        eprintln!("lappp: data dir → {}", dir.display());
         t_config::set_data_dir_override(dir);
     }
     if let Some(addr) = t_config::get_app_data_dir()
@@ -170,7 +170,7 @@ async fn run_embedded() {
         .and_then(|dir| t_client::conflicting_server(&dir, std::process::id()))
     {
         eprintln!(
-            "lap: another instance is using this library (a Lap server is running at {addr}).\n\
+            "lappp: another instance is using this library (a lappp-server is running at {addr}).\n\
              Close it, or use the Web client / thin-client build to connect to it."
         );
         std::process::exit(1);
@@ -632,7 +632,7 @@ async fn run_embedded() {
 /// Web UI; a native menu (Rust-side, the only control surface that works when a
 /// remote page is shown) switches between servers, and a local picker page
 /// manages the list. Built with `--no-default-features --features client`, so
-/// `lap-core` (the C image libraries, the AI stack, every local command) is
+/// `lappp-core` (the C image libraries, the AI stack, every local command) is
 /// never linked.
 #[cfg(all(feature = "client", not(feature = "embedded")))]
 async fn run_client() {

@@ -257,7 +257,7 @@ mod tests {
         // initialized in tests via the core runtime holder, so call it
         // directly.
         let result = spawn_sync(move || -> Result<u32, String> {
-            Ok(lap_core::t_rt::block_on(async { 21 + 21 }))
+            Ok(lappp_core::t_rt::block_on(async { 21 + 21 }))
         })
         .await
         .unwrap();

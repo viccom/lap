@@ -1,26 +1,26 @@
-//! Desktop command wrappers over lap_core::t_startup (serverization phase 3).
+//! Desktop command wrappers over lappp_core::t_startup (serverization phase 3).
 //! The module name and command names stay identical, so main.rs
 //! registration is unchanged; everything else re-exports the core.
 
-pub use lap_core::t_startup::*;
+pub use lappp_core::t_startup::*;
 
 
 #[tauri::command]
 pub fn record_startup_stage(stage: String)
 {
-    lap_core::t_startup::record_startup_stage(stage)
+    lappp_core::t_startup::record_startup_stage(stage)
 }
 
 
 #[tauri::command]
 pub fn finish_startup(model: i64)
 {
-    lap_core::t_startup::finish_startup(model)
+    lappp_core::t_startup::finish_startup(model)
 }
 
 
 #[tauri::command]
 pub fn get_ai_initialization_status() -> String
 {
-    lap_core::t_startup::get_ai_initialization_status()
+    lappp_core::t_startup::get_ai_initialization_status()
 }

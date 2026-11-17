@@ -1,18 +1,18 @@
 [package]
-# `lapd`: the standalone server build of Lap (phase 3). Skeleton ships with
+# `lappp-server`: the standalone server build of lappp (phase 3). Skeleton ships with
 # batch 3.2: flags, lock file, boot chain, server_info (command bridge and
 # SSE land in the following 3.2 commits).
-name = "lap-server"
+name = "lappp-server"
 version = "0.3.3"
 edition = "2024"
 license = "GPL-3.0-or-later"
 
 [[bin]]
-name = "lapd"
+name = "lappp-server"
 path = "src/main.rs"
 
 [dependencies]
-lap-core = { path = "../lap-core" }
+lappp-core = { path = "../lappp-core" }
 axum = "0.8"
 futures = "0.3.32"
 serde = { version = "1", features = ["derive"] }

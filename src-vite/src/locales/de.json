@@ -280,7 +280,7 @@
   },
   "welcome": {
     "add_album_title": "Beginne mit einem neuen Album",
-    "add_album_description": "Wähle einen Ordner und lass Lap deine Fotos und Videos organisieren.",
+    "add_album_description": "Wähle einen Ordner und lass lappp deine Fotos und Videos organisieren.",
     "smart_album_title": "Mit Smart-Alben organisieren",
     "smart_album_description": "Mit Regeln werden passende Fotos automatisch gruppiert.",
     "collection_title": "Fotos in Sammlungen gruppieren",
@@ -332,7 +332,7 @@
         "skip_once": "Diese Datei überspringen und fortfahren",
         "file_label": "Zuletzt gescannte Datei",
         "message": "Der letzte Scan wurde nicht normal beendet.",
-        "message_with_file": "Der vorherige Scan wurde nicht sauber beendet.\n\nZuletzt gescannte Datei:\n{file}\n\nWenn Sie fortfahren, überspringt Lap diese Datei einmal und setzt den Scan fort."
+        "message_with_file": "Der vorherige Scan wurde nicht sauber beendet.\n\nZuletzt gescannte Datei:\n{file}\n\nWenn Sie fortfahren, überspringt lappp diese Datei einmal und setzt den Scan fort."
       }
     }
   },
@@ -1072,7 +1072,7 @@
       "failed": "Fehlgeschlagen: {count}",
       "release_requested": "Freigabe angefordert: {count}",
       "kept_local": "Auf diesem Gerät behalten: {count}",
-      "kept_local_hint": "Dateien, die immer auf diesem Gerät bleiben sollen oder für die Windows die Speicherplatzfreigabe durch Lap nicht zugelassen hat (überwachter Ordnerzugriff)."
+      "kept_local_hint": "Dateien, die immer auf diesem Gerät bleiben sollen oder für die Windows die Speicherplatzfreigabe durch lappp nicht zugelassen hat (überwachter Ordnerzugriff)."
     },
     "image_editor": {
       "title": "Bearbeiten",
@@ -1369,7 +1369,7 @@
       "network": "Netzwerkfehler",
       "decode": "Dekodierfehler",
       "format": "Support für dieses Videoformat fehlt oder die Datei ist beschädigt.",
-      "external_player_recommended": "Dieses Video erfordert eine Kompatibilitäts-Transkodierung, bevor es hier abgespielt werden kann. Bei langen Videos empfiehlt Lap die Verwendung eines externen Players, anstatt auf die Hintergrundverarbeitung zu warten.",
+      "external_player_recommended": "Dieses Video erfordert eine Kompatibilitäts-Transkodierung, bevor es hier abgespielt werden kann. Bei langen Videos empfiehlt lappp die Verwendung eines externen Players, anstatt auf die Hintergrundverarbeitung zu warten.",
       "unsafe_webview": "Dieses Videoformat wird für die Wiedergabe nicht unterstützt.",
       "open_in_external_app": "Im externen Player öffnen",
       "open_in_external_app_named": "Video in {app} öffnen...",
@@ -1627,7 +1627,7 @@
       "multilingual_model_download_message": "Das mehrsprachige Fotosuchmodell ist nicht installiert. Laden Sie es herunter, um die Suche in über 50 Sprachen zu aktivieren.",
       "download": "Herunterladen",
       "downloading_multilingual_model": "Mehrsprachiges Modell wird heruntergeladen",
-      "multilingual_model_download_success": "Das mehrsprachige Suchmodell ist bereit. Starten Sie Lap neu, um es zu verwenden.",
+      "multilingual_model_download_success": "Das mehrsprachige Suchmodell ist bereit. Starten Sie lappp neu, um es zu verwenden.",
       "multilingual_model_download_failed": "Mehrsprachiges Suchmodell konnte nicht heruntergeladen werden",
       "similarity": "Suchähnlichkeit",
       "similarity_hint": "Steuert visuelle Treffer bei Stichwortsuchen",

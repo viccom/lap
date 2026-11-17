@@ -1,6 +1,6 @@
 //! Boundary guard (serverization plan §2): a module that has been
 //! de-Tauri'd must not reach back into `tauri::`. The module list is
-//! every source file of lap-core; new files must be added here.
+//! every source file of lappp-core; new files must be added here.
 
 const SOURCES: &[&str] = &[
     include_str!("t_af_area.rs"),
@@ -135,7 +135,7 @@ fn core_modules_do_not_reference_tauri() {
             .join("\n");
         assert!(
             !code.contains(&needle) && !code.contains(&use_needle),
-            "{name} references tauri; a lap-core module must stay Tauri-free"
+            "{name} references tauri; a lappp-core module must stay Tauri-free"
         );
     }
 }

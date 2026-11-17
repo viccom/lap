@@ -1,7 +1,7 @@
 # ARCH · lap 前后端分离与服务化方案
 
 日期：2026-11-15
-状态：**阶段 4 批次 4.3 已完成（核心 Web 相册闭环打通）**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lap-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过；批次 3.3：鉴权（Argon2id 管理员密码 + 配对码设备令牌 + Cookie/Bearer + 白名单 401/403/429 + 限流审计）+ 媒体四端点（Range/206 + HMAC 签名，只按 file_id 解析）+ `t_http` 收紧，Rust workspace 635/0/10；批次 3.4（优雅退出：停收新命令 503 → 取消全部可取消后台任务 + 杀 ffmpeg 子进程 → flush 所有库 WAL → 释放锁文件；unix SIGTERM/SIGINT + Windows stdin 控制通道），Rust workspace 642/0/10；阶段 4 批次 4.1：lapd 内建静态托管（SPA fallback/--web-dir/路径穿越防护，Rust workspace 646/0/10，提交 ace3dd35）；批次 4.2：Web 登录/配对页 + http 传输层令牌/Cookie/批量媒体签名 + router 守卫 + 启动链 Web 降级（前端 442/0，提交 09deccfd）；批次 4.3：媒体 URL 批量 HMAC 签名接入（缩略图/原图/预览）+ build:http 脚本 + 查看器 Web 降级（前端 443/0，提交 989fde9a）。**浏览器实证**：真库只读副本 + 临时 data-dir → 浏览器打开 lapd 自动跳 /login → 密码登录 → 相册网格显示 72 张真实照片名/分辨率、缩略图 URL 全部带 sig 签名。**批次 4.5（Web 首屏「加载中」卡死根因修复，未提交）**：根因=Chromium 在标签页未被合成时**暂停 rAF 回调**（`visibilityState` 仍报 visible），而 `Content.vue` 的内容加载 `await` 了 `requestAnimationFrame`，于是永久挂死、不发内容命令；修复=新增 `afterNextPaint`（帧+定时赛跑）替换全部被 await 的关键路径裸 rAF，并同批门控 `TitleBar`/`getName`/`record_startup_stage`/`finish_startup`/桌面标题栏等 Web 不适用入口；饥饿标签页下 72/72 缩略图渲染、`startupReady=true`、加载轨迹零 console 错误零应用 4xx/5xx，前端 471/0。**诚实边界**：本机原图源盘 F:\Users\viccom\Pictures\家图2 不可达 → 原图/视频字节 404（非代码问题，缩略图来自本地缩略图缓存故正常）；首屏加载约 20–30 秒；响应式/PWA 与全量 C 类能力降级（20 个 Tauri 直调组件的延迟调用）留批次 5。下一步 = 响应式/PWA + 全量能力降级，或安装脚本（按用户指示））
+状态：**阶段 4 批次 4.3 已完成（核心 Web 相册闭环打通）**（阶段 0：Rust 561/前端 425 基线；阶段 1：`transport/` 抽象、35 文件改 import、前端 439/0；阶段 2 批次 1：`EventSink`+`PathsConfig`+`t_rt`+边界守卫；批次 2：写入面 26 条迁 `t_write.rs`+`t_state` 注册表；批次 3：重活/管理面 33 条 B→A、`.manage` 归零；批次 3.1：workspace 化 + `lappp-core` 原子抽取；批次 3.2：`lapd` 骨架可运行——flags/锁文件/data-dir 接缝/共享启动链/server_info + 生成式命令桥 `POST /api/cmd/{name}` 231 条（camel/snake 双键、Err→500、B/C/不暴露 22 条 404）+ SSE `GET /api/events`（30s 环缓冲、Last-Event-ID 重放、15s 心跳、进度 8 事件 ≥100ms 合并），Rust workspace 612/0/10、清单 diff 为空、lapd 冒烟通过；批次 3.3：鉴权（Argon2id 管理员密码 + 配对码设备令牌 + Cookie/Bearer + 白名单 401/403/429 + 限流审计）+ 媒体四端点（Range/206 + HMAC 签名，只按 file_id 解析）+ `t_http` 收紧，Rust workspace 635/0/10；批次 3.4（优雅退出：停收新命令 503 → 取消全部可取消后台任务 + 杀 ffmpeg 子进程 → flush 所有库 WAL → 释放锁文件；unix SIGTERM/SIGINT + Windows stdin 控制通道），Rust workspace 642/0/10；阶段 4 批次 4.1：lapd 内建静态托管（SPA fallback/--web-dir/路径穿越防护，Rust workspace 646/0/10，提交 ace3dd35）；批次 4.2：Web 登录/配对页 + http 传输层令牌/Cookie/批量媒体签名 + router 守卫 + 启动链 Web 降级（前端 442/0，提交 09deccfd）；批次 4.3：媒体 URL 批量 HMAC 签名接入（缩略图/原图/预览）+ build:http 脚本 + 查看器 Web 降级（前端 443/0，提交 989fde9a）。**浏览器实证**：真库只读副本 + 临时 data-dir → 浏览器打开 lapd 自动跳 /login → 密码登录 → 相册网格显示 72 张真实照片名/分辨率、缩略图 URL 全部带 sig 签名。**批次 4.5（Web 首屏「加载中」卡死根因修复，未提交）**：根因=Chromium 在标签页未被合成时**暂停 rAF 回调**（`visibilityState` 仍报 visible），而 `Content.vue` 的内容加载 `await` 了 `requestAnimationFrame`，于是永久挂死、不发内容命令；修复=新增 `afterNextPaint`（帧+定时赛跑）替换全部被 await 的关键路径裸 rAF，并同批门控 `TitleBar`/`getName`/`record_startup_stage`/`finish_startup`/桌面标题栏等 Web 不适用入口；饥饿标签页下 72/72 缩略图渲染、`startupReady=true`、加载轨迹零 console 错误零应用 4xx/5xx，前端 471/0。**诚实边界**：本机原图源盘 F:\Users\viccom\Pictures\家图2 不可达 → 原图/视频字节 404（非代码问题，缩略图来自本地缩略图缓存故正常）；首屏加载约 20–30 秒；响应式/PWA 与全量 C 类能力降级（20 个 Tauri 直调组件的延迟调用）留批次 5。下一步 = 响应式/PWA + 全量能力降级，或安装脚本（按用户指示））
 分支：`develop`
 配套文档：[ARCH-命令清单与拆分契约.md](./ARCH-命令清单与拆分契约.md)（机器生成，253 条命令逐条分类）
 
@@ -73,28 +73,28 @@
 
 ```
 src-tauri/                     workspace 根（保留 Cargo.lock / target / CI 路径）
-  Cargo.toml                   [package Lap] + [workspace] members = ["crates/lap-core", "crates/lap-server"]
+  Cargo.toml                   [package Lap] + [workspace] members = ["crates/lappp-core", "crates/lappp-server"]
   src/                         桌面壳：main.rs、t_cmds（薄包装）、t_drag、t_menu、t_protocol、t_startup
-  crates/lap-core/             业务内核（无 tauri 依赖）
-  crates/lap-server/           bin `lapd`：axum、鉴权、媒体、SSE、服务安装
+  crates/lappp-core/             业务内核（无 tauri 依赖）
+  crates/lappp-server/           bin `lapd`：axum、鉴权、媒体、SSE、服务安装
 src-vite/                      一套前端，两种传输
 ```
 
 - 复用 `src-tauri` 作为 workspace 根，**不把 workspace 提到仓库根**：避免 `Cargo.lock`、`target/`、CI 缓存与 `working-directory` 的连锁改动。
-- 桌面壳**不需要 `lib.rs`**：它是 bin crate，依赖 `lap-core` 即可；需要共享的是内核，不是壳。
-- 只有当模块已经 Tauri-free 后才移入 `lap-core`（见 §4 阶段 2→3 的顺序）。
+- 桌面壳**不需要 `lib.rs`**：它是 bin crate，依赖 `lappp-core` 即可；需要共享的是内核，不是壳。
+- 只有当模块已经 Tauri-free 后才移入 `lappp-core`（见 §4 阶段 2→3 的顺序）。
 
 **模块归属边界**（2026-11-15 以 `rg 'tauri::' src/*.rs` 全量核验，这是迁移的准入判据）：
 
 | 归属 | 模块 | 说明 |
 |---|---|---|
-| 零 Tauri 引用，**直接进 lap-core**（19 个 + metadata） | `t_config` `t_storage` `t_cache_storage` `t_migration` `t_common` `t_cluster` `t_tags` `t_vl_tags` `t_vl_protocol` `t_batch_rename` `t_motion_photo` `t_raw_display` `t_libraw` `t_jpeg` `t_jxl` `t_heif` `t_embedded_jpeg` `t_lens` `t_ai_png`，及 `metadata/*` | 全文件无一处 `tauri::` |
+| 零 Tauri 引用，**直接进 lappp-core**（19 个 + metadata） | `t_config` `t_storage` `t_cache_storage` `t_migration` `t_common` `t_cluster` `t_tags` `t_vl_tags` `t_vl_protocol` `t_batch_rename` `t_motion_photo` `t_raw_display` `t_libraw` `t_jpeg` `t_jxl` `t_heif` `t_embedded_jpeg` `t_lens` `t_ai_png`，及 `metadata/*` | 全文件无一处 `tauri::` |
 | 仅 `tauri::async_runtime`（+命令属性） | `t_fts` `t_embed` `t_af_area` `t_montage`；`t_image` 仅多一处 `&AppHandle` | 换成 `tokio::spawn/spawn_blocking` 即可，机械改动 |
 | 需真适配（emit / State / Manager / 路径解析） | `t_sqlite`（1 处 emit+handle）`t_dedup` `t_similar` `t_ai` `t_face` `t_vl_schedule` `t_vl` `t_utils` `t_video` `t_cmds`（巨石，另含库切换锁与守卫） | 对应 §3.2 的 EventSink / Paths / 状态注册表 |
 | **桌面壳保留** | `main.rs`、`t_cmds` 包装层、`t_drag` `t_menu` `t_protocol` `t_startup` `t_pasteboard` `t_http`（桌面 Linux 视频流） | 窗口 / 菜单 / 自定义协议 / 剪贴板 / OS 集成 |
 
-- **原生构建必须随模块迁移**：`build.rs` 的 4 个 C 构建、`third_party/` 子模块与 `jpeg_shim.cpp` / `libraw_shim.cpp` 要跟着 `t_image`/`t_libraw` 等进 `lap-core`（或独立 `lap-native` crate）——否则 `lapd` 链接不到图像解码。
-- **准入守卫**：模块迁入 `lap-core` 的判据写进 CI 脚本——「文件内 `rg 'tauri::'` 为零」；`async_runtime` 例外清单显式列出。
+- **原生构建必须随模块迁移**：`build.rs` 的 4 个 C 构建、`third_party/` 子模块与 `jpeg_shim.cpp` / `libraw_shim.cpp` 要跟着 `t_image`/`t_libraw` 等进 `lappp-core`（或独立 `lap-native` crate）——否则 `lapd` 链接不到图像解码。
+- **准入守卫**：模块迁入 `lappp-core` 的判据写进 CI 脚本——「文件内 `rg 'tauri::'` 为零」；`async_runtime` 例外清单显式列出。
 
 ### 3.2 内核去 Tauri 化（本方案的关键低成本决策）
 
@@ -288,21 +288,21 @@ src-vite/                      一套前端，两种传输
 
 
 
-### 阶段 3 · 打包 `lap-core` + `lapd`（1–1.5 周）
+### 阶段 3 · 打包 `lappp-core` + `lapd`（1–1.5 周）
 
-- 建 workspace 与 `lap-core`，把已 Tauri-free 的模块迁入（`crate::t_x` → `lap_core::t_x` 机械改写，编译器兜底）。
-- **原生构建随模块走**：`build.rs` 的 4 个 C 构建、`third_party/` 子模块与 `jpeg_shim.cpp` / `libraw_shim.cpp` 迁入 `lap-core`（或 `lap-native` crate）；CI 产出三平台 `lapd`（`cargo build -p lap-server`）。
-- `lap-server`：通用桥 `POST /api/cmd/{name}` + 媒体端点 + SSE + 鉴权限流 + 锁文件 + 优雅退出。
+- 建 workspace 与 `lappp-core`，把已 Tauri-free 的模块迁入（`crate::t_x` → `lappp_core::t_x` 机械改写，编译器兜底）。
+- **原生构建随模块走**：`build.rs` 的 4 个 C 构建、`third_party/` 子模块与 `jpeg_shim.cpp` / `libraw_shim.cpp` 迁入 `lappp-core`（或 `lap-native` crate）；CI 产出三平台 `lapd`（`cargo build -p lappp-server`）。
+- `lappp-server`：通用桥 `POST /api/cmd/{name}` + 媒体端点 + SSE + 鉴权限流 + 锁文件 + 优雅退出。
 - 补齐 ffmpeg/ort 的三平台资源；systemd/LaunchAgent/WinSW 安装脚本。
-**批次 3.1（workspace + lap-core 抽取）· 已完成**（4 提交 `12016161`/`82d8706c`/`3d21d404` + 文档）：
-- **workspace 根留 src-tauri**（root package 仍为 Lap bin，members = `crates/lap-core` + `crates/lap-server`）：Cargo.lock/target/CI 缓存路径零改动，`[profile.*]` 合法，repo 根 `.cargo` 目录继承继续生效。
+**批次 3.1（workspace + lappp-core 抽取）· 已完成**（4 提交 `12016161`/`82d8706c`/`3d21d404` + 文档）：
+- **workspace 根留 src-tauri**（root package 仍为 Lap bin，members = `crates/lappp-core` + `crates/lappp-server`）：Cargo.lock/target/CI 缓存路径零改动，`[profile.*]` 合法，repo 根 `.cargo` 目录继承继续生效。
 - **执行中发现（记录）**：核心模块间循环依赖面极大（t_state↔t_vl/t_video/t_ai/t_face、t_sqlite→t_ai→t_config↔t_storage、t_heif↔t_image、t_libraw→t_raw_display），原计划「按域分批迁移」不可行——core 侧每提交必须自封闭，故除前置拆分外**一次性原子迁移**（脚本化 + 编译器驱动修复）。
 - **归属四档落地**：33 verbatim 模块 + metadata/11 + t_http + data/cities.csv + shims `git mv` 进 core（历史保留）；7 命令模块剥 35 行属性行随迁；t_cmds 拆分（208 纯体进 core、壳留 8 条 tauri 签名命令 + 2 条 drag 命令真体 + 206 条同签名薄包装，`t_dedup→crate::t_cmds` 批次 4 遗留随之消灭）；壳专属 = main/t_cmds 包装/t_drag/t_menu/t_protocol/t_pasteboard/t_scopes。
 - **build.rs 拆分**：四 C 构建 + build_info 随 core（third_party 子模块不挪窝，`../../` 寻址）；壳只留 tauri_build + 剪贴板 shim。
-- **守卫新格局**：`lap-core/src/guard.rs` 全量源码扫描（53 文件含 metadata，非空转未再注毒验证——沿用机制）；t_write/t_state 签名契约守卫经相对 include 扫**壳包装文件**（语义归宿）；注册守卫（VL_COMMANDS 家族）扫壳 main.rs。
+- **守卫新格局**：`lappp-core/src/guard.rs` 全量源码扫描（53 文件含 metadata，非空转未再注毒验证——沿用机制）；t_write/t_state 签名契约守卫经相对 include 扫**壳包装文件**（语义归宿）；注册守卫（VL_COMMANDS 家族）扫壳 main.rs。
 - **桌面零行为变化证据**：命令清单重生成 **diff 为空**（253 条 A233/B4/C16 不变）；前端 439/0（src-vite 零改动）；`cargo test --workspace` = **577/0/9**（core 568 + 壳 9，逐测试对账基线全数保留）；便携版重建（subsystem=2）冒烟 + 真库 v18 / debug v28 integrity=ok。
 - **壳包装层**：7 命令模块 35 条包装以 main.rs 注册表为唯一事实源生成；t_cmds 206 包装同签名转发（async 补 `.await`、返回类型逐字回填）。
-- **本批未做**：lapd 仅有占位 bin（3.2 填 axum/命令桥/SSE）；lap-server 无任何依赖；`--read-only`/令牌/媒体端点全在 3.2–3.4；跨壳小抽取改 pub 的 9 项可在 3.2 复核收窄。
+- **本批未做**：lapd 仅有占位 bin（3.2 填 axum/命令桥/SSE）；lappp-server 无任何依赖；`--read-only`/令牌/媒体端点全在 3.2–3.4；跨壳小抽取改 pub 的 9 项可在 3.2 复核收窄。
 
 **批次 3.2（lapd 骨架）· 已完成**（提交 `e2009b86` + `389ed13e` + `d394bf26` + `4e4deeb4` + 文档）：
 - **顺带修复（批次 3.1 回归）**：`set_desktop_wallpaper` 的 `_app_handle` 参数被误判死参删除，`cfg(macos)` 块仍在调用——Windows 因 cfg 裁剪编译通过而 macOS 构建必断；已按 3.1 前签名逐字恢复（前端不发送注入参，JS 契约零变化）。同批顺带修复 `gen-command-inventory.py` `parse_signatures` off-by-one（每条签名首参首字符被截，A/B 判定靠子串正则侥幸未受影响；清单重生成 diff 为空）。
@@ -324,7 +324,7 @@ src-vite/                      一套前端，两种传输
 
 **批次 3.4（优雅退出）· 已完成**（提交 `见 git log`；按用户指示只做优雅退出，安装脚本与跨壳收尾略过）：
 - **core 新增 `t_shutdown.rs`**（取消语义归 core 所有，服务端只问「全部取消」与「flush WAL」）：`cancel_background_tasks()` 置位全部可取消后台工作——索引（按 album_id）、导入整理（`ImportState.cancelled`）、人脸索引、去重扫描、相似图扫描、VL 运行（按 run_id）；`terminate_background_tasks()` 额外杀掉视频准备派生的 ffmpeg 子进程（否则父进程退出后子进程仍在写缓存）；`background_tasks_idle()` 供退出流程判断是否收尾完毕；`flush_wal(data_dir)` 对服务库（`lapd.db`）与**每个图库库**做 checkpoint（`t_storage::checkpoint_db` pub 化，复用其 TRUNCATE→RESTART 回退）。
-- **lap-server 新增 `shutdown.rs`**：`ShutdownState`（flag + Notify）→ 中间件在关闭期对新命令返回 **503**（纯函数 `reject_while_shutting_down`，单测钉死）；`with_graceful_shutdown` 让 axum 停止接受新连接并等待在途请求；退出序列按 §3.7 次序：**停收新命令 → 取消后台任务（给 5 秒收尾窗口）→ flush WAL → 释放锁文件（Drop）**。
+- **lappp-server 新增 `shutdown.rs`**：`ShutdownState`（flag + Notify）→ 中间件在关闭期对新命令返回 **503**（纯函数 `reject_while_shutting_down`，单测钉死）；`with_graceful_shutdown` 让 axum 停止接受新连接并等待在途请求；退出序列按 §3.7 次序：**停收新命令 → 取消后台任务（给 5 秒收尾窗口）→ flush WAL → 释放锁文件（Drop）**。
 - **信号覆盖与诚实边界**：unix 监听 SIGTERM/SIGINT；Windows 无真 SIGTERM，服务包装器硬杀（WinSW 默认）会跳过本路径（锁文件由陈旧接管兜底）。**扩展**：新增 **stdin 控制通道**（写入 `quit`/`shutdown`/`stop` 即优雅退出；stdin 非网络面，服务管理器可写）——这是 Windows 上唯一可确定性触发优雅退出的手段，本批的端到端验证即经它完成。
 - **验证**：`cargo test --workspace` = **642/0/10**（core +1：WAL 折叠效果单测——真 WAL 库 checkpoint 后 `-wal` 归零且数据存活；lapd +2：关闭期 503 纯函数）；**端到端**（真实进程 + 真实库）：服务 200 → 锁文件存在 → stdin 写 `quit` → 日志完整序列（`'quit' received` → `shutting down — no new commands accepted` → `cancelling background work` → `stopped`）→ **退出码 0** → 锁文件已释放 → 图库库 WAL 归零。**未覆盖（诚实）**：unix SIGTERM/SIGINT 与 Windows Ctrl-C 的实际投递**未在本机端到端验证**（本机为 Windows + Git Bash ConPTY，实测 Ctrl-C 事件送不到子进程，见探针）。
 - **本批未做（按用户指示略过）**：systemd/LaunchAgent/WinSW 安装脚本；跨壳收尾与阶段 3 总验收；令牌管理 UI（未决事项 4）；`--read-only`（未决事项 3）；桌面内嵌检测 lapd.lock 提示；Web 端 CSP 与 pairing/login 前端（阶段 4）；`/api/video` 的 remux/transcode 按 file_id 服务。
@@ -342,7 +342,7 @@ src-vite/                      一套前端，两种传输
 
 **批次 4.1（lapd 内建静态托管）· 已完成**（提交 `ace3dd35`）：
 - `static_files.rs`（新）：同源托管 Web 产物——真实文件优先、未知非 `/api` 路径 SPA fallback 到 `index.html`（Vue Router `createWebHistory` 深链）、`/api/*` 永不回退到 SPA、百分号解码 + `..` 穿越拒绝、缺失 `.js/.css` 返回 404 而非 SPA 壳（避免隐藏构建错误）。手写 handler 而非 `ServeDir`：零依赖/feature 变更。`--web-dir` 旗标（默认 exe 旁 `resources/web`）；`server_info.capabilities.web` 反映是否实际托管。
-- **验证**：lap-server 61 测（原 57 + 3 static + 1 flags）；`cargo test --workspace` **646/0/10**；活体冒烟（临时 data-dir + 现成 dist）：`/`→200 text/html、`/image-viewer`→200 SPA fallback、asset→200 JS MIME、unknown `/api`→404、编码穿越→403、优雅退出日志完整。
+- **验证**：lappp-server 61 测（原 57 + 3 static + 1 flags）；`cargo test --workspace` **646/0/10**；活体冒烟（临时 data-dir + 现成 dist）：`/`→200 text/html、`/image-viewer`→200 SPA fallback、asset→200 JS MIME、unknown `/api`→404、编码穿越→403、优雅退出日志完整。
 
 **批次 4.2（Web 登录/配对 + 传输层）· 已完成**（提交 `09deccfd`）：
 - **关键认知**：桌面前端就是标准 Vue 3 Web 页面，UI 组件 100% 复用，无需逐个移植；真正差异只在传输层（`tauri.js`↔`http.js`）与窗口模型。
@@ -364,16 +364,16 @@ src-vite/                      一套前端，两种传输
 - **同批修掉的 Web 启动缺陷**（同一份启动轨迹里暴露）：`TitleBar.vue` 直调 `@tauri-apps/api/window` 的 `getCurrentWindow()`（Web 下抛 `Cannot read properties of undefined (reading 'metadata')`）→ 改走 `common/transport/window.js` facade；`Home.vue` 的 `getName`（`@tauri-apps/api/app`）在 Web 下抛错 → 按 `capabilities().native` 门控，Web 用 `document.title` 兜底；`record_startup_stage`（4 处）与 `finish_startup` 是桌面启动遥测、**有意不在 lapd 白名单**（`bridge_gen` EXPOSURES 之外，`main.rs` 的 SKIP 列表注明「仅桌面前端调用」）→ 按 `capabilities().native` 门控，消除 4×403 与 `finish_startup` 403 的 console 噪音；桌面自绘标题栏（`showDesktopTitleBar`）按 native 门控（浏览器没有原生窗控/拖拽区）。
 - **验证**：`nextPaint` 回归测试 2 例（帧永不回调必须由定时器释放；帧到达时必须仍等待帧）+ 复用/改写既有 startup 测试（`afterNextPaint` 注入 + native 真/假两态断言 `finish_startup` 不再发往 Web）。前端全目录 `node --experimental-vm-modules --test tests/` = **471/0**；两种构建 exit=0。**浏览器实证（饥饿标签页、全程不截图/不交互）**：刷新后 72/72 缩略图渲染、`startupReady=true`、整段加载轨迹 **零 console 错误、零应用 4xx/5xx**（仅 `favicon.ico` 404，静态资源留待 PWA 批次），内容命令 69 条正常返回。
 - **诚实边界**：`favicon.ico` 404 未修（属 PWA/manifest 批次）；限流（60/min/device）本轮实测**未触发**（该启动轨迹仅百余条命令且无 429，此前对「命令风暴打爆限流」的怀疑被证伪）。
-- **Rust 门禁的既有失败（与本轮零 Rust 改动无关，如实记录）**：`cargo test --workspace` 本轮两次全量运行均为 **645/1/10**，唯一失败 `lap-core` 的 `t_shutdown::tests::flushing_a_missing_database_directory_is_harmless`，报 `["library default path failed: Database storage migration is in progress."]`；该测试单独运行必过（已亲验）。机制：`t_storage` 的 `DB_MIGRATION_IN_PROGRESS` 是**进程级全局 AtomicBool**，兄弟测试 `migration_tests::migration_waits_for_connections_and_reopens_admission` 会把它置真并持有约 50ms+，期间 `flush_wal → get_library_db_path` 返回该 Err 被收进 warnings；且该测试的「进程内无库配置」前提在本机不成立（`load_app_config()` 读真实 AppData 配置，本机有 `default` 库）。属既有测试隔离/环境敏感缺陷，修法（后续单独一轮）：让该断言不依赖真实用户配置 + 与迁移守卫测试串行。本轮 `git status` 证明只改 `src-vite/**` 与文档，未触碰任何 Rust 文件。
+- **Rust 门禁的既有失败（与本轮零 Rust 改动无关，如实记录）**：`cargo test --workspace` 本轮两次全量运行均为 **645/1/10**，唯一失败 `lappp-core` 的 `t_shutdown::tests::flushing_a_missing_database_directory_is_harmless`，报 `["library default path failed: Database storage migration is in progress."]`；该测试单独运行必过（已亲验）。机制：`t_storage` 的 `DB_MIGRATION_IN_PROGRESS` 是**进程级全局 AtomicBool**，兄弟测试 `migration_tests::migration_waits_for_connections_and_reopens_admission` 会把它置真并持有约 50ms+，期间 `flush_wal → get_library_db_path` 返回该 Err 被收进 warnings；且该测试的「进程内无库配置」前提在本机不成立（`load_app_config()` 读真实 AppData 配置，本机有 `default` 库）。属既有测试隔离/环境敏感缺陷，修法（后续单独一轮）：让该断言不依赖真实用户配置 + 与迁移守卫测试串行。本轮 `git status` 证明只改 `src-vite/**` 与文档，未触碰任何 Rust 文件。
 
 **批次 4.6（「切换页面非常慢」根因修复：读命令限流 + 401/429 误判）· 已完成（未提交）**：
 - **现象**：用户在浏览器里每切换一个视图都感到严重卡顿/长时间停在「加载中」，多次后甚至被弹回 `/login`。
 - **量化（浏览器实测，非估计）**：一次视图切换 = **~50 条命令**（`get_all_albums`/`get_query_count_and_sum`/`get_query_time_line`/`get_query_files` 各 1 条 + `get_file_thumbs` **~29 条**批量取缩略图）；单条命令后端耗时 7–97ms（`get_query_files` 7ms、`thumbs` 批量 36ms/8 张），即**后端并不慢**，慢的是"命令条数撞上 60/min/device 的写命限流"。
 - **根因 1（承重）**：§3.6 的 60/min/device 限流**同时管辖读命令**。一次切换就占掉 ~50 个配额，第二次切换即开始 429；`Content.vue` 的 `getFileList` catch 分支把 429 当成普通失败 → 网格清空 → 重新显示「加载中...」，于是用户体感为"切换极慢/加载不出来"。**实测**：旧构建连打 200 条读命令 → 全部 429 后的刷新直接跳到 `/login`（`firstLimitAt=56`）。
 - **根因 2**：`http.js` 的 `invoke` 对任何非 2xx 都只抛 `Error('...HTTP 429')`，**不带 status**；`auth.js` 的 `checkSession` 探针用 `get_app_config`，**catch 到任何错误都判定为未登录**。于是限流/5xx/网络抖动都被当成"会话失效"→ `markExpired` → 路由守卫把用户弹回 `/login`。这正是用户"切换几次就要重新登录"的原因（`get_app_config` 探针返回 429 的那次刷新）。
-- **修复 1（后端）**：`crates/lap-server/src/auth.rs` 把命令限流按暴露级拆成两条独立预算——**读命令 `READ_LIMIT = 1200/min/device`**（≈24 次切换/分钟，远超人工）；**写/管理命令保持 `CMD_LIMIT = 60/min/device`**。`check_cmd_rate(token_id, read: bool)` 依 `exposure == "read"` 选桶；两桶互不影响（读再多也不会耗尽写预算）。测试 `read_commands_get_a_wider_budget_than_mutations` 断言"读 3×60 后写仍被限、读自身到 1200 才限"。
+- **修复 1（后端）**：`crates/lappp-server/src/auth.rs` 把命令限流按暴露级拆成两条独立预算——**读命令 `READ_LIMIT = 1200/min/device`**（≈24 次切换/分钟，远超人工）；**写/管理命令保持 `CMD_LIMIT = 60/min/device`**。`check_cmd_rate(token_id, read: bool)` 依 `exposure == "read"` 选桶；两桶互不影响（读再多也不会耗尽写预算）。测试 `read_commands_get_a_wider_budget_than_mutations` 断言"读 3×60 后写仍被限、读自身到 1200 才限"。
 - **修复 2（前端）**：`http.js` 的错误对象带上 `error.status`（含 `commandError` 辅助 + `authStatus` 非 2xx 改为抛错，不再假装 `passwordSet:false`）；`auth.js` 的 `checkSession` **只在 `status === 401` 时**判定未登录，429/5xx/网络错误保留原会话状态（真正的 401 仍由 `onUnauthorized` + `markExpired` 兜住）。测试 `failures carry the HTTP status so callers can tell a 401 from a 429`。
-- **验证（实测）**：`lap-server` 62/0（含新限流测试）；前端 `tests/*.test.mjs` **446/0**；两种构建 exit=0。**浏览器实证（用户真实 URL `127.0.0.1:17860`，旧构建在此必跳 `/login`）**：先烧掉 180 条读命令（>旧 60 上限、<新 1200），随后三次连续刷新**全部停留在 `/` 且 384–397ms 出现首张缩略图、~1.1–1.3s 满屏 55 张**，切换视图 1↔0↔1 无掉登录、无「加载中」卡死；直连命令探针：300 条读 → 0 个 429，70 条写 → 恰好第 61 条起 429（写预算未被读影响）。
+- **验证（实测）**：`lappp-server` 62/0（含新限流测试）；前端 `tests/*.test.mjs` **446/0**；两种构建 exit=0。**浏览器实证（用户真实 URL `127.0.0.1:17860`，旧构建在此必跳 `/login`）**：先烧掉 180 条读命令（>旧 60 上限、<新 1200），随后三次连续刷新**全部停留在 `/` 且 384–397ms 出现首张缩略图、~1.1–1.3s 满屏 55 张**，切换视图 1↔0↔1 无掉登录、无「加载中」卡死；直连命令探针：300 条读 → 0 个 429，70 条写 → 恰好第 61 条起 429（写预算未被读影响）。
 - **诚实边界**：`get_file_thumbs` 走批量（每批 ≤4）但数量仍随可见行数增长（~29 批/首屏），是"每次切换 ~50 命令"的主因；若要进一步降，应把缩略图批次调大或改流式/懒加载——属性能优化批次，非本次"卡死/掉登录"根因。`favicon.ico` 404 与 PWA 仍留批次 5。**本次限流语义变更需同步 §3.6 文档与安全评审**：读命令从 60/min 放宽到 1200/min（写命令不变），理由是"读命令幂等且浏览本身即高频"。
 
 **批次 4.7（宿主层收口：把"见到一个补丁一个"改成单一入口 + 守卫）· 已完成（未提交）**：
@@ -436,10 +436,10 @@ src-vite/                      一套前端，两种传输
   - **缺陷 A'**：lapd 从不调用 `init_ffmpeg_path()`（桌面在 setup 里调），视频 sidecar 目录同样落空 —— 同批补上。
 - **缺陷 B（状态探测不该失败）**：`embed_status` 是**只读状态命令**，却用 `active_model_name()?` 硬失败 → 本地模型缺失时整条 500，而 `source` 字段本已 `.ok()` 降级。改为 `status_model(active_model_name())`（`Result::unwrap_or_default`）：拿不到就返回空 model + `localAvailable:false`。嵌入**操作**（`rebuild_caption_embeds`/`search_captions`）仍硬失败 —— 只有状态行软化。
 - **修复**：
-  - `lap-server/src/boot.rs`：`resource_dir_candidate()` 改为**候选优先级**（exe 目录 → `<exe>/resources` → `<cwd>/resources` → `<cwd>/src-tauri/resources`），取**首个真正带 payload（有 `models/` 或 `ffmpeg/`）**者，末位兜底返回 exe 目录（让缺文件报在真实位置而非 `None`）；抽出纯函数 `pick_resource_dir` 直接单测布局优先级。boot 里补 `t_video::init_ffmpeg_path()`。
-  - `lap-core/src/t_embed.rs`：`status_model` 纯函数 + `embed_status` 改为软化路径。
+  - `lappp-server/src/boot.rs`：`resource_dir_candidate()` 改为**候选优先级**（exe 目录 → `<exe>/resources` → `<cwd>/resources` → `<cwd>/src-tauri/resources`），取**首个真正带 payload（有 `models/` 或 `ffmpeg/`）**者，末位兜底返回 exe 目录（让缺文件报在真实位置而非 `None`）；抽出纯函数 `pick_resource_dir` 直接单测布局优先级。boot 里补 `t_video::init_ffmpeg_path()`。
+  - `lappp-core/src/t_embed.rs`：`status_model` 纯函数 + `embed_status` 改为软化路径。
   - 前端 `vlLogic`/`VlLab.vue`：本地源且 `localAvailable=false` 时状态行显示「本地嵌入模型未安装」，不再显示空 model。新增 17 locale `vl.lab.embed_local_missing`。
-- **验证**：新增 5 个 Rust 单测（lap-server 4 + lap-core 1）；`cargo test --workspace` **652/0/10 exit=0**（基线 647 + 5）。前端 `tests/*.test.mjs` **460/0**、`tests/` 全目录 **486/0**（+1 例 `embedStatusPresentation`；守卫非空转已证：把分支恒假 → 测试变红，恢复 → 全绿）。两种构建 exit=0。**部署式复现实测**：修复前 500 → 修复后 200。
+- **验证**：新增 5 个 Rust 单测（lappp-server 4 + lappp-core 1）；`cargo test --workspace` **652/0/10 exit=0**（基线 647 + 5）。前端 `tests/*.test.mjs` **460/0**、`tests/` 全目录 **486/0**（+1 例 `embedStatusPresentation`；守卫非空转已证：把分支恒假 → 测试变红，恢复 → 全绿）。两种构建 exit=0。**部署式复现实测**：修复前 500 → 修复后 200。
 - **诚实边界**：未编译/运行 **release** 便携版（改的是 lapd，不影响 Lap.exe）；`cargo fmt --check` 在本仓库从来不是绿门（无 `rustfmt.toml`、数百处既有漂移，见 t_face/t_cmds/t_ai），本批新增片段与相邻风格一致，未借机重排。`get_file_thumbs` 批量随可见行数扩展（首屏 IPC 条数）仍留性能批次，未处理。
 
 **批次 4.10c（能力差异 UI 收口：按各宿主实际能力隐藏/降级，不追求两端一致）· 已完成**
@@ -469,7 +469,7 @@ src-vite/                      一套前端，两种传输
 **批次 4.10f（§9-7：Web 端新增相册的管理员受限入口）· 已完成**
 
 - **根因**：桌面 `add_album` 命令带 `AppHandle`（授权平台的目录 fs scope）→ 生成器判为 B 类、**永远不上 HTTP 桥**。Web 端无从新增相册（菜单入口此前已隐藏）。
-- **实现**：新增**无 fs-scope 的同义命令** `add_album_by_path`（核心 `lap_core::t_cmds::add_album_by_path` 委托 `t_write::add_album` + 外壳薄包装注册），暴露等级 **admin**。`lapd` 直接在服务器主机上读目录，没有 fs-scope 概念；读不到的路径与桌面授权后扫描失败同义。前端 `api.js:addAlbum` 按宿主分流——桌面仍走 `add_album`（带授权），Web 走 `add_album_by_path`。UI 落在「服务器」设置分区：管理员**手输服务端绝对路径**（无目录选择器，纯文本框 + 名称可选）。
+- **实现**：新增**无 fs-scope 的同义命令** `add_album_by_path`（核心 `lappp_core::t_cmds::add_album_by_path` 委托 `t_write::add_album` + 外壳薄包装注册），暴露等级 **admin**。`lapd` 直接在服务器主机上读目录，没有 fs-scope 概念；读不到的路径与桌面授权后扫描失败同义。前端 `api.js:addAlbum` 按宿主分流——桌面仍走 `add_album`（带授权），Web 走 `add_album_by_path`。UI 落在「服务器」设置分区：管理员**手输服务端绝对路径**（无目录选择器，纯文本框 + 名称可选）。
   - **生成器契约**：`gen-command-inventory.py` 的 `EXPOSURE` 加 `add_album_by_path: admin`；重跑 `gen-lapd-bridge.py`（**232 桥接 / 254 注册 / 22 跳过**，+1 桥接）与清单；`bridge_whitelist_covers_the_registration_exactly` 守卫的注册数 253→254。
 - **验证**：`cargo test --workspace` **652/0/10 exit=0**；前端 `tests/*.test.mjs` **465/0**、`tests/` 全目录 **491/0**（+2：`addAlbum` host 路由守卫 / server_info+设备端点 http 测试，**非空转已证**：把 `addAlbum` 的路由改回恒 `add_album` → 红，恢复 → 绿）；两种构建 exit=0。
 - **诚实边界**：未在真机 lapd 上端到端新增一个真实相册（仅链路/守卫/构建通过）；路径不可读的失败在**扫描**阶段暴露（与桌面语义一致），非即时校验。
@@ -541,7 +541,7 @@ src-vite/                      一套前端，两种传输
 - **触发**：方案 §3.7/§6 要求桌面内嵌模式启动时检测 `lapd.lock`，已有服务在跑就不得再开 SQLite（风险 **R2**，标为「高」）。此前 `src-tauri/src/main.rs` **零** `lapd` 引用，桌面**无条件** `create_db()`，与服务同库并发写——R2 完全未缓解。
 - **架构决策（含与方案本意的差异声明）**：采用**薄客户端窗口**——客户端模式下 Tauri 主窗口 `navigate()` 到 lapd 托管的 Web UI（§3.3 的同一套 Vue，登录走服务端网页登录/同源 Cookie）。**不**走「运行时把 Tauri 传输切成 HTTP」：那需要把传输接缝改成 late-bound（`transport/index.js` + 43 处 `transportMode` 常量）、并给 lapd 补 CORS 白名单 + Bearer 令牌持久化 + SSE 跨域令牌（`EventSource` 不能带自定义头），涉及认证/暴露面，属高风险深改。「原生外壳 + 运行时 HTTP 传输」作为后续增量（届时独立安全评审）。方案 §8 否决的是**默认**退化为纯客户端；本批 **opt-in**，内嵌仍是默认，不冲突。
 - **实现**：
-  - 新增 `src-tauri/src/t_client.rs`（桌面专属 glue，不进 lap-core）：纯函数 `client_target_from_args`（`--connect <url>` / `--connect=<url>`，显式优先于环境变量 `LAP_CONNECT`）、`data_dir_from_args`（`--data-dir`，镜像 lapd，供隔离测试/便携运行——**让客户端模式可在临时目录验证而绝不碰真实数据目录**）、`running_server_target`（读 `<data>/lapd.lock` 的 `{pid,port,startedAt}`，pid 存活且非本进程才返回 `http://127.0.0.1:<port>`）；`pid_alive` 跨平台（Windows `OpenProcess`，不可判定按「存活」保守处理）。
+  - 新增 `src-tauri/src/t_client.rs`（桌面专属 glue，不进 lappp-core）：纯函数 `client_target_from_args`（`--connect <url>` / `--connect=<url>`，显式优先于环境变量 `LAP_CONNECT`）、`data_dir_from_args`（`--data-dir`，镜像 lapd，供隔离测试/便携运行——**让客户端模式可在临时目录验证而绝不碰真实数据目录**）、`running_server_target`（读 `<data>/lapd.lock` 的 `{pid,port,startedAt}`，pid 存活且非本进程才返回 `http://127.0.0.1:<port>`）；`pid_alive` 跨平台（Windows `OpenProcess`，不可判定按「存活」保守处理）。
   - `main.rs`：`main()` 启动早期（`init_process_states` 后）解析 `--data-dir`→`set_data_dir_override`、解析 `client_target`（显式 > 活锁 > 内嵌）；`.setup()` 首行分流——客户端模式**只**装事件 sink + `set_app_identifier`，**跳过** `t_paths`/`create_db`/`init_video_cache`/`restore_album_scopes`/`spawn_scheduler`/`t_menu`，`window.set_decorations(true)`（窗口按 `tauri.conf.json` 以 frameless 创建，远端页无自绘标题栏，需还原原生边框否则不可拖动/关闭）+ `navigate` + `show`，随后 `return Ok(())`。`on_window_event`：客户端模式下点关闭直接 `exit(0)`（无托盘、无本地核需保活）。
   - **零前端改动**（远端 Web UI 原样复用）。
 - **验证（单元）**：`cargo test --workspace` = **656/0/10 exit=0**（基线 652 + `t_client` 4：flag/env 优先级与两种拼写、`--data-dir` 两种拼写、锁检测的活/己/陈/坏四态）。**非空转已证**：把 `client_target_from_args` 的 env 分支改 `None` → 对应断言红，恢复 → 绿。
@@ -560,8 +560,8 @@ src-vite/                      一套前端，两种传输
 
 **批次 6-2（feature 拆分：一份源码，两个 exe）· 已完成**
 
-- `Cargo.toml`：`lap-core` 改 **optional**；`default = ["custom-protocol", "embedded"]`；新增 `embedded = ["dep:lap-core"]` 与 `client = ["custom-protocol"]`。
-- `main.rs`：`main()` 仅分派；`run_embedded()`（原逻辑逐字保留）+ `run_client()`（薄客户端）。`use lap_core::…`、11 个依赖内核的 `mod`、217 条 `invoke_handler`、内嵌 setup 链、`TauriEventSink` 全部 `#[cfg(feature="embedded")]` 门控；`t_menu` 两构建通用。
+- `Cargo.toml`：`lappp-core` 改 **optional**；`default = ["custom-protocol", "embedded"]`；新增 `embedded = ["dep:lappp-core"]` 与 `client = ["custom-protocol"]`。
+- `main.rs`：`main()` 仅分派；`run_embedded()`（原逻辑逐字保留）+ `run_client()`（薄客户端）。`use lappp_core::…`、11 个依赖内核的 `mod`、217 条 `invoke_handler`、内嵌 setup 链、`TauriEventSink` 全部 `#[cfg(feature="embedded")]` 门控；`t_menu` 两构建通用。
 - **实测体积**：完整版 `Lap.exe` **165 MB** → 薄客户端 **14.9 MB**（libraw/libjpeg-turbo/libheif/libde265 + ort + tokenizers 全未链接）。
 - **验证**：`cargo build`（默认=完整版）与 `cargo test --workspace` **无回归**（654/0/10）；`cargo build --no-default-features --features client` 产出薄 exe 且**零警告**；薄客户端连真机 lapd → 建立连接 → UIA 确认渲染远端登录页。
 
@@ -573,6 +573,17 @@ src-vite/                      一套前端，两种传输
 - **本地选择页** `src-vite/public/picker.html`：增删服务器、连接（本地 origin ⇒ 有 `__TAURI__.core.invoke`）。
 - **真机多服务器 E2E**：起两台 lapd(17868 A / 17869 B) → 薄客户端预置两台、`current=A` → 菜单 `[● A][   B]` → 点 B → **配置 `current` 持久化为 17869**、连接切到 B、菜单变 `[   A][● B]` → 重启（不带 `LAP_CONNECT`）**记住并加载 B**。薄客户端数据目录**零本地库**。
 - **验证**：前端 475/0 未变；两构建 exit=0；`cargo test --workspace` 654/0/10；`client` feature `servers` 单测 5/5。
+
+**阶段 7 · 重命名为 lappp（零风险）+ 三 Windows 二进制 · 已完成**
+
+- **决策**：项目已明显偏离上游，改用自有名 `lappp`；厚版/薄版/服务端分别编译出二进制（Windows）。
+- **零风险边界**：数据目录标识符 `com.julyx10.lap` **不变**（= 真实图库目录，改则数据失联）；内部协议名 `lapd.lock`/`lapd_token`/`lap-shell-v1` **不改**。
+- **crate 改名（编译器兜底）**：`git mv crates/lap-core → lappp-core`、`lap-server → lappp-server`；根包 `Lap → lappp`；`lap_core:: → lappp_core::` 全仓机械替换（33 文件）；`lappp-server` 的 `[[bin]] name = "lappp-server"`。
+- **身份串**：`tauri.conf.json productName: "lappp"`、两平台窗口 `title`、`vc-runtime.wxs` 文案、`capabilities` description；前端 `<title>`/manifest/picker/`Login.vue`/`Home.vue`/地图 label/备份文件名/17 locale 显示名；服务端 `server_info.name = "lappp-server"` + 日志前缀 + `flags` USAGE + 配对码提示；薄客户端列表文件 `lappp-servers.json`。
+- **三二进制**：新增 `scripts/build-windows.ps1` → `build/windows/{lappp.exe(165MB), lappp-client.exe(16MB), lappp-server.exe(152MB)}`（`build/` 入 `.gitignore`）。
+- **验证**：`cargo test --workspace` 654/0/10；`-p lappp` / `--features client` / `-p lappp-server` 三构建 exit=0；`lappp-server --set-admin-password` + 起服务 → 冒烟 `/api/server_info` 返回 `name:"lappp-server"`、日志前缀 `lappp-server:`；薄客户端连之渲染**已改名**的远端登录页（重跑 `build:http` 后）；真库目录 `com.julyx10.lap` 未被触碰。
+- **未改（登记为后续）**：CI workflows、AUR、docs 站、macOS `InfoPlist.strings`、上游 URL 与 updater endpoint（需你另建仓库/签名密钥）。
+- **诚实边界**：**改名后不应启用自动更新**（updater 仍指向上游发版）；未在 macOS/Linux 验证。
 
 ---
 
@@ -610,7 +621,7 @@ src-vite/                      一套前端，两种传输
 | 0 | 基线 + 契约 | 0.5–1 天 |
 | 1 | 前端传输抽象 | 2–4 天 |
 | 2 | 原地去 Tauri 化（浏览闭环） | 5–10 天 |
-| 3 | `lap-core` + `lapd` + 鉴权/媒体/服务化 | 5–8 天 |
+| 3 | `lappp-core` + `lapd` + 鉴权/媒体/服务化 | 5–8 天 |
 | 4 | 响应式 + PWA | 5–10 天 |
 | **MVP（0–3）** | 局域网 Web 浏览/搜索/查看，单用户带鉴权 | **约 2–3 周** |
 | **可用产品（0–4）** | 含手机 PWA | **约 4–5 周** |

@@ -16,7 +16,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 
 use crate::auth::{AuthError, AuthService};
-use lap_core::t_raw_display::{RawDisplayOptions, RawPreviewMode};
+use lappp_core::t_raw_display::{RawDisplayOptions, RawPreviewMode};
 
 // -- query helpers (ported from t_protocol.rs) -----------------------------
 
@@ -72,7 +72,7 @@ fn split_path(path: &str) -> Option<(String, i64)> {
 // -- response builders ------------------------------------------------------
 
 fn media_bytes_response(data: Vec<u8>, cache_control: &'static str) -> Response {
-    let content_type = lap_core::t_common::detect_image_mime(&data);
+    let content_type = lappp_core::t_common::detect_image_mime(&data);
     (
         StatusCode::OK,
         [
@@ -113,12 +113,12 @@ pub async fn thumb_handler(
 
     if !repair {
         let lookup_library = library_id.clone();
-        let cached = lap_core::t_rt::spawn_blocking(move || {
-            lap_core::t_config::with_current_library(&lookup_library, || {
-                let file = lap_core::t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
+        let cached = lappp_core::t_rt::spawn_blocking(move || {
+            lappp_core::t_config::with_current_library(&lookup_library, || {
+                let file = lappp_core::t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                 let path = file.file_path.as_deref().unwrap_or_default();
                 if let Some(thumb) =
-                    lap_core::t_sqlite::AThumb::get_thumb_if_available(file_id, path, false, file.album_accessible)?
+                    lappp_core::t_sqlite::AThumb::get_thumb_if_available(file_id, path, false, file.album_accessible)?
                 {
                     if let Some(data) = thumb.thumb_data {
                         return Ok(Some((data, file.file_type == Some(3))));
@@ -133,23 +133,23 @@ pub async fn thumb_handler(
         }
     }
 
-    let permits = lap_core::t_sqlite::thumb_background_generation_permits();
+    let permits = lappp_core::t_sqlite::thumb_background_generation_permits();
     let Ok(permit) = permits.acquire_owned().await else {
         return text_response(StatusCode::SERVICE_UNAVAILABLE, "thumbnail queue closed");
     };
-    let result = lap_core::t_rt::spawn_blocking(move || {
+    let result = lappp_core::t_rt::spawn_blocking(move || {
         let _permit = permit;
-        lap_core::t_config::with_current_library(&library_id, || {
-            let file = lap_core::t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
-            let previous = lap_core::t_sqlite::AThumb::fetch_record(file_id)?.and_then(|(thumb, _)| thumb.id);
-            let thumb = lap_core::t_sqlite::AThumb::get_or_create_thumb(
+        lappp_core::t_config::with_current_library(&library_id, || {
+            let file = lappp_core::t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
+            let previous = lappp_core::t_sqlite::AThumb::fetch_record(file_id)?.and_then(|(thumb, _)| thumb.id);
+            let thumb = lappp_core::t_sqlite::AThumb::get_or_create_thumb(
                 file_id,
                 file.file_path.as_deref().unwrap_or_default(),
                 file.file_type.unwrap_or(0),
                 file.e_orientation.unwrap_or(1) as i32,
                 thumbnail_size,
                 options,
-                repair && lap_core::t_sqlite::AThumb::auto_repair_allowed(&file, thumbnail_size, options),
+                repair && lappp_core::t_sqlite::AThumb::auto_repair_allowed(&file, thumbnail_size, options),
                 file.duration.map(|d| d as u64),
                 None,
                 repair,
@@ -159,8 +159,8 @@ pub async fn thumb_handler(
                     thumb.error_code == 0 && thumb.thumb_data.is_some() && previous != thumb.id
                 })
             {
-                lap_core::t_events::emit(
-                    lap_core::t_events::names::THUMBNAIL_READY,
+                lappp_core::t_events::emit(
+                    lappp_core::t_events::names::THUMBNAIL_READY,
                     serde_json::json!({ "library_id": library_id, "album_id": file.album_id,
                         "file_ids": [file_id], "invalidate": true, "metadata_changed": false }),
                 );
@@ -203,22 +203,22 @@ pub async fn preview_handler(
     let for_editing = query_flag(query, "forEditing=true");
     let raw_full_size = query_flag(query, "rawFullSize=true");
     let raw_request =
-        query_value(query, "rawViewerId").map(lap_core::t_image::register_raw_preview_request);
+        query_value(query, "rawViewerId").map(lappp_core::t_image::register_raw_preview_request);
 
     // Scheme callbacks never waited on locks; nor does this handler — the
     // file lookup runs on the blocking pool like the desktop protocol.
     let lookup_library = library_id;
-    let lookup = lap_core::t_rt::spawn_blocking(move || {
-        lap_core::t_config::with_current_library(&lookup_library, || {
-            let file = lap_core::t_sqlite::AFile::get_file_info(file_id)?
+    let lookup = lappp_core::t_rt::spawn_blocking(move || {
+        lappp_core::t_config::with_current_library(&lookup_library, || {
+            let file = lappp_core::t_sqlite::AFile::get_file_info(file_id)?
                 .ok_or_else(|| "File not found".to_string())?;
             let companion = if !options.prefer_pair {
                 None
             } else if cached_only && file.media_subtype.as_deref() == Some("raw_jpeg_pair") {
                 file.live_photo_video_id
-                    .and_then(|id| lap_core::t_sqlite::AFile::get_file_info(id).ok().flatten())
+                    .and_then(|id| lappp_core::t_sqlite::AFile::get_file_info(id).ok().flatten())
             } else {
-                lap_core::t_raw_display::paired_file(file_id, options)
+                lappp_core::t_raw_display::paired_file(file_id, options)
             };
             Ok((file, companion))
         })
@@ -236,7 +236,7 @@ pub async fn preview_handler(
     let pair_label = companion
         .as_ref()
         .and_then(|file| file.file_path.as_ref())
-        .map(|path| if lap_core::t_image::is_heic_path(path) { "HEIC" } else { "JPEG" })
+        .map(|path| if lappp_core::t_image::is_heic_path(path) { "HEIC" } else { "JPEG" })
         .unwrap_or("");
 
     if cached_only {
@@ -246,10 +246,10 @@ pub async fn preview_handler(
                 companion
                     .as_ref()
                     .and_then(|file| file.file_path.as_deref())
-                    .and_then(|path| lap_core::t_image::get_cached_preview_bytes(path, options))
+                    .and_then(|path| lappp_core::t_image::get_cached_preview_bytes(path, options))
             })
             .flatten();
-        let data = paired_cache.or_else(|| lap_core::t_image::get_cached_preview_bytes(&file_path, options));
+        let data = paired_cache.or_else(|| lappp_core::t_image::get_cached_preview_bytes(&file_path, options));
         let mut response = match data {
             Some(data) => media_bytes_response(data, "max-age=31536000, immutable"),
             None => text_response(StatusCode::NOT_FOUND, "cached preview not found"),
@@ -262,14 +262,14 @@ pub async fn preview_handler(
     if for_editing {
         // Exactly the pixels get_edited_image crops — the desktop uses the
         // same call for the editor payload.
-        return match lap_core::t_image::get_generated_preview_bytes(&file_path).await {
+        return match lappp_core::t_image::get_generated_preview_bytes(&file_path).await {
             Ok(Some(data)) => media_bytes_response(data, "max-age=31536000, immutable"),
             _ => text_response(StatusCode::NOT_FOUND, "editable preview not found"),
         };
     }
     if options.prefer_pair {
         if let Some(path) = companion.and_then(|file| file.file_path) {
-            if let Ok(data) = lap_core::t_image::get_file_image_bytes_cached(&path, options).await {
+            if let Ok(data) = lappp_core::t_image::get_file_image_bytes_cached(&path, options).await {
                 if image::load_from_memory(&data).is_ok() {
                     return raw_preview_response(data, "pair", false, pair_label);
                 }
@@ -277,12 +277,12 @@ pub async fn preview_handler(
         }
     }
     if is_raw {
-        return match lap_core::t_image::get_raw_preview_cached(&file_path, options, raw_full_size, raw_request).await {
+        return match lappp_core::t_image::get_raw_preview_cached(&file_path, options, raw_full_size, raw_request).await {
             Ok((data, source, unavailable)) => raw_preview_response(data, source, unavailable, pair_label),
             Err(_) => text_response(StatusCode::NOT_FOUND, "RAW preview not found"),
         };
     }
-    match lap_core::t_image::get_file_image_bytes_cached(&file_path, options).await {
+    match lappp_core::t_image::get_file_image_bytes_cached(&file_path, options).await {
         Ok(data) => media_bytes_response(data, "max-age=31536000, immutable"),
         Err(_) => text_response(StatusCode::NOT_FOUND, "preview not found"),
     }
@@ -453,8 +453,8 @@ async fn serve_original_bytes(
     if file_id <= 0 {
         return text_response(StatusCode::BAD_REQUEST, "invalid file_id");
     }
-    let resolved = lap_core::t_rt::spawn_blocking(move || {
-        lap_core::t_sqlite::AFile::get_file_info(file_id)?
+    let resolved = lappp_core::t_rt::spawn_blocking(move || {
+        lappp_core::t_sqlite::AFile::get_file_info(file_id)?
             .map(|file| file.file_path)
             .and_then(|path| path.filter(|p| !p.is_empty()))
             .ok_or_else(|| "file not found".to_string())
@@ -464,7 +464,7 @@ async fn serve_original_bytes(
         Ok(Ok(path)) => path,
         _ => return text_response(StatusCode::NOT_FOUND, "file not found"),
     };
-    if !lap_core::t_utils::content_readable(&path) {
+    if !lappp_core::t_utils::content_readable(&path) {
         return text_response(StatusCode::NOT_FOUND, "file content is not locally available");
     }
     let content_type = if video { video_content_type(&path) } else { image_content_type(&path) };

@@ -2,7 +2,7 @@
   <div class="min-h-screen w-screen flex items-center justify-center bg-base-300 text-base-content p-4">
     <div class="w-full max-w-sm rounded-box bg-base-200 shadow-xl p-6 space-y-5">
       <div class="text-center space-y-1">
-        <div class="text-3xl font-bold tracking-wide">Lap</div>
+        <div class="text-3xl font-bold tracking-wide">lappp</div>
         <div class="text-xs text-base-content/50">{{ $t('auth.subtitle') }}</div>
       </div>
 

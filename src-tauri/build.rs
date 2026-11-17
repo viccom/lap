@@ -1,6 +1,6 @@
 /**
  * Desktop shell build script: Tauri codegen plus the OS clipboard shims
- * (t_pasteboard). The four C image libraries moved to lap-core with the
+ * (t_pasteboard). The four C image libraries moved to lappp-core with the
  * modules that link them (phase 3).
  */
 use std::env;

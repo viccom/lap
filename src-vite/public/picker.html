@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lap · Servers</title>
+  <title>lappp · Servers</title>
   <!--
     Local server picker for the thin client (`--features client`).
     This page is loaded from the app's own origin (http://tauri.localhost), so
@@ -47,8 +47,8 @@
 </head>
 <body>
   <div class="card">
-    <h1>Lap · 服务器</h1>
-    <p class="sub">管理并连接到 lapd 服务器。连接后本窗口将显示该服务器的照片库。</p>
+    <h1>lappp · 服务器</h1>
+    <p class="sub">管理并连接到 lappp-server 服务器。连接后本窗口将显示该服务器的照片库。</p>
 
     <form id="add" class="row">
       <input id="name" placeholder="名称（可选，如：家里 NAS）" />
@@ -70,7 +70,7 @@
     function fail(msg) { errEl.textContent = msg || ''; }
 
     if (!invoke) {
-      fail('Tauri API 不可用：此页面必须由 Lap 薄客户端加载。');
+      fail('Tauri API 不可用：此页面必须由 lappp 薄客户端加载。');
     }
 
     async function refresh() {

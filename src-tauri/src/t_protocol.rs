@@ -1,7 +1,7 @@
 use tauri::{Builder, Wry};
 
-use lap_core::t_raw_display::{RawDisplayOptions, RawPreviewMode};
-use lap_core::{t_image, t_sqlite};
+use lappp_core::t_raw_display::{RawDisplayOptions, RawPreviewMode};
+use lappp_core::{t_image, t_sqlite};
 
 fn text_response(status: http::StatusCode, body: &str) -> http::Response<Vec<u8>> {
     http::Response::builder()
@@ -17,7 +17,7 @@ fn text_response(status: http::StatusCode, body: &str) -> http::Response<Vec<u8>
 fn image_response(data: Vec<u8>) -> http::Response<Vec<u8>> {
     http::Response::builder()
         .status(http::StatusCode::OK)
-        .header(http::header::CONTENT_TYPE, lap_core::t_common::detect_image_mime(&data))
+        .header(http::header::CONTENT_TYPE, lappp_core::t_common::detect_image_mime(&data))
         .header(http::header::CACHE_CONTROL, "max-age=31536000, immutable")
         .header(http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(http::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS")
@@ -95,11 +95,11 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
             let thumbnail_size = query.split('&').find_map(|p| p.strip_prefix("size=").and_then(|v| v.parse::<u32>().ok()))
                 .unwrap_or(512).clamp(64,2048);
             let repair = query.split('&').any(|p| p == "repair=true");
-            lap_core::t_rt::spawn(async move {
+            lappp_core::t_rt::spawn(async move {
                 if !repair {
                     let lookup_library = library_id.clone();
-                    let cached = lap_core::t_rt::spawn_blocking(move || {
-                        lap_core::t_config::with_current_library(&lookup_library, || {
+                    let cached = lappp_core::t_rt::spawn_blocking(move || {
+                        lappp_core::t_config::with_current_library(&lookup_library, || {
                             let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                             let path = file.file_path.as_deref().unwrap_or_default();
                             if let Some(thumb) = t_sqlite::AThumb::get_thumb_if_available(file_id, path, false, file.album_accessible)? {
@@ -114,9 +114,9 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 let Ok(permit) = permits.acquire_owned().await else {
                     responder.respond(text_response(http::StatusCode::SERVICE_UNAVAILABLE, "thumbnail queue closed")); return;
                 };
-                let result = lap_core::t_rt::spawn_blocking(move || {
+                let result = lappp_core::t_rt::spawn_blocking(move || {
                     let _permit = permit;
-                    lap_core::t_config::with_current_library(&library_id, || {
+                    lappp_core::t_config::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?.ok_or("File not found")?;
                         let previous = t_sqlite::AThumb::fetch_record(file_id)?.and_then(|(thumb, _)| thumb.id);
                         let thumb = t_sqlite::AThumb::get_or_create_thumb(file_id, file.file_path.as_deref().unwrap_or_default(),
@@ -124,8 +124,8 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                             thumbnail_size, options, repair && t_sqlite::AThumb::auto_repair_allowed(&file, thumbnail_size, options), file.duration.map(|d| d as u64), None, repair)?;
                         if repair && thumb.as_ref().is_some_and(|thumb| thumb.error_code == 0 && thumb.thumb_data.is_some()
                             && previous != thumb.id) {
-                            lap_core::t_events::emit(
-                                lap_core::t_events::names::THUMBNAIL_READY,
+                            lappp_core::t_events::emit(
+                                lappp_core::t_events::names::THUMBNAIL_READY,
                                 serde_json::json!({ "library_id": library_id, "album_id": file.album_id,
                                     "file_ids": [file_id], "invalidate": true, "metadata_changed": false }));
                         }
@@ -165,11 +165,11 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
             }
 
             let library_id = path.trim_start_matches('/').split('/').next().unwrap_or("default").to_string();
-            lap_core::t_rt::spawn(async move {
+            lappp_core::t_rt::spawn(async move {
                 // Scheme callbacks can run on the UI thread. Never wait for a
                 // library lock, configuration IO or SQLite there.
-                let lookup = lap_core::t_rt::spawn_blocking(move || {
-                    lap_core::t_config::with_current_library(&library_id, || {
+                let lookup = lappp_core::t_rt::spawn_blocking(move || {
+                    lappp_core::t_config::with_current_library(&library_id, || {
                         let file = t_sqlite::AFile::get_file_info(file_id)?
                             .ok_or_else(|| "File not found".to_string())?;
                         let companion = if !options.prefer_pair {
@@ -177,7 +177,7 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                         } else if cached_only && file.media_subtype.as_deref() == Some("raw_jpeg_pair") {
                             file.live_photo_video_id.and_then(|id| t_sqlite::AFile::get_file_info(id).ok().flatten())
                         } else {
-                            lap_core::t_raw_display::paired_file(file_id, options)
+                            lappp_core::t_raw_display::paired_file(file_id, options)
                         };
                         Ok((file, companion))
                     })
@@ -213,8 +213,8 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                 if for_editing {
                     // Use exactly the same pixels (including decoder fallbacks)
                     // that get_edited_image applies the crop and adjustments to.
-                    let result = lap_core::t_rt::spawn_blocking(move || {
-                        lap_core::t_rt::block_on(t_image::get_generated_preview_bytes(&file_path))
+                    let result = lappp_core::t_rt::spawn_blocking(move || {
+                        lappp_core::t_rt::block_on(t_image::get_generated_preview_bytes(&file_path))
                     }).await;
                     responder.respond(match result {
                         Ok(Ok(Some(data))) => image_response(data),

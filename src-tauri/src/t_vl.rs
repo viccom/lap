@@ -1,16 +1,16 @@
-//! Desktop command wrappers over lap_core::t_vl (serverization phase 3).
+//! Desktop command wrappers over lappp_core::t_vl (serverization phase 3).
 //! The module name and command names stay identical, so main.rs
 //! registration is unchanged; everything else re-exports the core.
 
-pub use lap_core::t_vl::*;
+pub use lappp_core::t_vl::*;
 // Signatures reference protocol types the core module imports itself.
-use lap_core::t_vl_protocol::*;
+use lappp_core::t_vl_protocol::*;
 
 
 #[tauri::command]
 pub fn get_vl_config() -> Result<VlConfigView, String>
 {
-    lap_core::t_vl::get_vl_config()
+    lappp_core::t_vl::get_vl_config()
 }
 
 
@@ -26,14 +26,14 @@ pub fn set_vl_config(
     max_concurrency: i64,
 ) -> Result<VlConfigView, String>
 {
-    lap_core::t_vl::set_vl_config(gateway_url, api_key, model, rerank_model, embed_source, embed_model, protocol, max_concurrency)
+    lappp_core::t_vl::set_vl_config(gateway_url, api_key, model, rerank_model, embed_source, embed_model, protocol, max_concurrency)
 }
 
 
 #[tauri::command]
 pub fn list_vl_templates() -> Result<Vec<VlTemplate>, String>
 {
-    lap_core::t_vl::list_vl_templates()
+    lappp_core::t_vl::list_vl_templates()
 }
 
 
@@ -45,7 +45,7 @@ pub fn create_vl_template(
     response_spec: String,
 ) -> Result<VlTemplate, String>
 {
-    lap_core::t_vl::create_vl_template(name, prompt_template, system_template, response_spec)
+    lappp_core::t_vl::create_vl_template(name, prompt_template, system_template, response_spec)
 }
 
 
@@ -58,14 +58,14 @@ pub fn update_vl_template(
     response_spec: String,
 ) -> Result<VlTemplate, String>
 {
-    lap_core::t_vl::update_vl_template(id, name, prompt_template, system_template, response_spec)
+    lappp_core::t_vl::update_vl_template(id, name, prompt_template, system_template, response_spec)
 }
 
 
 #[tauri::command]
 pub fn delete_vl_template(id: i64) -> Result<bool, String>
 {
-    lap_core::t_vl::delete_vl_template(id)
+    lappp_core::t_vl::delete_vl_template(id)
 }
 
 
@@ -76,28 +76,28 @@ pub fn run_vl_analysis(
     force: bool,
 ) -> Result<String, String>
 {
-    lap_core::t_vl::run_vl_analysis(file_ids, template_id, force)
+    lappp_core::t_vl::run_vl_analysis(file_ids, template_id, force)
 }
 
 
 #[tauri::command]
 pub fn get_vl_annotations(file_id: i64) -> Result<Vec<VlAnnotation>, String>
 {
-    lap_core::t_vl::get_vl_annotations(file_id)
+    lappp_core::t_vl::get_vl_annotations(file_id)
 }
 
 
 #[tauri::command]
 pub fn get_vl_calls(file_id: i64) -> Result<Vec<VlCall>, String>
 {
-    lap_core::t_vl::get_vl_calls(file_id)
+    lappp_core::t_vl::get_vl_calls(file_id)
 }
 
 
 #[tauri::command]
 pub fn cancel_vl_run(run_id: String) -> Result<(), String>
 {
-    lap_core::t_vl::cancel_vl_run(run_id)
+    lappp_core::t_vl::cancel_vl_run(run_id)
 }
 
 
@@ -107,47 +107,47 @@ pub async fn rerank_search_with_llm(
     file_ids: Vec<i64>,
 ) -> Result<RerankSelection, String>
 {
-    lap_core::t_vl::rerank_search_with_llm(query, file_ids).await
+    lappp_core::t_vl::rerank_search_with_llm(query, file_ids).await
 }
 
 
 #[tauri::command]
 pub async fn list_vl_models() -> Result<VlModelList, String>
 {
-    lap_core::t_vl::list_vl_models().await
+    lappp_core::t_vl::list_vl_models().await
 }
 
 
 #[tauri::command]
 pub fn list_vl_runs() -> Result<Vec<VlRunRecord>, String>
 {
-    lap_core::t_vl::list_vl_runs()
+    lappp_core::t_vl::list_vl_runs()
 }
 
 
 #[tauri::command]
 pub fn list_vl_run_calls(run_id: String) -> Result<Vec<VlCall>, String>
 {
-    lap_core::t_vl::list_vl_run_calls(run_id)
+    lappp_core::t_vl::list_vl_run_calls(run_id)
 }
 
 
 #[tauri::command]
 pub fn retry_vl_run(run_id: String) -> Result<String, String>
 {
-    lap_core::t_vl::retry_vl_run(run_id)
+    lappp_core::t_vl::retry_vl_run(run_id)
 }
 
 
 #[tauri::command]
 pub fn delete_vl_run(run_id: String) -> Result<(), String>
 {
-    lap_core::t_vl::delete_vl_run(run_id)
+    lappp_core::t_vl::delete_vl_run(run_id)
 }
 
 
 #[tauri::command]
 pub fn clear_vl_runs() -> Result<u64, String>
 {
-    lap_core::t_vl::clear_vl_runs()
+    lappp_core::t_vl::clear_vl_runs()
 }

@@ -1,7 +1,7 @@
 {
-  "name": "Lap",
-  "short_name": "Lap",
-  "description": "Lap photo library",
+  "name": "lappp",
+  "short_name": "lappp",
+  "description": "lappp photo library",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

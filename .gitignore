@@ -13,3 +13,6 @@ set_db_version.py
 set_version.py
 publish_release.sh
 release-downloads.sh
+
+# local build outputs (scripts/build-windows.ps1)
+build/

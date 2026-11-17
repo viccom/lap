@@ -92,7 +92,7 @@ mod tests {
         }
     }
 
-    // The boundary guard moved to lap-core's guard.rs in phase 3 (it scans
+    // The boundary guard moved to lappp-core's guard.rs in phase 3 (it scans
     // every core source file; this module list is no longer maintained here).
 }
 

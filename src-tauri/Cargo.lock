@@ -3,72 +3,6 @@
 version = 4
 
 [[package]]
-name = "Lap"
-version = "0.3.3"
-dependencies = [
- "arboard",
- "base64 0.22.1",
- "blake3",
- "cc",
- "chrono",
- "clipboard-win",
- "csv",
- "dirs 5.0.1",
- "drag",
- "exiftool-rs",
- "fast_image_resize",
- "flate2",
- "hnsw_rs",
- "http",
- "image",
- "imagesize",
- "jxl-oxide",
- "kamadak-exif",
- "lap-core",
- "libc",
- "little_exif",
- "memmap2",
- "ndarray",
- "objc2 0.6.4",
- "objc2-app-kit 0.3.2",
- "objc2-foundation 0.3.2",
- "once_cell",
- "opener",
- "ort",
- "percent-encoding",
- "pinyin",
- "pkg-config",
- "plist",
- "png 0.18.1",
- "quick-xml 0.37.5",
- "rand 0.8.5",
- "reqwest 0.12.28",
- "rstar",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
- "tauri-plugin-aptabase",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-os",
- "tauri-plugin-process",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
- "tauri-plugin-window-state",
- "tokenizers",
- "tokio",
- "trash",
- "uuid",
- "walkdir",
- "windows 0.61.3",
- "xattr",
- "zip 2.4.2",
-]
-
-[[package]]
 name = "ab_glyph"
 version = "0.2.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3361,7 +3295,73 @@ dependencies = [
 ]
 
 [[package]]
-name = "lap-core"
+name = "lappp"
+version = "0.3.3"
+dependencies = [
+ "arboard",
+ "base64 0.22.1",
+ "blake3",
+ "cc",
+ "chrono",
+ "clipboard-win",
+ "csv",
+ "dirs 5.0.1",
+ "drag",
+ "exiftool-rs",
+ "fast_image_resize",
+ "flate2",
+ "hnsw_rs",
+ "http",
+ "image",
+ "imagesize",
+ "jxl-oxide",
+ "kamadak-exif",
+ "lappp-core",
+ "libc",
+ "little_exif",
+ "memmap2",
+ "ndarray",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "once_cell",
+ "opener",
+ "ort",
+ "percent-encoding",
+ "pinyin",
+ "pkg-config",
+ "plist",
+ "png 0.18.1",
+ "quick-xml 0.37.5",
+ "rand 0.8.5",
+ "reqwest 0.12.28",
+ "rstar",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-aptabase",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-os",
+ "tauri-plugin-process",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+ "tauri-plugin-window-state",
+ "tokenizers",
+ "tokio",
+ "trash",
+ "uuid",
+ "walkdir",
+ "windows 0.61.3",
+ "xattr",
+ "zip 2.4.2",
+]
+
+[[package]]
+name = "lappp-core"
 version = "0.3.3"
 dependencies = [
  "arboard",
@@ -3415,7 +3415,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lap-server"
+name = "lappp-server"
 version = "0.3.3"
 dependencies = [
  "argon2",
@@ -3424,7 +3424,7 @@ dependencies = [
  "blake3",
  "futures",
  "image",
- "lap-core",
+ "lappp-core",
  "rand 0.8.5",
  "rusqlite",
  "serde",
