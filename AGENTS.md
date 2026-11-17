@@ -47,7 +47,7 @@ git checkout develop && git rebase main        # 或 merge；冲突只可能出�
 
 ### 前端测试基线（2026-11-15 阶段 0 修复后全绿）
 
-**41 个测试文件 / 425 tests 全部通过**（Rust 同批全绿：556/0/9 ignored；证据与复现命令见 [docs/dev/BASELINE-阶段0-服务化拆分基线.md](docs/dev/BASELINE-阶段0-服务化拆分基线.md)）。历史上的「8 个失败文件」已在阶段 0 全部根因修复，真实根因与 F0 初判不同：
+**41 个测试文件 / 453 tests 全部通过**（Rust 同批全绿：647/0/10 ignored；证据与复现命令见 [docs/dev/BASELINE-阶段0-服务化拆分基线.md](docs/dev/BASELINE-阶段0-服务化拆分基线.md)）。历史上的「8 个失败文件」已在阶段 0 全部根因修复，真实根因与 F0 初判不同：
 
 | 真实根因 | 影响面 | 修复 |
 |---|---|---|
@@ -79,7 +79,7 @@ git checkout develop && git rebase main        # 或 merge；冲突只可能出�
   - MSVC BuildTools 2022 + Windows SDK 已装；**cmake 用 VS 自带的那份**（`Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin`，不在全局 PATH）；**nasm 需另装**（scoop `nasm`，libjpeg-turbo 需要）；`rc.exe` 在 Windows Kits `10.0.26100.0/x64`。
   - **cargo 走 Clash 代理必须关 multiplexing**：`CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1`，否则 sparse index 挂起（进程有连接、CPU≈0、crate 缓存 0 文件）。
   - 模型可直接从安装版 `D:\Lap\models` 复制到 `src-tauri/resources/models`（脚本会校验 SHA-256，5 个文件全部一致）。
-- 测试基线（改动前后都要对照，失败集合不得新增）：`cargo test --workspace`（src-tauri 内，**647 过/0 败/10 ignored**：lap-core 572 + Lap 壳 9 + lapd 62 + drag vendor 2+2；阶段 4 批次 4.6 限流拆分测试计入）+ `cd src-vite && node --experimental-vm-modules --test tests/*.test.mjs`（41 文件 **451** 测试全绿；阶段 4 传输层/签名/门控 + 批次 4.5 `afterNextPaint` + 批次 4.6 限流状态测试计入；跑 `node --experimental-vm-modules --test tests/`（含 2 个 `.ts` 测试文件）为 477 全绿；基线详情见上方「前端测试基线」）。前端 Web 构建：`cd src-vite && npm run build:http`（`VITE_LAP_TRANSPORT=http`，同源托管于 lapd `--web-dir`）。**`dist/` 是两个构建共用的 outDir**：`npm run build`（桌面）与 `build:http`（Web）互相覆盖，交给 lapd 托管前必须最后跑一次 `build:http`。
+- 测试基线（改动前后都要对照，失败集合不得新增）：`cargo test --workspace`（src-tauri 内，**647 过/0 败/10 ignored**：lap-core 572 + Lap 壳 9 + lapd 62 + drag vendor 2+2；阶段 4 批次 4.6 限流拆分测试计入）+ `cd src-vite && node --experimental-vm-modules --test tests/*.test.mjs`（41 文件 **453** 测试全绿；阶段 4 传输层/签名/门控 + 批次 4.5 `afterNextPaint` + 批次 4.6 限流状态 + 批次 4.8「二级页退出入口」守卫测试计入；跑 `node --experimental-vm-modules --test tests/`（含 2 个 `.ts` 测试文件）为 479 全绿；基线详情见上方「前端测试基线」）。前端 Web 构建：`cd src-vite && npm run build:http`（`VITE_LAP_TRANSPORT=http`，同源托管于 lapd `--web-dir`）。**`dist/` 是两个构建共用的 outDir**：`npm run build`（桌面）与 `build:http`（Web）互相覆盖，交给 lapd 托管前必须最后跑一次 `build:http`。
 - 调试手法：Python `sqlite3` 只读查库（`LENGTH(embeds)/4` 看向量维度等）。
 
 ## 自有功能规划（详见 docs/dev/F1-图片理解技术方案.md 等）

@@ -11,9 +11,10 @@
     />
     <div
       v-else
-      class="h-10 shrink-0 flex items-center justify-center px-20 select-none"
+      class="relative h-10 shrink-0 flex items-center justify-center px-20 select-none"
       data-tauri-drag-region
     >
+      <SubpageBackButton class="absolute left-1 top-1" />
       <div class="min-w-0 max-w-full text-center text-sm font-medium text-base-content/70 truncate" data-tauri-drag-region>
         {{ $t('msgbox.image_editor.title') }} - {{ shortenFilename(fileInfo?.name || '', 32) }}
       </div>
@@ -562,6 +563,7 @@ watch(() => config.imageEditor, (preferences) => {
 }, { deep: true });
 
 import TitleBar from '@/components/TitleBar.vue';
+import SubpageBackButton from '@/components/SubpageBackButton.vue';
 import MessageBox from '@/components/MessageBox.vue';
 import TButton from '@/components/TButton.vue';
 import SliderInput from '@/components/SliderInput.vue';

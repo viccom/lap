@@ -132,3 +132,28 @@ export function webviewWindow() {
 export function isWebClient() {
   return mode === 'http';
 }
+
+/**
+ * Leave a secondary page. On the desktop shell "leaving" means closing the
+ * window and letting the OS focus the main window again. A browser tab has no
+ * scriptable close (`window.close()` is ignored for tabs the script didn't
+ * open), so the Web client navigates back to where the user came from, falling
+ * back to the grid when there is no history to return to. Every secondary page
+ * exits through this one verb so the two hosts stay honest about the difference
+ * instead of one of them being a dead end.
+ */
+export function closeOrBack() {
+  if (mode !== 'http') {
+    getCurrentWebviewWindow().close();
+    return;
+  }
+  // Dynamic import avoids a static import cycle (router -> auth, not this seam).
+  void import('@/common/router').then((mod) => {
+    const router = mod.default;
+    // vue-router records the previous full path in history state; with nothing
+    // behind us (a deep link opened fresh) `back` is absent, so go home instead
+    // of silently doing nothing.
+    if (router.options.history.state?.back) router.back();
+    else router.push('/');
+  });
+}

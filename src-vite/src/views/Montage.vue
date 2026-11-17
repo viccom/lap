@@ -11,9 +11,10 @@
     />
     <div
       v-else
-      class="h-10 shrink-0 flex items-center justify-center px-20 select-none"
+      class="relative h-10 shrink-0 flex items-center justify-center px-20 select-none"
       data-tauri-drag-region
     >
+      <SubpageBackButton class="absolute left-1 top-1" />
       <div class="min-w-0 max-w-full text-center text-sm font-medium text-base-content/70 truncate" data-tauri-drag-region>
         {{ titleText }}
       </div>
@@ -295,6 +296,7 @@ import { open as openDialog, message } from '@/common/transport/dialog.js';
 
 import PrintImage from '@/components/PrintImage.vue';
 import TitleBar from '@/components/TitleBar.vue';
+import SubpageBackButton from '@/components/SubpageBackButton.vue';
 import TButton from '@/components/TButton.vue';
 import SliderInput from '@/components/SliderInput.vue';
 import ModalDialog from '@/components/ModalDialog.vue';

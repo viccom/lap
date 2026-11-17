@@ -9,6 +9,11 @@
     @mouseleave="handleRootMouseLeave"
   >
 
+    <!-- Web client: the standalone viewer is a route with no window chrome, and
+         its close button only shows in the desktop window bar. Give the browser
+         an explicit way back (self-gated, so desktop is unchanged). -->
+    <SubpageBackButton class="absolute top-1 left-1 z-100" />
+
     <div
       ref="viewerContainer"
       :class="[
@@ -237,6 +242,7 @@ import {
 } from '@/common/api';
 
 import MediaViewer from '@/components/MediaViewer.vue';
+import SubpageBackButton from '@/components/SubpageBackButton.vue';
 import MessageBox from '@/components/MessageBox.vue';
 import TButton from '@/components/TButton.vue';
 import StatusBar from '@/components/StatusBar.vue';

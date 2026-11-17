@@ -10,6 +10,9 @@
     data-tauri-drag-region
   >
     <!-- Title Name -->
+    <!-- Web-client back button (self-gated): a browser tab cannot close itself,
+         so every secondary page needs an explicit way back to the grid. -->
+    <SubpageBackButton class="ml-1" />
     <!-- Icon & Title Container -->
     <div v-if="isMac" class="flex-1" data-tauri-drag-region></div>
     <div 
@@ -77,6 +80,7 @@ import { emit } from '@/common/transport';
 import { getCurrentWebviewWindow as getCurrentWindow } from '@/common/transport/window.js';
 import { isWin, isMac, isLinux } from '@/common/utils';
 import { capabilities } from '@/common/transport';
+import SubpageBackButton from '@/components/SubpageBackButton.vue';
 
 import { 
   IconWinMinus,

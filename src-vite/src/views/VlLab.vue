@@ -3,7 +3,8 @@
 
     <!-- Title Bar -->
     <TitleBar v-if="showDesktopTitleBar" :titlebar="$t('vl.lab.title')" :resizable="false" viewName="VlLab" class="shrink-0 z-50" />
-    <div v-else class="h-10 shrink-0 flex items-center justify-center px-20 select-none" data-tauri-drag-region>
+    <div v-else class="relative h-10 shrink-0 flex items-center justify-center px-20 select-none" data-tauri-drag-region>
+      <SubpageBackButton class="absolute left-1 top-1" />
       <div class="text-sm font-medium text-base-content/70 truncate" data-tauri-drag-region>{{ $t('vl.lab.title') }}</div>
     </div>
 
@@ -282,6 +283,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { emit, listen } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import TitleBar from '@/components/TitleBar.vue';
+import SubpageBackButton from '@/components/SubpageBackButton.vue';
 import { IconRight } from '@/common/icons';
 import { config } from '@/common/config';
 import { useToast } from '@/common/toast';

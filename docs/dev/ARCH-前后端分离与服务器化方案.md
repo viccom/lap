@@ -387,6 +387,22 @@ src-vite/                      一套前端，两种传输
 - **验证**：前端 `tests/*.test.mjs` **451/0**（+5：4 守卫 + 1 RAW 签名回归；并修 `previewWindow`/`rawDisplay`/`systemLocale` 三个既有测试以适配新 seam）；两种构建 exit=0；`cargo test --workspace` **647/0/10 exit=0**（本批零 Rust 改动）。**浏览器全路由实测**（真实 lapd）：`/`、`/settings`、`/montage`、`/image-editor`、`/vl-lab`、`/image-viewer` 全部渲染（textLen>0）、**零白屏、零 console 错误**；`/settings` 点击齿轮可跳转；`/montage` 显示 2 张缩略图、`/image-editor` 加载 4096px 预览、`/image-viewer` 显示「RAW · 内嵌」——**三处媒体 403 全部消除**。
 - **诚实边界**：`/vl-lab` 的 `embed_status` 返回 500（AI 嵌入索引与本机配置不一致，环境/数据问题，非宿主层缺陷，未在本批处理）；`favicon.ico` 404 与 PWA 仍留批次 5；安装脚本仍暂缓。
 
+**批次 4.8（二级页在浏览器里没有出口：补齐"离开本页"入口，两端语义统一）· 已完成**
+
+- **触发（用户报告）**："浏览器中点击设置后无法返回，页面上缺少返回或关闭；桌面版是打开新窗口。桌面版和浏览器版需要统一一下。"
+- **根因（宿主层、批次 4.7 的同类剩余）**：桌面点设置走 `new WebviewWindow('settings', …)` **开新窗口**，关掉窗口即回到主窗；Web 端改成了 `router.push('/settings')` **同标签页跳路由**，Home 被卸载。而每个二级页的顶部栏都是为独立窗口设计的：
+  - `/settings` 用 `<TitleBar>`，但其最小/最大/关闭按钮门控在 `capabilities().native && (isWin||isLinux)` → 浏览器里**全部隐藏**，只剩标题 → 无任何出口；
+  - `/image-editor`、`/montage`、`/vl-lab` 的 `<TitleBar v-if="isWin||isLinux">` 在**非 Windows 浏览器**退化成「只有标题的 div」，同样无出口（Windows 浏览器因渲染 TitleBar 而恰好有标题栏、但仍无按钮）；
+  - `/image-viewer` 的关闭按钮也门控在 `showDesktopWindowControls`，**Mac 浏览器**只剩 `Esc` 可用。
+  - 浏览器标签页无法用脚本 `window.close()` 关闭（对非脚本打开的标签被忽略，`window.js` 已注明），所以这些页面在 Web 上成了死胡同。
+- **收口（把"离开本页"变成一个 seam 动词 + 一个自门控组件）**：
+  - `transport/window.js` 新增 `closeOrBack()`：桌面 → 关当前窗口；Web → `router.back()`，无历史（深链新开）时回退 `router.push('/')`。**一个动词管两端**，页面不再各自判断。
+  - 新增 `components/SubpageBackButton.vue`：自带 `capabilities().native` 门控（桌面不渲染）与 `closeOrBack()` 调用，alt/aria/`data-testid="web-back"` 齐全；是唯一的返回入口，**每个二级页头部都挂它**。
+  - `<TitleBar>` 内渲染该组件（覆盖 `/settings` 与 Windows 浏览器下的三页）；`/image-editor`、`/montage`、`/vl-lab` 的标题回退 div 与 `/image-viewer` 根节点直接挂它（覆盖非 Windows 浏览器与 Mac 查看器）。**桌面体验完全不变**。
+- **守卫（非空转已证）**：`tests/transport.test.mjs` 新增 2 例——① window seam 必须导出 `closeOrBack` 且含 `router.back()`/`router.push('/')`；② 五个二级页头部必须**渲染**返回入口（`<SubpageBackButton>` 标签本身，而非仅 import；`/settings` 经 `<TitleBar>` 间接满足），且该组件必须自门控 + 调 `closeOrBack`。**移除任一页的按钮即变红已实测**（当初只断言 import 标识符时未变红，已改为断言渲染标签）。
+- **验证**：前端 `tests/*.test.mjs` **453/0**（+2 守卫）；`tests/` 全目录 **479/0**；两种构建 exit=0；`cargo test --workspace` **647/0/10 exit=0**（本批零 Rust 改动）。**真实 lapd 浏览器实测**：`/settings` 上 `data-testid="web-back"` 可见，点击 → 回到 `/`；新开 `/montage`（无历史）点击 → 回退到 `/`（兜底生效）。lapd 托管产物与本地 `build:http` entry hash 一致（`index-B7LLGEM9.js`），新 chunk `SubpageBackButton-*.js` 可服务端取到。
+- **诚实边界**：桌面端行为未改动（组件自门控 + 守卫覆盖）；PWA/manifest、`favicon.ico` 404 仍留批次 5。
+
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。

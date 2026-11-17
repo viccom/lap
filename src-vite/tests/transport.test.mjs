@@ -310,6 +310,49 @@ test('the window seam exposes a Web route for every secondary window it creates'
   assert.ok(/getByLabel: async \(\) => null/.test(src), 'the Web WebviewWindow must report no secondary windows');
 });
 
+test('the window seam gives the Web client a way out of a secondary page', () => {
+  const src = readFileSync(new URL('../src/common/transport/window.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  // A browser tab cannot close itself, so the seam must expose a `closeOrBack`
+  // verb: desktop closes the window, Web navigates back (or home when there is
+  // no history). Without it, every secondary route is a dead end.
+  assert.ok(/export function closeOrBack\s*\(/.test(src), 'window.js must export closeOrBack');
+  assert.ok(/router\.back\(\)/.test(src), 'closeOrBack must navigate back on the Web');
+  assert.ok(/router\.push\('\/'\)/.test(src), 'closeOrBack must fall back to the grid with no history');
+});
+
+test('every secondary page header carries the Web back affordance', () => {
+  // The dead-end class this fixes: /settings, /image-editor, /montage, /vl-lab
+  // and the standalone viewer had no way back in a browser. Each must render
+  // the shared SubpageBackButton (TitleBar renders it for the pages that use it;
+  // the others include it directly).
+  const root = new URL('../src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  const views = {
+    'views/Settings.vue': null, // uses <TitleBar>, which renders SubpageBackButton
+    'views/ImageEditor.vue': 'component',
+    'views/Montage.vue': 'component',
+    'views/VlLab.vue': 'component',
+    'views/ImageViewer.vue': 'component',
+  };
+  for (const [rel, mode] of Object.entries(views)) {
+    const src = readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
+    if (mode === null) {
+      assert.ok(/<TitleBar\b/.test(src), `${rel} must render <TitleBar> (which hosts the back button)`);
+    } else {
+      // Require the rendered TAG, not just the import identifier — a file that
+      // imports the component but never renders it is still a dead end.
+      assert.ok(/<SubpageBackButton\b/.test(src), `${rel} must render <SubpageBackButton>`);
+    }
+  }
+  // And the shared component must be self-gating: Web-only, hidden on desktop.
+  const seam = readFileSync(join(root, 'components/SubpageBackButton.vue'), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(/capabilities\(\)\.native/.test(seam), 'SubpageBackButton must gate on capabilities().native');
+  assert.ok(/closeOrBack\(\)/.test(seam), 'SubpageBackButton must call closeOrBack');
+  // <TitleBar> is the header for Settings and the desktop-browser pages, so it
+  // must actually render the button, not merely import it.
+  const titleBar = readFileSync(join(root, 'components/TitleBar.vue'), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(/<SubpageBackButton\b/.test(titleBar), 'TitleBar must render <SubpageBackButton>');
+});
+
 test('the dialog seam degrades file pickers to null and keeps confirm/alert', async () => {
   const src = readFileSync(new URL('../src/common/transport/dialog.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   // open/save must not pretend to pick a server-side path in a browser.
