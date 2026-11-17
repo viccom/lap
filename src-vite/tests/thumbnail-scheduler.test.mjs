@@ -209,13 +209,14 @@ function gridFixture(grouped = false, loadThumbs) {
   const api = new Function('createThumbnailScheduler', 'config', 'getFileThumbs', 'gridRows',
     'visibleItemCount', 'lastVisibleRange', 'isItemRow', 'isRealFileItem', 'onBeforeUnmount',
     'getCachedThumbnailDataUrl', 'getThumbnailDataUrl', 'thumbnailPlaceholder', 'console', 'libConfig',
+    'GRID_THUMBNAIL_BATCH_SIZE',
     adapter + '; return { getFileListThumb, invalidateThumbnailRequests, refreshThumbnailViewport, invalidateRawThumbnailPolicy };')(
     createThumbnailScheduler, { settings: { thumbnailSize: 512 } },
     (requests, thumbnailSize, forceRegenerate) => loadThumbs
       ? loadThumbs(requests, io, { thumbnailSize, forceRegenerate }) : io.load(requests), rows, { value: 4 }, range, row => row?.type === 'item',
     file => file && !file.isPlaceholder && typeof file.id === 'number', callback => { dispose = callback; },
     id => memory.get(id), thumb => { memory.set(thumb.id, thumb.url); return thumb.url; },
-    'placeholder', { log(...args) { errors.push(args); } }, library);
+    'placeholder', { log(...args) { errors.push(args); } }, library, 4);
   const finish = index => io.calls[index].finish(io.calls[index].payloads.map(p => ({
     error_code: 0, id: p.fileId, url: `thumb:${p.fileId}`,
   })));
@@ -492,4 +493,16 @@ test('RAW policy changes cover later albums and libraries once per file, includi
   grid.finish(grid.io.calls.length - 1);
   await pending;
   grid.dispose();
+});
+
+test('the grid wires a larger batch size so a first screen costs a few IPCs', async () => {
+  // The backend get_file_thumbs command is unbounded (its SQL chunks at 500 ids),
+  // so the batch size is a client-side policy: the production grid must pass an
+  // explicit batchSize from the shared constant rather than fall back to the
+  // scheduler default (4), which made a ~120-row first screen issue ~29 IPCs.
+  const { GRID_THUMBNAIL_BATCH_SIZE } = await import('../src/common/constants.ts');
+  assert.ok(GRID_THUMBNAIL_BATCH_SIZE >= 16, 'the grid batch size must be meaningfully larger than the default');
+  const content = await readFile(new URL('../src/components/Content.vue', import.meta.url), 'utf8');
+  assert.ok(/batchSize:\s*GRID_THUMBNAIL_BATCH_SIZE/.test(content),
+    'Content.vue must pass batchSize: GRID_THUMBNAIL_BATCH_SIZE to createThumbnailScheduler');
 });

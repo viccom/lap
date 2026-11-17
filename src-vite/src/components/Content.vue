@@ -888,7 +888,7 @@ import { handleVideoPlaybackShortcut, handleVideoEscapeShortcut } from '@/common
 import { clearFolderFileCounts, setFolderFileCount, getCountedFolderPaths } from '@/composables/useAlbumSelection';
 import { createEmptyLibraryCounts } from '@/stores/libraryStore';
 import { getAlbumScanState, getAlbumScanIcon, shouldAnimateAlbumScanIcon } from '@/common/scanStatus';
-import { CULLING, DATE_SORT, GROUP, LIB_ITEM, RATE, SIDEBAR, SELECTED_THUMBNAIL_LIMIT, RIGHT_PANEL_MIN_WIDTH, PANEL_ANIMATION_MS, MONTAGE_MAX_PHOTOS, LARGE_BATCH_CONFIRM_THRESHOLD, EXTERNAL_OPEN_WARNING_THRESHOLD } from '@/common/constants';
+import { CULLING, DATE_SORT, GROUP, LIB_ITEM, RATE, SIDEBAR, SELECTED_THUMBNAIL_LIMIT, RIGHT_PANEL_MIN_WIDTH, PANEL_ANIMATION_MS, MONTAGE_MAX_PHOTOS, LARGE_BATCH_CONFIRM_THRESHOLD, EXTERNAL_OPEN_WARNING_THRESHOLD, GRID_THUMBNAIL_BATCH_SIZE } from '@/common/constants';
 import { isWin, isMac, isLinux, separator,
          formatFileSize, formatDate, getCalendarDateRange, formatFolderBreadcrumb, getThumbnailDataUrl, getAssetSrc, getPreviewUrl,
          getCachedThumbnailDataUrl,
@@ -11738,6 +11738,10 @@ function invalidateRawThumbnailPolicy() {
   invalidateThumbnailRequests();
 }
 const thumbnailScheduler = createThumbnailScheduler({
+  // One IPC per ~32 thumbnails instead of per four: a first screen of ~120 rows
+  // drops from ~29 `get_file_thumbs` commands to ~4. Visible rows are still
+  // packed into the highest-priority batch, so the on-screen cells fill first.
+  batchSize: GRID_THUMBNAIL_BATCH_SIZE,
   // Cache-read IPC has a separate budget from backend background generation.
   priority: (task: any) => task.requestId !== currentThumbRequestId ? null
     : thumbnailPriorities.get(Number(task.file.id)) ?? (task.viewportBound ? null : 2),

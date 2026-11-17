@@ -105,6 +105,13 @@ export type SettingsTab = (typeof SETTINGS_TAB)[keyof typeof SETTINGS_TAB];
 
 // UI limits, dimensions and interaction timing
 export const SELECTED_THUMBNAIL_LIMIT = 15;
+// Grid thumbnail IPC batching. The backend `get_file_thumbs` command takes an
+// unbounded list, so a larger batch directly cuts the per-view command count: a
+// first screen of ~120 rows costs ceil(120/batchSize) commands instead of one
+// per four rows, i.e. ~29 batches drop to ~4. 32 keeps a single command's id
+// list small (well under SQLite's variable bound: the file lookup chunks at 500
+// ids, but the cached-thumb lookup does not chunk at all).
+export const GRID_THUMBNAIL_BATCH_SIZE = 32;
 export const RIGHT_PANEL_MIN_WIDTH = 160;
 export const PANEL_ANIMATION_MS = 200;
 export const MONTAGE_MAX_PHOTOS = 100;

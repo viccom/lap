@@ -160,7 +160,7 @@ src-vite/                      一套前端，两种传输
 - Web 端登录后用 `HttpOnly` + `SameSite=Strict` Cookie（TLS 下加 `Secure`）；非浏览器客户端用 `Authorization: Bearer`。
 - **命令白名单**：按配套清单的暴露等级（只读 110 / 写入 87 / 管理员 38 / 不暴露 18）生成；默认拒绝，未列名即 403；C 类命令名字根本不出现在白名单。
 - 管理员级命令仅接受 localhost 或带 `admin` scope 的令牌；`set_vl_config`（含密钥）归管理员。
-- 限流与审计：登录 5 次/分/IP、失败锁定、命令 60 次/分/设备；记录登录与管理员操作。
+- 限流与审计：登录 5 次/分/IP、失败锁定；**命令按读/写分档限流**——写/管理员命令 60 次/分/设备（§3.6 原始预算），只读命令 **1200 次/分/设备**（批次 4.6 拆分：读命令幂等、浏览本身即高频，一次视图切换约几十条读命令，60/min 会让第二次切换就 429）；记录登录与管理员操作。
 - Web 构建开启 CSP、关闭 `withGlobalTauri`；桌面构建维持现状（后续单独评估 CSP）。
 - **TLS 不在 MVP 内**：文档给出两种推荐部署——Caddy 反代（自动证书）或 Tailscale/WireGuard（零证书管理）。**禁止**把明文 HTTP 直接映射到公网。
 
@@ -451,8 +451,15 @@ src-vite/                      一套前端，两种传输
   - **降级（有浏览器等价物的，不隐藏而做等价）**：`utils.ts:copyFilePaths` 在 Web 走新增 `copyTextToClipboard`（`navigator.clipboard`，非安全上下文回落 `execCommand('copy')`），把服务端路径作为**文本**复制给用户，而非报「复制失败」。
   - `Settings.vue`/`SettingsAbout.vue`/`AlbumList.vue`/`AlbumFolder.vue`/`AlbumEdit.vue`/`IndexRecoveryDialog.vue`/`Montage.vue`：新增 `isNative = capabilities().native`，隐藏原生选择器驱动的控件（更新器整块、缓存/库目录更改与恢复、备份/恢复、新增相册、导入文件夹、路径粘贴、re算文件夹、移动/复制到文件夹、选择相册文件夹、在文件管理器显示、拼图浏览文件夹）。
   - `MediaViewer.vue`/`VlLab.vue`/`ImageEditor.vue`/`Montage.vue`：标题栏/窗口控件补 `capabilities().native` 门控。
-- **验证**：前端 `tests/*.test.mjs` **461/0**（+1 守卫「Web 隐藏 native-only 入口」——**非空转已证**：删 `reveal` 的 `hidden` → 变红，恢复 → 绿；`/tests/` 全目录 **488/0**）；两种构建 exit=0。桌面行为零改动（`native` 默认 `true`）。
-- **诚实边界**：本机无法在浏览器逐一目视确认每个隐藏项（仅有源码级守卫 + 构建通过）；F: 盘旧库不可达；`get_file_thumbs` 批量扩展仍未动（性能批次）。
+- **验证**：前端 `tests/*.test.mjs` **462/0**（+2 守卫「Web 隐藏 native-only 入口」/「Web 路径复制走文本」——**非空转已证**：删 `reveal` 的 `hidden` → 变红，恢复 → 绿；`/tests/` 全目录 **488/0**）；两种构建 exit=0。桌面行为零改动（`native` 默认 `true`）。
+- **诚实边界**：本机无法在浏览器逐一目视确认每个隐藏项（仅有源码级守卫 + 构建通过）；F: 盘旧库不可达。
+
+**批次 4.10d（性能：缩略图批量；文档：限流拆分同步）· 已完成**
+
+- **性能（`get_file_thumbs` 批量）**：一次视图切换曾有 ~29 条 `get_file_thumbs`（调度器默认 `batchSize=4` / 首屏候选随可见行数扩展）。**修复**：新增 `constants.ts:GRID_THUMBNAIL_BATCH_SIZE = 32`，`Content.vue` 的 `createThumbnailScheduler` 显式传 `batchSize`——首屏 ~120 行从 ~29 条 IPC 降到 ~4 条。后端 `get_file_thumbs` 收 `Vec<ThumbRequest>` **无上限**（`get_files_by_ids` 内部按 500 id 分块），`api.js` 校验返回条数与请求一致，故加大批次安全；**可见行仍打最高优先级批**（`pump()` 对未运行任务重排优先级），首屏填充顺序不变。调度器**默认值保持 4**（其契约测试不扰动），只在 Content 显式覆盖。
+  - 验证：新增守卫「grid 必须传 `batchSize: GRID_THUMBNAIL_BATCH_SIZE`」（**非空转已证**：移除该行 → 红，恢复 → 绿）；`thumbnail-scheduler.test.mjs` 24/0（夹具注入 `GRID_THUMBNAIL_BATCH_SIZE=4` 保持既有适配器测试稳定）；`tests/` 全目录 **489/0**；两种构建 exit=0。
+- **文档同步（§3.6 限流拆分）**：§3.6「命令 60 次/分/设备」更正为**读/写分档**——写/管理员 60/min，只读 **1200/min**（批次 4.6 的语义变更此前只落代码、缺文档与安全评审记录，本批补齐）；`auth.rs:READ_LIMIT` 注释里的「~29 缩略图批次」同步更新为「~4（32/批）」。
+- **诚实边界**：批次 4.6 的「~50 条命令 / ~29 批」实测数字保留为**当时的历史记录**（未回改），本次批量调大后的新数字记在本条；未在浏览器复测切换耗时（后端耗时本就 7–97ms，瓶颈是命令条数，逻辑上已从 ~50 降到 ~25）。
 
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 

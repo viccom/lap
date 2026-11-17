@@ -39,12 +39,13 @@ const CMD_WINDOW: Duration = Duration::from_secs(60);
 /// Mutating/admin commands stay on the tight §3.6 budget (60/min/device).
 const CMD_LIMIT: u32 = 60;
 /// Read commands get their own, far wider budget. Measured cost of ONE view
-/// switch in the browser: ~50 commands (album list, counts, timeline, a
-/// get_query_files window, and ~29 thumbnail batches) — so the 60/min ceiling
-/// that is right for mutations throttled normal browsing after a single switch,
-/// and the Web client surfaced the resulting 429s as a logged-out "loading"
-/// screen. 1200/min (20/s sustained, ≈24 view switches per minute) is well
-/// above anything a human produces while still bounding a runaway client.
+/// switch in the browser: ~25 commands (album list, counts, timeline, a
+/// get_query_files window, and a handful of thumbnail batches — ~4 once the
+/// grid packs 32 thumbnails per batch) — so the 60/min ceiling that is right
+/// for mutations throttled normal browsing after a single switch, and the Web
+/// client surfaced the resulting 429s as a logged-out "loading" screen.
+/// 1200/min (20/s sustained, ≈24 view switches per minute) is well above
+/// anything a human produces while still bounding a runaway client.
 const READ_LIMIT: u32 = 1200;
 #[allow(dead_code)] // consumed by the media endpoints (batch 3.3 follow-up)
 const MEDIA_PREFIXES: [&str; 4] = ["/api/thumb/", "/api/preview/", "/api/original/", "/api/video/"];
