@@ -251,8 +251,22 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("lapd-flush-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let warnings = flush_wal(&dir);
-        // No libraries configured in the test process → nothing to warn about.
-        assert!(warnings.is_empty(), "{warnings:?}");
+        // The property under test is that a directory with no `lapd.db` is safe
+        // to flush. That is asserted on OUR directory: any warning naming it
+        // would mean flush_wal invented work for a path that does not exist.
+        //
+        // We deliberately do NOT assert "no warnings at all": `flush_wal` also
+        // walks the libraries of the process-global app config, which on a
+        // developer machine is the real user config — and `get_library_db_path`
+        // legitimately errors while a sibling test holds the process-global
+        // migration guard (`DB_MIGRATION_IN_PROGRESS`). Asserting global
+        // emptiness made this test fail on any machine with a real library and
+        // race the migration test; both are outside what this test is about.
+        let dir_text = dir.to_string_lossy().to_string();
+        assert!(
+            !warnings.iter().any(|w| w.contains(&dir_text)),
+            "flush_wal reported trouble for the empty directory itself: {warnings:?}",
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
