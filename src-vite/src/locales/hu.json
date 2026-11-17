@@ -2082,7 +2082,8 @@
       "llm_rerank_no_match": "No photos match this description",
       "llm_rerank_unannotated": "{count} photos have no image description and were not reranked",
       "llm_rerank_failed": "LLM rerank failed, keeping the original ranking",
-      "library_switched": "The photo library was switched in the main window. Reload the file list before running understanding."
+      "library_switched": "The photo library was switched in the main window. Reload the file list before running understanding.",
+      "embed_local_missing": "A helyi beágyazási modell nincs telepítve"
     },
     "run_started": "Understanding {count} photo(s) in the background",
     "run_progress": "Understanding {done}/{total}",

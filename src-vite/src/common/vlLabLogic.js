@@ -154,6 +154,27 @@ export function indexIsConsistent(status) {
   return documents === files;
 }
 
+/// Which embed-status line to show, as data the caller renders.
+///
+/// The local source needs its BGE model installed; when it is missing there is
+/// no vector space, so the line reports `missing` (the caller shows "not
+/// installed") instead of a blank model. The cloud source and a healthy local
+/// source both report `status` with the counts to interpolate.
+export function embedStatusPresentation(status) {
+  if (!status || typeof status !== 'object') return null;
+  const source = status.source === 'cloud' ? 'cloud' : 'local';
+  if (source === 'local' && !status.localAvailable) {
+    return { kind: 'missing', source };
+  }
+  return {
+    kind: 'status',
+    source,
+    embedded: status.embedded,
+    captions: status.captions,
+    model: status.model,
+  };
+}
+
 /// The matched columns of one hit as badges with their i18n keys.
 export function hitBadges(hit) {
   const columns = Array.isArray(hit?.matchedColumns) ? hit.matchedColumns : [];

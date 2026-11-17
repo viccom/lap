@@ -48,15 +48,15 @@ pub fn run(flags: &Flags) -> Result<Boot, String> {
 
     let data_dir = resolve_data_dir(flags)?;
 
-    // Paths: lapd resolves resources next to the executable (installed and
-    // portable layouts both keep `resources/` beside the binary); when
-    // running from a dev target directory, the repo layout serves. The cache
-    // dir follows the data root so debug builds stay isolated from the
-    // installed app's caches.
+    // Paths: resolve the resource root exactly like the desktop shell (see
+    // `pick_resource_dir`) so lapd serves the same `models/` and `ffmpeg/`
+    // from the same folder. `init_ffmpeg_path` then points the video sidecar
+    // dir at that root, mirroring the desktop's setup order.
     t_paths::set_paths(PathsConfig {
         resource_dir: resource_dir_candidate(),
         app_cache_dir: Some(data_dir.clone()),
     });
+    t_video::init_ffmpeg_path();
 
     // Creates the data dir + a default config on first run.
     t_config::load_app_config()?;
@@ -102,19 +102,52 @@ pub fn run(flags: &Flags) -> Result<Boot, String> {
     Ok(Boot { lock: guard, data_dir, bus, auth })
 }
 
+/// Pick the resource root the way the desktop shell does.
+///
+/// Tauri's `resource_dir()` on Windows is the executable's own directory
+/// (the portable and installed layouts both keep `models/` and `ffmpeg/`
+/// beside the binary), so the exe directory must be the first candidate — NOT
+/// an `exe/resources` subfolder. Getting this wrong silently hides the bundled
+/// models: the local embedding model then reads as "not installed" and
+/// `embed_status` fails. Dev runs (`target/debug`, no payload beside the exe)
+/// still fall back to the repo `resources/` layout.
 fn resource_dir_candidate() -> Option<PathBuf> {
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.to_path_buf()));
-    if let Some(dir) = exe_dir {
-        let candidate = dir.join("resources");
-        if candidate.is_dir() {
-            return Some(candidate);
-        }
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = &exe_dir {
+        // Desktop / portable / installed: the payload sits beside the binary.
+        candidates.push(dir.clone());
+        // A layout that nests the payload under `resources/` beside the binary.
+        candidates.push(dir.join("resources"));
     }
-    // Dev runs from a target/ directory — the repo layout serves.
-    let dev = Path::new(&std::env::current_dir().ok()?).join("resources");
-    dev.is_dir().then_some(dev)
+    // Dev run from the repo: `resources/` under the cwd or the src-tauri dir.
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("resources"));
+        candidates.push(cwd.join("src-tauri").join("resources"));
+    }
+
+    let has_payload = |dir: &Path| dir.join("models").is_dir() || dir.join("ffmpeg").is_dir();
+    pick_resource_dir(&candidates, exe_dir.as_deref(), &has_payload)
+}
+
+/// Choose the resource root: the first candidate that carries the payload,
+/// else `fallback` (the exe directory) so callers report a missing file
+/// against a real location instead of `None`.
+///
+/// Pure (env injected) so the layout precedence is unit-tested directly.
+fn pick_resource_dir(
+    candidates: &[PathBuf],
+    fallback: Option<&Path>,
+    has_payload: &dyn Fn(&Path) -> bool,
+) -> Option<PathBuf> {
+    candidates
+        .iter()
+        .find(|dir| has_payload(dir))
+        .cloned()
+        .or_else(|| fallback.map(|dir| dir.to_path_buf()))
 }
 
 fn switch_to_library(id: &str) -> Result<(), String> {
@@ -139,4 +172,62 @@ fn switch_to_library(id: &str) -> Result<(), String> {
     });
     t_utils::start_folder_mtime_sync();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Presence check over a fixed set of "populated" directories, so the
+    /// precedence test needs no real filesystem.
+    fn payload_in(populated: &[PathBuf]) -> impl Fn(&Path) -> bool + '_ {
+        move |dir: &Path| populated.iter().any(|p| p == dir)
+    }
+
+    #[test]
+    fn the_exe_directory_wins_when_it_carries_the_payload() {
+        // Portable / installed layout: `models/` and `ffmpeg/` sit beside the
+        // binary. The exe dir (first candidate) is chosen — never the
+        // `resources/` subfolder that follows it, which would hide the models.
+        let exe = PathBuf::from("D:/LapPortable");
+        let candidates = vec![exe.clone(), exe.join("resources")];
+        let populated = vec![exe.clone()];
+        let picked = pick_resource_dir(&candidates, Some(&exe), &payload_in(&populated));
+        assert_eq!(picked.as_deref(), Some(exe.as_path()));
+    }
+
+    #[test]
+    fn a_nested_resources_root_is_used_when_the_exe_dir_is_bare() {
+        // A layout that nests the payload under `resources/` beside the exe:
+        // the second candidate carries it and must be chosen.
+        let exe = PathBuf::from("D:/Lap");
+        let nested = exe.join("resources");
+        let candidates = vec![exe.clone(), nested.clone()];
+        let populated = vec![nested.clone()];
+        let picked = pick_resource_dir(&candidates, Some(&exe), &payload_in(&populated));
+        assert_eq!(picked.as_deref(), Some(nested.as_path()));
+    }
+
+    #[test]
+    fn a_payload_less_dev_root_is_used_for_a_bare_exe() {
+        // Dev run: the binary lives in `target/debug` (bare); the repo
+        // `resources/` candidate carries the payload and must be chosen.
+        let exe = PathBuf::from("D:/repo/src-tauri/target/debug");
+        let dev = PathBuf::from("D:/repo/src-tauri/resources");
+        let candidates = vec![exe.clone(), exe.join("resources"), dev.clone()];
+        let populated = vec![dev.clone()];
+        let picked = pick_resource_dir(&candidates, Some(&exe), &payload_in(&populated));
+        assert_eq!(picked.as_deref(), Some(dev.as_path()));
+    }
+
+    #[test]
+    fn a_payload_less_everything_still_returns_the_exe_dir() {
+        // Last resort: return the exe dir so callers report a missing file
+        // against a real location instead of `None`.
+        let exe = PathBuf::from("D:/somewhere");
+        let candidates = vec![exe.clone(), exe.join("resources")];
+        let populated: Vec<PathBuf> = vec![];
+        let picked = pick_resource_dir(&candidates, Some(&exe), &payload_in(&populated));
+        assert_eq!(picked.as_deref(), Some(exe.as_path()));
+    }
 }

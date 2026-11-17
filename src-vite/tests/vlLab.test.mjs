@@ -14,6 +14,7 @@ import {
   captionHitsFrom,
   collectMatchedColumns,
   deriveFileOutcome,
+  embedStatusPresentation,
   ftsReindex,
   getFtsStatus,
   hitBadges,
@@ -192,6 +193,26 @@ test('the index is consistent when both counts match', () => {
   // An object without the counts must not read as a mismatch either.
   assert.equal(indexIsConsistent({}), true, 'a status without counts shows no warning');
   assert.equal(indexIsConsistent({ documents: 'x', files: 'y' }), true);
+});
+
+test('the embed status line reports a missing local model instead of a blank one', () => {
+  // A healthy local source renders the full status with the counts.
+  assert.deepEqual(
+    embedStatusPresentation({ source: 'local', localAvailable: true, model: 'bge-local-9', embedded: 5, captions: 7 }),
+    { kind: 'status', source: 'local', embedded: 5, captions: 7, model: 'bge-local-9' },
+  );
+  // The local source with no installed model reports the missing kind (the
+  // caller shows "not installed") — never a blank model string.
+  assert.deepEqual(
+    embedStatusPresentation({ source: 'local', localAvailable: false, model: '', embedded: 0, captions: 7 }),
+    { kind: 'missing', source: 'local' },
+  );
+  // The cloud source has no local model to miss; it always renders the status.
+  assert.deepEqual(
+    embedStatusPresentation({ source: 'cloud', localAvailable: false, model: 'zhipu/embedding-3', embedded: 3, captions: 3 }),
+    { kind: 'status', source: 'cloud', embedded: 3, captions: 3, model: 'zhipu/embedding-3' },
+  );
+  assert.equal(embedStatusPresentation(null), null);
 });
 
 test('hit badges map the matched columns to their i18n keys', () => {

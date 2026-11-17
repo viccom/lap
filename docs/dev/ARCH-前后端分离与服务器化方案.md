@@ -422,6 +422,21 @@ src-vite/                      一套前端，两种传输
 - **验证**：前端 `tests/*.test.mjs` **459/0**（+6 例，含 Web 视频与「Web 失败不递归」用例）；`tests/` 全目录 **485/0**；两种构建 exit=0；`cargo test --workspace` **647/0/10 exit=0**（本批零 Rust 改动）。**真实 lapd 浏览器实测（真库只读副本）**：从网格 Ctrl+双击打开查看器 → **点「下一张」`IMG_2218.CR2 (1/)` → `IMG_2219.CR2 (2/)`**、点「上一张」回退、连点 3 次到 `IMG_2221 (4/)`；**视频播放**：`<video>` `readyState=4`、`1080×1920`、时长 46s、`paused=false`，`currentSrc` 为已签名 `/api/video/2892?dev=…&exp=…&sig=…`；`/image-editor` 点「取消」→ 回 `/`；`/settings` 按 `Esc` → 回 `/`。
 - **诚实边界**：视频/原图真机播放依赖库内**可达**媒体（本轮用 D: 盘 `董开源备份` 的 87 个真实视频验证）；F: 盘旧库不可达无法验。不改桌面多窗口模型（桌面回归靠前端测试 + 桌面构建 exit=0 + 桌面路径仅新增 `transportMode` 分支外零改动）。大库 `openSession` 快照全量 id 有一次性开销，本批接受。能力差异的 UI 提示/隐藏（壁纸假成功、文件对话框无提示、更新器按钮无反馈、剪贴板 404 文案）留 4.10。
 
+**批次 4.10（lapd 资源根与桌面不一致 — `/vl-lab` 的 `embed_status` 500 根因修复）· 已完成**
+
+- **触发**：阶段 4 审计把 `/vl-lab` 的 `embed_status` 500 记为「AI 嵌入索引与本机配置不一致，环境/数据问题」。**该判断错误** —— 用户指出便携桌面版模型齐全、桌面版正常，经实测确认是 **lapd 的缺陷**（环境错配为误判）。
+- **根因（亲验，非推断）**：
+  - **缺陷 A（真因）**：`lapd` 的 `resource_dir_candidate()` 返回 `<exe>/resources`，而**桌面壳**经 Tauri `resource_dir()`（Windows 上即**可执行文件所在目录**）解析 → 取 `<exe>/models`。便携/安装布局都把 `models/`、`ffmpeg/` 放在 exe **旁边**（`D:\LapPortable\models\bge-local\{model.onnx,tokenizer.json}` 存在），于是 lapd 找 `<exe>/resources/models` → 找不到 → 本地嵌入模型读作「未安装」。
+  - **复现**：部署式布局（exe 旁有 `models/bge-local`）下 `POST /api/cmd/embed_status` 返回 **500**，错误串即用户所见；**删掉那个 `resources/` 目录后同一二进制返回 200 `localAvailable:true`** —— 一个无关的 `resources/web` 目录即可翻转结论。连接 `D:\LapPortable\models`（只读 junction）后，修复版 lapd 启动打印 `AI Models Loaded Successfully!`，`embed_status` → **200 `model:"bge-local-94851877"`**（指纹 = 真实 `model.onnx` 字节数）。
+  - **缺陷 A'**：lapd 从不调用 `init_ffmpeg_path()`（桌面在 setup 里调），视频 sidecar 目录同样落空 —— 同批补上。
+- **缺陷 B（状态探测不该失败）**：`embed_status` 是**只读状态命令**，却用 `active_model_name()?` 硬失败 → 本地模型缺失时整条 500，而 `source` 字段本已 `.ok()` 降级。改为 `status_model(active_model_name())`（`Result::unwrap_or_default`）：拿不到就返回空 model + `localAvailable:false`。嵌入**操作**（`rebuild_caption_embeds`/`search_captions`）仍硬失败 —— 只有状态行软化。
+- **修复**：
+  - `lap-server/src/boot.rs`：`resource_dir_candidate()` 改为**候选优先级**（exe 目录 → `<exe>/resources` → `<cwd>/resources` → `<cwd>/src-tauri/resources`），取**首个真正带 payload（有 `models/` 或 `ffmpeg/`）**者，末位兜底返回 exe 目录（让缺文件报在真实位置而非 `None`）；抽出纯函数 `pick_resource_dir` 直接单测布局优先级。boot 里补 `t_video::init_ffmpeg_path()`。
+  - `lap-core/src/t_embed.rs`：`status_model` 纯函数 + `embed_status` 改为软化路径。
+  - 前端 `vlLogic`/`VlLab.vue`：本地源且 `localAvailable=false` 时状态行显示「本地嵌入模型未安装」，不再显示空 model。新增 17 locale `vl.lab.embed_local_missing`。
+- **验证**：新增 5 个 Rust 单测（lap-server 4 + lap-core 1）；`cargo test --workspace` **652/0/10 exit=0**（基线 647 + 5）。前端 `tests/*.test.mjs` **460/0**、`tests/` 全目录 **486/0**（+1 例 `embedStatusPresentation`；守卫非空转已证：把分支恒假 → 测试变红，恢复 → 全绿）。两种构建 exit=0。**部署式复现实测**：修复前 500 → 修复后 200。
+- **诚实边界**：未编译/运行 **release** 便携版（改的是 lapd，不影响 Lap.exe）；`cargo fmt --check` 在本仓库从来不是绿门（无 `rustfmt.toml`、数百处既有漂移，见 t_face/t_cmds/t_ai），本批新增片段与相邻风格一致，未借机重排。`get_file_thumbs` 批量随可见行数扩展（首屏 IPC 条数）仍留性能批次，未处理。
+
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。

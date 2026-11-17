@@ -699,9 +699,28 @@ pub struct EmbedStatusView {
     pub captions: i64,
 }
 
+/// The model name shown by the status probe: the active model, or an empty
+/// name when it cannot be resolved.
+///
+/// `embed_status` is a read-only status command, so a missing local model must
+/// degrade — the row still reports `local_available = false` — instead of
+/// surfacing as an error. The embedding *operations* (`rebuild_caption_embeds`,
+/// `search_captions`) keep failing hard; only the status line softens.
+fn status_model(active: Result<String, String>) -> String {
+    active.unwrap_or_default()
+}
+
 pub fn embed_status() -> Result<EmbedStatusView, String> {
     let conn = crate::t_sqlite::open_conn()?;
-    let model = active_model_name()?;
+    let source = crate::t_vl::resolve_gateway_config()
+        .ok()
+        .map(|config| match EmbedSource::from_config(&config) {
+            EmbedSource::Local => "local".to_string(),
+            EmbedSource::Cloud => "cloud".to_string(),
+        })
+        .unwrap_or_else(|| VL_EMBED_DEFAULT_SOURCE.to_string());
+    let local_available = local_model_available();
+    let model = status_model(active_model_name());
     let embedded: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM caption_embeds WHERE model = ?1",
@@ -716,16 +735,9 @@ pub fn embed_status() -> Result<EmbedStatusView, String> {
             |row| row.get(0),
         )
         .unwrap_or(0);
-    let source = crate::t_vl::resolve_gateway_config()
-        .ok()
-        .map(|config| match EmbedSource::from_config(&config) {
-            EmbedSource::Local => "local".to_string(),
-            EmbedSource::Cloud => "cloud".to_string(),
-        })
-        .unwrap_or_else(|| VL_EMBED_DEFAULT_SOURCE.to_string());
     Ok(EmbedStatusView {
         source,
-        local_available: local_model_available(),
+        local_available,
         model,
         embedded,
         captions,
@@ -978,6 +990,16 @@ mod tests {
         // Measured on the eval set: every target scored 0.486+, so 0.45 keeps
         // all of them while cutting most partial matches.
         assert!(CAPTION_HIT_THRESHOLD >= 0.44 && CAPTION_HIT_THRESHOLD < 0.486);
+    }
+
+    #[test]
+    fn the_status_probe_degrades_instead_of_failing() {
+        // A resolvable model name passes through unchanged.
+        assert_eq!(status_model(Ok("bge-local-123".to_string())), "bge-local-123");
+        // A missing local model must not surface as an error: the status line
+        // reports an empty model (with local_available = false) instead of
+        // letting `embed_status` return a 500.
+        assert_eq!(status_model(Err("本地嵌入模型未安装".to_string())), "");
     }
 }
 

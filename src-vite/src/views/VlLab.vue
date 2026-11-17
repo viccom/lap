@@ -315,6 +315,7 @@ import {
   captionHitsFrom,
   collectMatchedColumns,
   deriveFileOutcome,
+  embedStatusPresentation,
   ftsReindex,
   getFtsStatus,
   hitBadges,
@@ -344,16 +345,21 @@ const indexStatusText = computed(() => (
   ftsStatus.value ? t('vl.lab.index_status', { documents: ftsStatus.value.documents, files: ftsStatus.value.files }) : ''
 ));
 const embedStatusText = computed(() => {
-  if (!embedStatus.value) return '';
-  const status = embedStatus.value;
-  const source = status.source === 'cloud'
+  const view = embedStatusPresentation(embedStatus.value);
+  if (!view) return '';
+  const source = view.source === 'cloud'
     ? t('vl.lab.embed_source_cloud')
     : t('vl.lab.embed_source_local');
+  // The local source needs its BGE model installed; without it the semantic
+  // index has no vector space, so say so instead of showing a blank model.
+  if (view.kind === 'missing') {
+    return `${source}: ${t('vl.lab.embed_local_missing')}`;
+  }
   return t('vl.lab.embed_status', {
     source,
-    embedded: status.embedded,
-    captions: status.captions,
-    model: status.model,
+    embedded: view.embedded,
+    captions: view.captions,
+    model: view.model,
   });
 });
 
