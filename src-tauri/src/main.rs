@@ -291,6 +291,7 @@ async fn main() {
             t_cmds::recount_album,
             t_cmds::get_album_visible_counts,
             t_cmds::add_album,
+            t_cmds::add_album_by_path,
             t_cmds::edit_album,
             t_cmds::remove_album,
             t_cmds::reorder_albums,

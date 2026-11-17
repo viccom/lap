@@ -1973,7 +1973,14 @@
       "pair_new": "新しいデバイスをペアリング",
       "generate_code": "コードを生成",
       "code_hint": "Show this code on the new device's login screen. Valid for {minutes} minutes.",
-      "never": "なし"
+      "never": "なし",
+      "add_album_title": "パスでアルバムを追加",
+      "add_album_hint": "Enter an absolute path on the SERVER (this browser cannot browse the server's files).",
+      "add_album_path_placeholder": "Server path, e.g. D:\\Photos or /home/me/photos",
+      "add_album_name_placeholder": "アルバム名（任意）",
+      "add_album_button": "追加",
+      "add_album_success": "Album \"name}\" added.",
+      "add_album_failed": "Could not add the album (check the path on the server)."
     }
   },
   "vl": {

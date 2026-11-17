@@ -2,7 +2,7 @@
 //!
 //! Regenerate after adding commands: `python -I docs/dev/gen-lapd-bridge.py`.
 //! Whitelist = class A commands with a network exposure level, in main.rs
-//! registration order: 231 bridged / 253 registered
+//! registration order: 232 bridged / 254 registered
 //! (22 skipped: B desktop-glue, C native-only, A 不暴露).
 use crate::bridge::{
     arg, arg_opt, ok, ok_res, spawn_sync, spawn_sync_plain, BridgeError,
@@ -58,6 +58,7 @@ pub const COMMANDS: &[&str] = &[
     "check_album_accessibility",
     "recount_album",
     "get_album_visible_counts",
+    "add_album_by_path",
     "edit_album",
     "remove_album",
     "reorder_albums",
@@ -295,6 +296,7 @@ pub const EXPOSURES: &[(&str, &str)] = &[
     ("check_album_accessibility", "read"),
     ("recount_album", "admin"),
     ("get_album_visible_counts", "read"),
+    ("add_album_by_path", "admin"),
     ("edit_album", "write"),
     ("remove_album", "admin"),
     ("reorder_albums", "write"),
@@ -644,6 +646,16 @@ spawn_sync(move || lap_core::t_cmds::recount_album(album_id)).await
         // t_cmds::get_album_visible_counts [read]
         "get_album_visible_counts" => {
 spawn_sync(move || lap_core::t_cmds::get_album_visible_counts()).await
+        }
+        // t_cmds::add_album_by_path [admin]
+        "add_album_by_path" => {
+let folder_path: String = arg(body, "folderPath")?;
+let name: String = arg(body, "name")?;
+let description: String = arg(body, "description")?;
+let file_types: i64 = arg(body, "fileTypes")?;
+let small_image_filter: i64 = arg(body, "smallImageFilter")?;
+let excluded_folders: Vec<String> = arg(body, "excludedFolders")?;
+spawn_sync(move || lap_core::t_cmds::add_album_by_path(&folder_path, name, description, file_types, small_image_filter, excluded_folders)).await
         }
         // t_cmds::edit_album [write]
         "edit_album" => {

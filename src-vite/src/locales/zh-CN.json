@@ -1973,7 +1973,14 @@
       "pair_new": "配对新设备",
       "generate_code": "生成配对码",
       "code_hint": "在新设备的登录界面输入此配对码。{minutes} 分钟内有效。",
-      "never": "从未"
+      "never": "从未",
+      "add_album_title": "按路径新增相册",
+      "add_album_hint": "输入服务器上的绝对路径（浏览器无法浏览服务器的文件系统）。",
+      "add_album_path_placeholder": "服务器路径，例如 D:\\Photos 或 /home/me/photos",
+      "add_album_name_placeholder": "相册名称（可选）",
+      "add_album_button": "新增",
+      "add_album_success": "已新增相册「{name}」。",
+      "add_album_failed": "无法新增相册（请检查服务器上的路径）。"
     }
   },
   "vl": {

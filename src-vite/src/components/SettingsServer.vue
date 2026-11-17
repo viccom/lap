@@ -50,6 +50,38 @@
         <div class="text-xs text-base-content/30">{{ $t('settings.server.code_hint', { minutes: codeMinutes }) }}</div>
       </div>
     </div>
+
+    <!-- add album by server path: the Web client has no folder picker, so an
+         admin types the SERVER's absolute path (restricted entry, §9-7). -->
+    <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+      <div class="flex items-center gap-2 text-base-content/30">
+        <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.server.add_album_title') }}</span>
+      </div>
+      <div class="text-xs text-base-content/30 px-1">{{ $t('settings.server.add_album_hint') }}</div>
+      <input
+        v-model="albumPath"
+        type="text"
+        class="input input-sm w-full rounded-box"
+        :placeholder="$t('settings.server.add_album_path_placeholder')"
+        @keyup.enter="addByPath"
+      />
+      <input
+        v-model="albumName"
+        type="text"
+        class="input input-sm w-full rounded-box"
+        :placeholder="$t('settings.server.add_album_name_placeholder')"
+        @keyup.enter="addByPath"
+      />
+      <div class="flex justify-end">
+        <button
+          class="btn btn-sm btn-primary rounded-box"
+          :disabled="adding || !albumPath.trim()"
+          @click="addByPath"
+        >
+          {{ adding ? $t('tooltip.loading') : $t('settings.server.add_album_button') }}
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -58,6 +90,7 @@ import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
 import { devicesList, deviceRevoke, pairingCode as mintPairingCode } from '@/common/transport';
+import { addAlbum } from '@/common/api';
 import { formatTimestamp } from '@/common/utils';
 
 const { t } = useI18n();
@@ -70,6 +103,9 @@ const revoking = ref<number | null>(null);
 const minting = ref(false);
 const pairingCode = ref('');
 const codeMinutes = ref(5);
+const albumPath = ref('');
+const albumName = ref('');
+const adding = ref(false);
 
 const lastSeen = (ts: number) => {
   const ms = Number(ts || 0);
@@ -110,6 +146,24 @@ async function mintCode() {
     toast.error(e?.body?.error || e?.message || String(e));
   } finally {
     minting.value = false;
+  }
+}
+
+async function addByPath() {
+  const path = albumPath.value.trim();
+  if (!path) return;
+  adding.value = true;
+  try {
+    const name = albumName.value.trim() || path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
+    const album = await addAlbum(path, name, '', { fileTypes: 0, smallImageFilter: 0, excludedFolders: [] });
+    if (!album) throw new Error(t('settings.server.add_album_failed'));
+    toast.success(t('settings.server.add_album_success', { name }));
+    albumPath.value = '';
+    albumName.value = '';
+  } catch (e: any) {
+    toast.error(e?.body?.error || e?.message || String(e));
+  } finally {
+    adding.value = false;
   }
 }
 

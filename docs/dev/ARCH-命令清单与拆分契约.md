@@ -25,9 +25,9 @@
 
 ## 2. 统计
 
-- 命令总数：**253**
-- 拆分分类：A 纯内核 **233** · B 需适配 **4** · C 原生专属 **16**
-- 暴露等级：只读 **110** · 写入 **87** · 管理员 **38** · 不暴露 **18**
+- 命令总数：**254**
+- 拆分分类：A 纯内核 **234** · B 需适配 **4** · C 原生专属 **16**
+- 暴露等级：只读 **110** · 写入 **87** · 管理员 **39** · 不暴露 **18**
 
 ## 3. 清单（按注册表分组）
 
@@ -71,7 +71,7 @@
 | 24 | `t_cmds::get_library_state` | A 纯内核 | 只读 |  |
 | 25 | `t_cmds::get_current_library_state` | A 纯内核 | 只读 |  |
 
-### 相册（16）
+### 相册（17）
 
 | # | 命令 | 拆分分类 | 暴露 | 注入/备注 |
 |---:|---|---|---|---|
@@ -83,14 +83,15 @@
 | 6 | `t_cmds::recount_album` | A 纯内核 | 管理员 |  |
 | 7 | `t_cmds::get_album_visible_counts` | A 纯内核 | 只读 |  |
 | 8 | `t_cmds::add_album` | B 需适配 | 管理员 | AppHandle |
-| 9 | `t_cmds::edit_album` | A 纯内核 | 写入 |  |
-| 10 | `t_cmds::remove_album` | A 纯内核 | 管理员 |  |
-| 11 | `t_cmds::reorder_albums` | A 纯内核 | 写入 |  |
-| 12 | `t_cmds::set_album_cover` | A 纯内核 | 写入 |  |
-| 13 | `t_cmds::index_album` | A 纯内核 | 管理员 |  |
-| 14 | `t_cmds::cancel_indexing` | A 纯内核 | 写入 |  |
-| 15 | `t_cmds::get_index_recovery_info` | A 纯内核 | 只读 |  |
-| 16 | `t_cmds::clear_index_recovery_info` | A 纯内核 | 写入 |  |
+| 9 | `t_cmds::add_album_by_path` | A 纯内核 | 管理员 |  |
+| 10 | `t_cmds::edit_album` | A 纯内核 | 写入 |  |
+| 11 | `t_cmds::remove_album` | A 纯内核 | 管理员 |  |
+| 12 | `t_cmds::reorder_albums` | A 纯内核 | 写入 |  |
+| 13 | `t_cmds::set_album_cover` | A 纯内核 | 写入 |  |
+| 14 | `t_cmds::index_album` | A 纯内核 | 管理员 |  |
+| 15 | `t_cmds::cancel_indexing` | A 纯内核 | 写入 |  |
+| 16 | `t_cmds::get_index_recovery_info` | A 纯内核 | 只读 |  |
+| 17 | `t_cmds::clear_index_recovery_info` | A 纯内核 | 写入 |  |
 
 ### 文件夹（18）
 

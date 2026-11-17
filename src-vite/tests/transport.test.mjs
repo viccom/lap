@@ -194,6 +194,18 @@ test('http transport: auth endpoints post JSON and return the credential', async
   assert.equal(calls[1].url, '/api/auth/pair');
 });
 
+test('addAlbum routes the desktop to add_album and the Web to the scope-free twin', async () => {
+  // add_album carries the desktop shell's AppHandle (fs-scope authorization),
+  // so it is class B and not on the HTTP bridge. The Web client must use the
+  // scope-free add_album_by_path instead, or its entry point 404s.
+  const api = readFileSync(new URL('../src/common/api.js', import.meta.url), 'utf8');
+  const start = api.indexOf('export async function addAlbum(');
+  assert.ok(start >= 0, 'api.js must define addAlbum');
+  const body = api.slice(start, api.indexOf('\n}', start));
+  assert.ok(/capabilities\(\)\.native/.test(body), 'addAlbum must branch on host capabilities');
+  assert.ok(body.includes("'add_album'"), 'the desktop path must call add_album');
+  assert.ok(body.includes("'add_album_by_path'"), 'the Web path must call add_album_by_path');
+});
 test('http transport: server_info is fetched and device management posts JSON', async () => {
   const calls = [];
   const t = createHttpTransport({

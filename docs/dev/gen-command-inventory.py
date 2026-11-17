@@ -96,6 +96,7 @@ EXPOSURE = {
     "recount_album": "admin",
     "generate_directory_thumbnails": "admin",
     "add_album": "admin",
+    "add_album_by_path": "admin",
     "edit_album": "write",
     "remove_album": "admin",
     "set_album_cover": "write",

@@ -1973,7 +1973,14 @@
       "pair_new": "配對新裝置",
       "generate_code": "產生配對碼",
       "code_hint": "在新裝置的登入畫面輸入此配對碼。{minutes} 分鐘內有效。",
-      "never": "從未"
+      "never": "從未",
+      "add_album_title": "依路徑新增相簿",
+      "add_album_hint": "輸入伺服器上的絕對路徑（瀏覽器無法瀏覽伺服器的檔案系統）。",
+      "add_album_path_placeholder": "伺服器路徑，例如 D:\\Photos 或 /home/me/photos",
+      "add_album_name_placeholder": "相簿名稱（選填）",
+      "add_album_button": "新增",
+      "add_album_success": "已新增相簿「{name}」。",
+      "add_album_failed": "無法新增相簿（請檢查伺服器上的路徑）。"
     }
   },
   "vl": {

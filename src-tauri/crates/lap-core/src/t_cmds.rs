@@ -487,6 +487,34 @@ pub fn get_album_visible_counts() -> Result<HashMap<i64, i64>, String> {
         .map_err(|e| format!("Error while getting album visible counts: {}", e))
 }
 
+/// Register a new album from a folder path, WITHOUT the desktop shell's
+/// filesystem-scope authorization.
+///
+/// The desktop `add_album` command authorizes the directory with the platform
+/// fs scope first (an `AppHandle` concern), which is why it is class B and not
+/// on the HTTP bridge. The Web server (`lapd`) reads the folder directly on the
+/// server host and has no fs-scope concept, so the admin-only Web entry point
+/// (`add_album_by_path`, §9-7 decision) goes through this pure twin instead.
+/// A path the server cannot read simply fails later at scan time, exactly as
+/// the desktop path would after a successful scope grant.
+pub fn add_album_by_path(
+    folder_path: &str,
+    name: String,
+    description: String,
+    file_types: i64,
+    small_image_filter: i64,
+    excluded_folders: Vec<String>,
+) -> Result<Album, String> {
+    t_write::add_album(
+        folder_path,
+        &name,
+        &description,
+        file_types,
+        small_image_filter,
+        &excluded_folders,
+    )
+}
+
 pub async fn edit_album(
     id: i64,
     name: String,

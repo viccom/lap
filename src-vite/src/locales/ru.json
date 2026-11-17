@@ -1973,7 +1973,14 @@
       "pair_new": "Сопрячь новое устройство",
       "generate_code": "Создать код",
       "code_hint": "Show this code on the new device's login screen. Valid for {minutes} minutes.",
-      "never": "никогда"
+      "never": "никогда",
+      "add_album_title": "Добавить альбом по пути",
+      "add_album_hint": "Enter an absolute path on the SERVER (this browser cannot browse the server's files).",
+      "add_album_path_placeholder": "Server path, e.g. D:\\Photos or /home/me/photos",
+      "add_album_name_placeholder": "Название альбома (необязательно)",
+      "add_album_button": "Добавить",
+      "add_album_success": "Album \"name}\" added.",
+      "add_album_failed": "Could not add the album (check the path on the server)."
     }
   },
   "vl": {

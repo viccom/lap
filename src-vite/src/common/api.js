@@ -450,8 +450,12 @@ export async function addAlbum(folderPath, name, description, filters) {
   }
   try {
     const { fileTypes, smallImageFilter, excludedFolders } = filters;
-    const newAlbum = await invoke('add_album', { folderPath, name, description, fileTypes, smallImageFilter, excludedFolders });
-    console.log('add_album', newAlbum);
+    // The desktop shell authorizes the folder with its fs scope (`add_album`
+    // carries the AppHandle). The Web server reads the folder itself, so it
+    // uses the scope-free twin `add_album_by_path` (admin-only, §9-7).
+    const command = capabilities().native ? 'add_album' : 'add_album_by_path';
+    const newAlbum = await invoke(command, { folderPath, name, description, fileTypes, smallImageFilter, excludedFolders });
+    console.log(command, newAlbum);
     if(newAlbum) {
       return {
         ...newAlbum,

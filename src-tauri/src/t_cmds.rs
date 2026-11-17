@@ -103,6 +103,28 @@ pub fn add_album(
 
 
 #[tauri::command]
+pub fn add_album_by_path(
+    folder_path: &str,
+    name: String,
+    description: String,
+    file_types: i64,
+    small_image_filter: i64,
+    excluded_folders: Vec<String>,
+) -> Result<Album, String> {
+    // No fs-scope authorization: the Web server reads the folder itself (see
+    // the core doc). The desktop keeps using `add_album`, which authorizes.
+    lap_core::t_cmds::add_album_by_path(
+        folder_path,
+        name,
+        description,
+        file_types,
+        small_image_filter,
+        excluded_folders,
+    )
+}
+
+
+#[tauri::command]
 pub fn select_folder(
     app_handle: tauri::AppHandle,
     album_id: i64,

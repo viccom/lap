@@ -1973,7 +1973,14 @@
       "pair_new": "새 기기 페어링",
       "generate_code": "코드 생성",
       "code_hint": "Show this code on the new device's login screen. Valid for {minutes} minutes.",
-      "never": "없음"
+      "never": "없음",
+      "add_album_title": "경로로 앨범 추가",
+      "add_album_hint": "Enter an absolute path on the SERVER (this browser cannot browse the server's files).",
+      "add_album_path_placeholder": "Server path, e.g. D:\\Photos or /home/me/photos",
+      "add_album_name_placeholder": "앨범 이름(선택)",
+      "add_album_button": "추가",
+      "add_album_success": "Album \"name}\" added.",
+      "add_album_failed": "Could not add the album (check the path on the server)."
     }
   },
   "vl": {
