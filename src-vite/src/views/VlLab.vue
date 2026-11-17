@@ -700,6 +700,9 @@ async function finishRun() {
   stillRunningHint.value = false;
   resetWaitState();
   await loadResults();
+  // A run adds annotations, which feed the caption-embedding index — refresh
+  // the "语义索引 N/M" line so it does not stay stale until a page reload.
+  void loadStatus();
 }
 
 async function loadResults() {

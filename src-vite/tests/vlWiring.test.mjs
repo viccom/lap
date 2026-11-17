@@ -175,3 +175,12 @@ test('the lab openSettings button also switches the settings window to the VL ta
   assert.ok(body.includes("emit('settings-settingsTabIndex-changed', VL_SETTINGS_TAB)"),
     'openSettings must broadcast the tab switch to the settings window');
 });
+
+test('a finished lab run refreshes the embedding-index status line', async () => {
+  // A run adds annotations, which the caption-embedding index consumes; without
+  // re-reading embed_status the "语义索引 N/M" line stays stale (0/0) after a
+  // successful run until the page is reloaded.
+  const source = await read('../src/views/VlLab.vue');
+  const body = sliceFunction(source, 'async function finishRun');
+  assert.ok(body.includes('loadStatus('), 'finishRun must refresh the index status');
+});
