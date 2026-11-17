@@ -503,6 +503,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted, nextTick, PropType } from 'vue';
 import { listen } from '@/common/transport';
+import { afterNextPaint } from '@/common/nextPaint';
 import { useI18n } from 'vue-i18n';
 import {
   formatFileSize,
@@ -1818,9 +1819,11 @@ onMounted(async () => {
     return;
   }
 
-  await new Promise<void>(resolve => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  });
+  // Defer the scan until the panel has had a chance to paint, but never wait
+  // forever on a frame: a non-composited tab suspends requestAnimationFrame
+  // and this await gates the scan start. afterNextPaint races the frame
+  // against a short timer.
+  await afterNextPaint();
   dedupScanReady = true;
   void triggerBackendDedup();
   if (activeTab.value === 'similar') await openSimilarTab();

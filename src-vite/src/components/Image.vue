@@ -217,6 +217,7 @@ import { RawFace, Face } from '@/common/types';
 import { rawDisplayKey, getRawDisplayOptions, appendRawDisplayParams, nextRawPreviewMode, type RawPreviewSource, type RawDisplayOptions } from '@/common/rawDisplay';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
+import { afterNextPaint } from '@/common/nextPaint';
 import { createDragPreview, isWindowDragEdge, startNativeFileDrag } from '@/common/nativeDrag';
 
 import { checkFileAccessibility, isCloudOnlyFile } from '@/common/api';
@@ -696,10 +697,13 @@ function getFfmpegBackedPreviewExtensions() {
   return ffmpegBackedPreviewExtensions;
 }
 
+// Yield to the browser for a paint, but never wait forever: a non-composited
+// tab (backgrounded/occluded/automated) suspends requestAnimationFrame, and
+// the image-load path awaits this — a bare frame request would hang the load
+// exactly as the Web "loading" freeze did. afterNextPaint races the frame
+// against a short timer.
 function waitForNextPaint() {
-  return new Promise<void>((resolve) => {
-    requestAnimationFrame(() => resolve());
-  });
+  return afterNextPaint();
 }
 
 // inline loading for formats that require backend preview decoding
