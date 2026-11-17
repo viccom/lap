@@ -492,6 +492,17 @@ src-vite/                      一套前端，两种传输
 - **诚实边界（修订）**：5a 原记录"离线行为未实测"作废，现有 IAB 浏览器实测证据；**可安装性**（Chrome 安装提示）仍以 manifest 形状 + 图标可达为准，未走 Chrome 安装 UX（IAB 无安装入口）；CACHE 版本常量仍需手动 bump。
 - **附带教训**：源码守卫测试只能证明"字符串存在"，不能证明"运行时真的执行"——5a 的 4 例全绿却漏了这个"永不注册"，说明涉及**运行时事件时序**的逻辑必须浏览器实测（对齐 AGENTS「承重结论必须亲验」）。
 
+**批次 5b-fix（浏览器实测发现并修复：Web 端「新建相册」完全不可用）· 已完成**（提交 `dea1daba`）
+
+- **现象**：Web 客户端主界面「新建相册」按钮点击后**毫无反应**（无对话框、无 console 错误、无网络请求）。
+- **缺陷 1 根因**：`Welcome.vue` 按钮只 `emit('add-album-requested')`；`Home.vue` 的监听器**无条件**走桌面流程 `clickNewAlbum()` → `openFolderDialog()`。Web 下 `openFolderDialog` 恒返回 `null`（浏览器无服务端文件夹选择器，§3.9 既定降级），`clickNewAlbum` 随即 `return` → 静默死胡同。
+- **缺陷 1 修复**：`Home.vue` 监听器按宿主分流——Web 分支 `clickSettings(SERVER_SETTINGS_TAB)`（跳转 Settings → 服务器 → 按路径新增相册，即 §9-7 的既定入口）；桌面分支原样保留。`SERVER_SETTINGS_TAB` 补进 Home.vue 的 constants import。
+- **缺陷 2 根因**（顺藤摸出）：即便走到「按路径新增相册」表单，提交也**必然 500**——`SettingsServer.vue` 传 `fileTypes: 0`，而后端 `Album::edit`（`t_sqlite.rs:284`）校验 `1..=7`（1=照片 2=视频 4=RAW 位掩码），0 被拒为 `"Invalid album filters"`。
+- **缺陷 2 修复**：改传 `7`（接受全部类型，与桌面 `AlbumEdit.vue` 的默认一致）。
+- **验证**：新增 2 条守卫（`transport.test.mjs`）——「Web 新增入口必须传 1..=7 的 fileTypes」「Web 壳必须把 `add-album-requested` 路由到服务器设置页」；**两条均非空转已证**（各自回退修复 → 对应断言变红，恢复 → 绿）。前端 `tests/*.test.mjs` **471/0**（+2）、`tests/` 全目录 **497/0**；两种构建 exit=0（`build:http` 最后跑）。**浏览器实测**：点主界面「新建相册」→ 落在 `/settings` 且「服务器」标签显示表单；填服务器路径 + 名称提交 → toast「已新增相册「…」」；`get_all_albums` 复查返回 `file_types:7` 的新相册（id=1）。
+- **诚实边界**：本次仅前端改动（无 `.rs` 变更，故未重跑 `cargo test`）；Web 端「新增相册」仍是**管理员 + 手输服务端路径**模型（浏览器无法浏览服务端文件系统），未新增浏览器端目录浏览。
+- **附带教训**：**「按钮没反应」式缺陷要顺链路追到底**——第一个死胡同（`openFolderDialog`→null）修好后，真正可用的那条路径（服务器页表单）本身也是坏的（`fileTypes:0` → 500）。只修表象会让用户以为"能用了一点"却仍失败。renderer 侧按钮点击在 IAB 里会被 overlay 拦截导致 locator click 超时；此类页面用 page-context click 验证交互、用 API/DB 复核持久化结果。
+
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。
