@@ -6,20 +6,21 @@ import ts from 'typescript';
 
 const apiSource = await readFile(new URL('../src/common/api.js', import.meta.url), 'utf8');
 const start = apiSource.indexOf('export async function getSystemRegionLocale');
-const source = `import { invoke } from '@tauri-apps/api/core';\nimport { locale } from '@tauri-apps/plugin-os';\n${apiSource.slice(start, apiSource.indexOf('// library', start))}`;
+const source = `import { invoke } from '@tauri-apps/api/core';\nimport { osLocale } from '@tauri-apps/plugin-os';\n${apiSource.slice(start, apiSource.indexOf('// library', start))}`;
 
 async function fixture(region, failure = false) {
   const calls = [];
   const context = vm.createContext({ console: { warn() {} } });
   const module = new vm.SourceTextModule(source, { context });
   await module.link(specifier => {
+    // `osLocale` is the transport/os.js seam; the plugin specifier stands in for it.
     const exports = specifier.endsWith('/core') ? {
       invoke: async command => {
         calls.push(command);
         if (failure) throw new Error('OS read failed');
         return region;
       },
-    } : { locale: async () => { calls.push('plugin-os'); return 'en-US'; } };
+    } : { osLocale: async () => { calls.push('os-locale'); return 'en-US'; } };
     return new vm.SyntheticModule(Object.keys(exports), function () {
       for (const [key, value] of Object.entries(exports)) this.setExport(key, value);
     }, { context });
@@ -34,7 +35,7 @@ test('native regional locale takes priority over display language on all platfor
   assert.deepEqual(calls, ['get_system_region_locale']);
 });
 
-test('missing regional locale and native errors fall back to plugin-os', async () => {
+test('missing regional locale and native errors fall back to the OS locale seam', async () => {
   for (const failure of [false, true]) {
     const { getLocale } = await fixture(null, failure);
     assert.equal(await getLocale(), 'en-US');

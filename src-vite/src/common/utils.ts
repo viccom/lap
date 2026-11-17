@@ -1,8 +1,26 @@
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { invoke, assetUrl as transportAssetUrl, capabilities } from '@/common/transport';
+import { open as openDialog } from '@/common/transport/dialog.js';
+import { invoke, assetUrl as transportAssetUrl, capabilities, transportMode, signedAssetUrl } from '@/common/transport';
 import { useUIStore } from '@/stores/uiStore';
 import { config } from '@/common/config';
 import { appendRawDisplayParams, rawDisplayKey } from './rawDisplay';
+
+/**
+ * Sign a media URL for the current host.
+ *
+ * The desktop transports use custom schemes that need no signature; the Web
+ * transport talks to `lapd`, which rejects unsigned media with 403. Any place
+ * that sets a media URL on an `<img>`/`<video>` without going through
+ * `Thumbnail.vue`/`Image.vue` (which sign themselves) must use this, or the
+ * element silently fails to load in the browser.
+ */
+export async function signMediaUrl(url: string): Promise<string> {
+  if (!url || transportMode !== 'http') return url;
+  try {
+    return (await signedAssetUrl(url)) || url;
+  } catch {
+    return url;
+  }
+}
 
 /// get the current operating system (mac, win, linux, or '')
 export function getOS() {
@@ -780,6 +798,22 @@ export function getAssetSrc(filePath: string, fileVersion = 0): string {
   if (localVersion > 0) params.set('u', String(localVersion));
   const query = params.toString();
   return query ? `${base}?${query}` : base;
+}
+
+/**
+ * Turn a media URL into a URL object usable for query-param mutation.
+ *
+ * The desktop transports emit absolute custom-scheme URLs (`thumb://localhost`
+ * / `http://thumb.localhost`), which `new URL()` parses on their own. The Web
+ * transport emits same-origin *relative* paths (`/api/preview/...`), and
+ * `new URL('/api/...')` throws "Invalid URL" in a browser. Resolving against
+ * the document origin covers both hosts, so call sites can always do
+ * `resolveMediaUrl(getPreviewUrl(...))` instead of bare `new URL(...)`.
+ */
+export function resolveMediaUrl(url: string): URL {
+  if (!url) throw new Error('resolveMediaUrl: empty URL');
+  const base = typeof location !== 'undefined' ? location.origin : undefined;
+  return base ? new URL(url, base) : new URL(url);
 }
 
 // get country name from country code

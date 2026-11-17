@@ -4,7 +4,8 @@
 // dependencies, so no Tauri runtime and no network are needed under Node.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { resolveTransportMode } from '../src/common/transport/mode.js';
 import { resolveCapabilities } from '../src/common/transport/capabilities.js';
@@ -248,5 +249,89 @@ test('migrated files import the transport seam, not @tauri-apps core/event', () 
       !/from '@tauri-apps\/api\/(core|event)'/.test(src),
       `${rel} must not import @tauri-apps core/event directly`,
     );
+  }
+});
+
+// -- host-difference seam guard (phase 4, batch 4.7) ----------------------
+// The window/dialog/OS Tauri APIs throw when CALLED in a browser. Every such
+// import must live behind the seam modules (or a `capabilities().native`
+// branch), or the feature that calls it breaks the Web client. This guard walks
+// the whole src tree so a newly added direct import turns it red — the same
+// drift that produced the blank /settings, /image-editor and /montage pages.
+test('no source file imports a host-specific Tauri module outside the seam', () => {
+  const seamFiles = new Set([
+    'src/common/transport/tauri.js',   // the desktop transport itself
+    'src/common/transport/window.js',  // window/webview seam
+    'src/common/transport/dialog.js',  // dialog seam
+    'src/common/transport/os.js',      // OS-locale seam
+  ]);
+  // Modules with no Web meaning that are only reached from native branches and
+  // explicitly gated; each entry must name the file and why it is allowed.
+  const allowed = new Set([
+    'src/common/updater.ts', // imports the updater/process plugins; checkForUpdates() returns early unless native
+  ]);
+  const forbidden = /from '@tauri-apps\/(api\/(window|webview(Window)?|app|dpi)|plugin-(dialog|os|updater|process))'/;
+  const walk = (dir) => {
+    const out = [];
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...walk(full));
+      else if (/\.(js|ts|vue|mjs)$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  };
+  const root = new URL('../src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  const offenders = [];
+  for (const file of walk(root)) {
+    const rel = file.replace(/\\/g, '/').split('/src/')[1];
+    const relKey = `src/${rel}`;
+    if (seamFiles.has(relKey) || allowed.has(relKey)) continue;
+    const src = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+    if (forbidden.test(src)) offenders.push(relKey);
+  }
+  assert.deepEqual(
+    offenders,
+    [],
+    `these files import host-specific Tauri modules directly; route them through transport/window.js or transport/dialog.js, or gate them on capabilities().native:\n${offenders.join('\n')}`,
+  );
+});
+
+test('the window seam exposes a Web route for every secondary window it creates', () => {
+  const src = readFileSync(new URL('../src/common/transport/window.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  // Every label the app opens as a desktop window must have a Web route, so the
+  // Web client can navigate somewhere instead of doing nothing.
+  for (const label of ['settings', 'imageeditor', 'montage', 'vl-lab']) {
+    const key = label.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');
+    assert.ok(
+      new RegExp(`['"]?${key}['"]?\\s*:\\s*'/`).test(src),
+      `window.js must map the '${label}' window to a Web route`,
+    );
+  }
+  assert.ok(/getByLabel: async \(\) => null/.test(src), 'the Web WebviewWindow must report no secondary windows');
+});
+
+test('the dialog seam degrades file pickers to null and keeps confirm/alert', async () => {
+  const src = readFileSync(new URL('../src/common/transport/dialog.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  // open/save must not pretend to pick a server-side path in a browser.
+  assert.ok(/async open\(\)\s*\{\s*return null;/.test(src), 'Web open() must return null');
+  assert.ok(/async save\(\)\s*\{\s*return null;/.test(src), 'Web save() must return null');
+  // ask/message need a real browser equivalent, not a silent no-op.
+  assert.ok(/window\.confirm\(/.test(src), 'Web ask() must use window.confirm');
+  assert.ok(/window\.alert\(/.test(src), 'Web message() must use window.alert');
+});
+
+test('resolveMediaUrl resolves relative same-origin media paths (the Web scheme)', () => {
+  // The desktop transports emit absolute custom-scheme URLs; the Web transport
+  // emits relative paths, and `new URL('/api/...')` throws in a browser.
+  const previous = globalThis.location;
+  globalThis.location = { origin: 'http://127.0.0.1:17860' };
+  try {
+    const src = readFileSync(new URL('../src/common/utils.ts', import.meta.url), 'utf8');
+    const body = src.slice(src.indexOf('export function resolveMediaUrl'), src.indexOf('// get country name from country code'));
+    // The helper must pass a base to `new URL`, or a relative path throws.
+    assert.ok(/new URL\(url, base\)/.test(body), 'resolveMediaUrl must resolve against an origin base');
+  } finally {
+    if (previous === undefined) delete globalThis.location;
+    else globalThis.location = previous;
   }
 });

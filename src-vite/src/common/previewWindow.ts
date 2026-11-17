@@ -1,5 +1,5 @@
-import { getCurrentWindow } from '@tauri-apps/api/window';
-import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { getCurrentWebviewWindow } from '@/common/transport/window.js';
+import { capabilities } from '@/common/transport';
 
 export const PREVIEW_WINDOW_FOCUS_RESTORED = 'preview-window-focus-restored';
 
@@ -25,12 +25,15 @@ export function runPreviewWindowOperation<T>(
 export async function recoverPreviewWindowFocus() {
   const generation = ++recoveryGeneration;
   stopRecovery?.();
-  const appWindow = getCurrentWindow();
+  // Window focus restoration is a desktop-shell concern; a browser tab has no
+  // secondary preview window to refocus.
+  if (!capabilities().native) return;
+  const appWindow = getCurrentWebviewWindow();
   const restore = async () => {
     try {
       if (generation !== recoveryGeneration || !(await appWindow.isFocused())) return;
       if (generation !== recoveryGeneration) return;
-      await getCurrentWebview().setFocus();
+      await appWindow.setFocus();
       if (generation === recoveryGeneration) {
         window.dispatchEvent(new Event(PREVIEW_WINDOW_FOCUS_RESTORED));
       }

@@ -323,7 +323,8 @@ import {
   searchFts,
   shouldFinishRun,
 } from '@/common/vlLabLogic';
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
+import { capabilities } from '@/common/transport';
 
 const { t } = useI18n();
 const toast = useToast();
@@ -394,8 +395,14 @@ async function openSettings() {
   // The settings window syncs its tab through this event (see main.js);
   // the local Pinia write only moves this window's own instance.
   await emit('settings-settingsTabIndex-changed', VL_SETTINGS_TAB);
+  // Web client: there is no separate settings window — go to the settings route.
+  if (!capabilities().native) {
+    const { default: router } = await import('@/common/router');
+    await router.push(webRouteForWindowLabel('settings'));
+    return;
+  }
   try {
-    const settingsWindow = await WebviewWindow.getByLabel('settings');
+    const settingsWindow = await webviewWindow().getByLabel('settings');
     if (!settingsWindow) {
       toast.info(t('vl.settings_window_not_open'));
       return;

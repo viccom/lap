@@ -202,6 +202,7 @@ import { SIDEBAR, GESTURE_LOCK_THRESHOLD, HORIZONTAL_NAV_THRESHOLD, MOUSE_DRAG_N
 import {
   getAssetSrc,
   getPreviewUrl,
+  resolveMediaUrl,
   shouldUseBackendPreview,
   getFileExtension,
   getThumbUrl,
@@ -569,12 +570,23 @@ async function loadRawImage(filePath: string, fullSize = false): Promise<LoadedI
   rawAbortController?.abort();
   const controller = new AbortController();
   rawAbortController = controller;
-  const url = new URL(getPreviewUrl(props.fileId, filePath, false, props.fileVersion));
+  const url = resolveMediaUrl(getPreviewUrl(props.fileId, filePath, false, props.fileVersion));
   const options = requestedRawOptions.value;
   appendRawDisplayParams(url.searchParams, options);
   url.searchParams.set('rawViewerId', rawViewerId);
   if (fullSize) url.searchParams.set('rawFullSize', 'true');
-  const response = await fetch(url.toString(), { signal: controller.signal });
+  if (controller.signal.aborted) throw new Error('RAW preview cancelled');
+  // Web client: lapd requires an HMAC signature on media URLs, and the
+  // signature binds the full path+query — so sign the completed URL (with the
+  // RAW display params) as a whole. Signing the bare preview URL would 403.
+  let requestUrl = url.toString();
+  if (transportMode === 'http') {
+    requestUrl = await signedAssetUrl(`${url.pathname}${url.search}`);
+    if (controller.signal.aborted) throw new Error('RAW preview cancelled');
+    if (!requestUrl) throw new Error('RAW preview failed');
+    requestUrl = resolveMediaUrl(requestUrl).toString();
+  }
+  const response = await fetch(requestUrl, { signal: controller.signal });
   if (!response.ok) throw new Error('RAW preview failed');
   const blob = await response.blob();
   if (controller.signal.aborted) throw new Error('RAW preview cancelled');

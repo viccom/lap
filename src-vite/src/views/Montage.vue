@@ -285,13 +285,13 @@ import { ref, toRefs, computed, onMounted, onUnmounted, watch, nextTick } from '
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import { config } from '@/common/config';
-import { isWin, isLinux, getFolderPath, getFullPath, combineFileName, getSelectOptions, getThumbUrl, isValidFileName, formatFileSize, formatDimensionText, formatTimestamp, formatCameraInfo, formatCaptureSettings } from '@/common/utils';
+import { isWin, isLinux, getFolderPath, getFullPath, combineFileName, getSelectOptions, getThumbUrl, signMediaUrl, isValidFileName, formatFileSize, formatDimensionText, formatTimestamp, formatCameraInfo, formatCaptureSettings } from '@/common/utils';
 import { getFileInfo, checkFileExists, renderMontage } from '@/common/api';
 import { computeMontageLayout, shuffled, type MontageItem } from '@/common/montageLayout';
 import { getAspectRatio } from '@/common/layout';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { emit as tauriEmit } from '@/common/transport';
-import { open as openDialog, message } from '@tauri-apps/plugin-dialog';
+import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
+import { emit as tauriEmit, capabilities } from '@/common/transport';
+import { open as openDialog, message } from '@/common/transport/dialog.js';
 
 import PrintImage from '@/components/PrintImage.vue';
 import TitleBar from '@/components/TitleBar.vue';
@@ -568,9 +568,9 @@ function removePhoto(fileId: number) {
 
 async function loadFiles(ids: number[]) {
   const infos = await Promise.all(ids.map(id => getFileInfo(id)));
-  return infos
+  return Promise.all(infos
     .filter((file: any) => file && file.file_type !== 2)
-    .map((file: any) => ({ ...file, thumbnail: getThumbUrl(file.id) }));
+    .map(async (file: any) => ({ ...file, thumbnail: await signMediaUrl(getThumbUrl(file.id)) })));
 }
 
 // fit the page into the preview area

@@ -208,7 +208,7 @@ import MessageBox from '@/components/MessageBox.vue';
 import FileConflictDialog from '@/components/FileConflictDialog.vue';
 import { isFolderUnavailable, setFolderAccessibility } from '@/common/availability';
 import { useToast } from '@/common/toast';
-import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { ask, open as openDialog } from '@/common/transport/dialog.js';
 
 import {
   IconRight,

@@ -1,7 +1,7 @@
 import { setAlbumAccessibility } from '@/common/availability';
 import { invoke, Channel, capabilities } from '@/common/transport';
-import { locale } from '@tauri-apps/plugin-os';
 import { listen } from '@/common/transport';
+import { osLocale } from '@/common/transport/os.js';
 import { config, libConfig } from '@/common/config';
 import { separator, localeComp, formatTimestamp } from '@/common/utils';
 import { getRawDisplayOptions } from './rawDisplay';
@@ -14,7 +14,9 @@ export async function getSystemRegionLocale() {
   } catch (error) {
     console.warn('Could not read system regional locale', error);
   }
-  return locale();
+  // The Tauri OS plugin has no Web equivalent; the seam answers from the
+  // browser locale there (see transport/os.js).
+  return osLocale();
 }
 
 // library

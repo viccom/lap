@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { MAX_EXTERNAL_APPS } from '@/common/constants';
 import { computed, onBeforeUnmount, onMounted } from 'vue';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { open as openDialog } from '@/common/transport/dialog.js';
 import { useI18n } from 'vue-i18n';
 import { getExternalAppDisplayName } from '@/common/api';
 import { config } from '@/common/config';

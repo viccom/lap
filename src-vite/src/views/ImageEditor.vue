@@ -551,10 +551,10 @@ import { useRouter } from 'vue-router';
 import { useUIStore } from '@/stores/uiStore';
 import { useI18n } from 'vue-i18n';
 import { config } from '@/common/config';
-import { isWin, isLinux, SCALE_VALUES, getFolderPath, getFileExtension, shortenFilename, getFullPath, combineFileName, getSelectOptions, getAssetSrc, getPreviewUrl, getThumbUrl, shouldUseBackendPreview } from '@/common/utils';
+import { isWin, isLinux, SCALE_VALUES, getFolderPath, getFileExtension, shortenFilename, getFullPath, combineFileName, getSelectOptions, getAssetSrc, getPreviewUrl, getThumbUrl, signMediaUrl, shouldUseBackendPreview } from '@/common/utils';
 import { editImage, checkFileExists, getFileInfo } from '@/common/api';
 import { getMaxInscribedRect, clampCenterInRotatedRect, maxResizeT } from '@/common/geometry';
-import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getCurrentWebviewWindow } from '@/common/transport/window.js';
 import { emit as tauriEmit, listen } from '@/common/transport';
 
 watch(() => config.imageEditor, (preferences) => {
@@ -631,7 +631,7 @@ async function loadFileInfo(fileId: number) {
     imageReady.value = false;
     const file = await getFileInfo(fileId);
     if (file) {
-      file.thumbnail = getThumbUrl(file.id);
+      file.thumbnail = await signMediaUrl(getThumbUrl(file.id));
       fileInfo.value = file;
       newFileName.value = file.name?.substring(0, file.name.lastIndexOf('.')) || file.name || '';
       const src = getPreviewUrl(
@@ -641,7 +641,7 @@ async function loadFileInfo(fileId: number) {
         Number(file.modified_at || 0),
         true, // Match the export decoder and pixel coordinates.
       );
-      initialImageSrc.value = typeof src === 'string' ? src : '';
+      initialImageSrc.value = await signMediaUrl(typeof src === 'string' ? src : '');
     }
   } catch {
     await closeEditorWindow();
@@ -1450,7 +1450,7 @@ const initEditImage = async () => {
           true, // Match the export decoder and pixel coordinates.
         );
         if (previewSrc) {
-          imageSrc.value = previewSrc;
+          imageSrc.value = await signMediaUrl(previewSrc);
         }
       } catch {
         if (loadingId !== initEditImageLoadingId.value) return;

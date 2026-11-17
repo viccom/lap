@@ -68,7 +68,7 @@ import { useI18n } from 'vue-i18n';
 import { getDbStorageInfo, backupDatabases } from '@/common/api';
 import { formatFileSize } from '@/common/utils';
 import ModalDialog from '@/components/ModalDialog.vue';
-import { save } from '@tauri-apps/plugin-dialog';
+import { save } from '@/common/transport/dialog.js';
 import { useToast } from '@/common/toast';
 
 const emit = defineEmits(['done', 'cancel']);

@@ -846,8 +846,8 @@ import PrintImage from '@/components/PrintImage.vue';
 import { defineAsyncComponent, ref, watch, computed, createVNode, onMounted, onBeforeUnmount, nextTick, render, markRaw } from 'vue';
 import { emit as tauriEmit, listen, transportMode } from '@/common/transport';
 import { invoke } from '@/common/transport';
-import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
-import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { ask, open as openDialog } from '@/common/transport/dialog.js';
+import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
 import { PREVIEW_WINDOW_FOCUS_RESTORED } from '@/common/previewWindow';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
@@ -6253,7 +6253,7 @@ onMounted( async() => {
         const viewerFiles = session.mode === 'compare' ? session.files : fileList.value;
         const file = viewerFiles[requestIndex];
         if (isRealFileItem(file)) {
-           const imageWindow = await WebviewWindow.getByLabel('imageviewer');
+           const imageWindow = await webviewWindow().getByLabel('imageviewer');
            if (imageWindow) {
              imageWindow.emit('update-img', {
                fileId: file.id,
@@ -6290,7 +6290,7 @@ onMounted( async() => {
     const { type, filePath } = event.payload as any;
     if (type !== 'success') return;
     try {
-      await (await WebviewWindow.getByLabel('montage'))?.destroy();
+      await (await webviewWindow().getByLabel('montage'))?.destroy();
     } catch (error) {
       console.error('Failed to destroy Montage window from parent:', error);
     }
@@ -6309,7 +6309,7 @@ onMounted( async() => {
       const saveAsContext = sourceId > 0 ? imageEditorSaveAsContexts.get(sourceId) || null : null;
       if (sourceId > 0) imageEditorSaveAsContexts.delete(sourceId);
       try {
-        const editorWindow = await WebviewWindow.getByLabel('imageeditor');
+        const editorWindow = await webviewWindow().getByLabel('imageeditor');
         if (editorWindow) {
           try {
             await editorWindow.destroy();
@@ -11892,12 +11892,12 @@ async function openImageViewer(
   }
 
   // create a new window if it doesn't exist
-  let imageWindow = await WebviewWindow.getByLabel(webViewLabel);
+  let imageWindow = await webviewWindow().getByLabel(webViewLabel);
   if (!imageWindow) {
     if (newViewer) {
       const forceSplitParam = compareSplitCount || 0;
       const compareModeParam = compareMode ? 1 : 0;
-      imageWindow = new WebviewWindow(webViewLabel, {
+      imageWindow = webviewWindow().create(webViewLabel, {
         url: `/image-viewer?fileId=${leftFileId}&fileIndex=${leftIndex}&fileCount=${fileCount}&rightFileId=${rightFileId}&rightFileIndex=${rightIndex}&forceSplitCount=${forceSplitParam}&compareFileCount=${compareMode ? fileCount : 0}&compareMode=${compareModeParam}&nextFilePath=${encodeURIComponent(leftNextFilePath)}&rightNextFilePath=${encodeURIComponent(rightNextFilePath)}`,
         title: 'Image Viewer',
         width: 1200,
@@ -11990,7 +11990,7 @@ async function syncSelectionToImageViewer(index: number) {
   if (!isImageViewerWindowOpen.value) return;
   if (imageViewerSession.value.mode !== 'normal') return;
   if (!isRealFileItem(fileList.value[index])) return;
-  const imageWindow = await WebviewWindow.getByLabel('imageviewer');
+  const imageWindow = await webviewWindow().getByLabel('imageviewer');
   if (!imageWindow || selectedItemIndex.value !== index) return;
   const file = fileList.value[index];
   const next = fileList.value[index + 1];
@@ -12015,9 +12015,24 @@ let montageOpening = false;
 
 async function openMontage() {
   if (!await requireCurrentOriginals()) return;
+  // Web client: no secondary windows — the montage is a route carrying the
+  // selected file ids, the same query the Tauri window would receive.
+  if (transportMode === 'http') {
+    const images = await getMontageImages();
+    const imageIds = images.map((item: any) => Number(item.id));
+    if (imageIds.length < 2) {
+      toast.warning(t('msgbox.montage.not_enough_photos'));
+      return;
+    }
+    montageSaveAsContext = getCurrentSaveAsContext(images[0]);
+    montageSourceFolder = getFolderPath(images[0].file_path);
+    const { default: router } = await import('@/common/router');
+    await router.push(`${webRouteForWindowLabel('montage')}?fileIds=${imageIds.slice(0, MONTAGE_MAX_PHOTOS).join(',')}`);
+    return;
+  }
   // one montage at a time: bring the open one to the front
   if (montageOpening) return;
-  const openWindow = await WebviewWindow.getByLabel('montage');
+  const openWindow = await webviewWindow().getByLabel('montage');
   if (openWindow) {
     await openWindow.unminimize();
     await openWindow.setFocus();
@@ -12053,7 +12068,7 @@ async function createMontageWindow() {
   const { width, height } = size.toLogical(scaleFactor);
   const { x, y } = position.toLogical(scaleFactor);
 
-  const newWindow = new WebviewWindow('montage', {
+  const newWindow = webviewWindow().create('montage', {
     url: `/montage?fileIds=${imageIds.slice(0, MONTAGE_MAX_PHOTOS).join(',')}`,
     title: 'Montage',
     width,
@@ -12092,8 +12107,15 @@ async function openImageEditor(index: number) {
 
   imageEditorSaveAsContexts.set(fileId, getCurrentSaveAsContext(file));
 
+  // Web client: no secondary windows — the editor is a route.
+  if (transportMode === 'http') {
+    const { default: router } = await import('@/common/router');
+    await router.push(`${webRouteForWindowLabel('imageeditor')}?fileId=${fileId}`);
+    return;
+  }
+
   const webViewLabel = 'imageeditor';
-  const imageWindow = await WebviewWindow.getByLabel(webViewLabel);
+  const imageWindow = await webviewWindow().getByLabel(webViewLabel);
   if (imageWindow) {
     await imageWindow.emit('update-file', { fileId });
     imageWindow.show();
@@ -12101,7 +12123,7 @@ async function openImageEditor(index: number) {
     return;
   }
 
-  const newWindow = new WebviewWindow(webViewLabel, {
+  const newWindow = webviewWindow().create(webViewLabel, {
     url: `/image-editor?fileId=${fileId}`,
     title: 'Image Editor',
     width: 1100,

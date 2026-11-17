@@ -1137,10 +1137,9 @@
 <script setup lang="ts">
 
 import { ref, watch, computed, onMounted, onUnmounted, onBeforeUnmount } from 'vue';
-import { LogicalSize } from '@tauri-apps/api/dpi';
-import { getCurrentWebviewWindow, WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { emit } from '@/common/transport';
-import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
+import { emit, capabilities } from '@/common/transport';
+import { ask, open as openDialog } from '@/common/transport/dialog.js';
 import { useI18n } from 'vue-i18n';
 import { config, libConfig } from '@/common/config';
 import { normalizeThumbnailSize } from '@/common/thumbnailProfiles';
@@ -1229,14 +1228,24 @@ const openingLab = ref(false);
 async function openVlLab() {
   if (openingLab.value) return;
   openingLab.value = true;
+  // Web client: no secondary windows — the lab is a route.
+  if (!capabilities().native) {
+    try {
+      const { default: router } = await import('@/common/router');
+      await router.push(webRouteForWindowLabel('vl-lab'));
+    } finally {
+      openingLab.value = false;
+    }
+    return;
+  }
   try {
-    const existing = await WebviewWindow.getByLabel('vl-lab');
+    const existing = await webviewWindow().getByLabel('vl-lab');
     if (existing) {
       await existing.unminimize();
       await existing.setFocus();
       return;
     }
-    const labWindow = new WebviewWindow('vl-lab', {
+    const labWindow = webviewWindow().create('vl-lab', {
       url: '/vl-lab',
       title: 'Image understanding lab',
       width: 1100,
@@ -2757,6 +2766,9 @@ async function updateSettingsWindowSize(scale: number) {
   const normalizedScale = normalizeScale(scale);
   const width = Math.round(SETTINGS_BASE_WIDTH * normalizedScale);
   const height = Math.round(SETTINGS_BASE_HEIGHT * normalizedScale);
+  // LogicalSize is a Tauri dpi type; only the desktop shell resizes a window.
+  // Imported lazily so the Web bundle does not depend on the dpi module.
+  const { LogicalSize } = await import('@tauri-apps/api/dpi');
   const size = new LogicalSize(width, height);
 
   await appWindow.setMinSize(size);

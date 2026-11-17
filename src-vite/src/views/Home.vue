@@ -185,8 +185,7 @@
 import { defineAsyncComponent, ref, computed, onBeforeUnmount, onMounted, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { emit, listen, capabilities } from '@/common/transport';
-import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
-import { getName } from '@tauri-apps/api/app';
+import { webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
 import { invoke } from '@/common/transport';
 import { afterNextPaint } from '@/common/nextPaint';
 import { applyAlbumAccess, recheckOfflineAlbums } from '@/common/albumRecovery';
@@ -540,9 +539,11 @@ onMounted(async () => {
   window.addEventListener('focus', handleAccessRecovery);
 
   // `getName` is a Tauri app API; over the HTTP transport there is no such
-  // call, so the Web client falls back to the document title.
+  // call, so the Web client falls back to the document title. Imported lazily
+  // so the Web bundle never pulls the plugin in at load time.
   if (capabilities().native) {
     try {
+      const { getName } = await import('@tauri-apps/api/app');
       const name = await getName();
       if (name) appName.value = name;
     } catch (e) {
@@ -776,12 +777,19 @@ async function clickSettings(tabIndex?: number) {
     await emit('settings-settingsTabIndex-changed', tabIndex);
   }
 
+  // Web client: no secondary windows — settings is a route.
+  if (!capabilities().native) {
+    const { default: router } = await import('@/common/router');
+    await router.push(webRouteForWindowLabel('settings'));
+    return;
+  }
+
   // Reuse an existing settings window if it can be shown; otherwise destroy it
   // and create a fresh one. Re-showing a closed transparent window can fail
   // silently on Windows, so never swallow the failure.
-  let settingsWindow: WebviewWindow | null = null;
+  let settingsWindow: any = null;
   try {
-    settingsWindow = await WebviewWindow.getByLabel('settings');
+    settingsWindow = await webviewWindow().getByLabel('settings');
   } catch (error) {
     console.error('Failed to look up settings window:', error);
   }
@@ -826,7 +834,7 @@ async function clickSettings(tabIndex?: number) {
   };
 
   // create a new settings window
-  const newSettingsWindow = new WebviewWindow('settings', options);
+  const newSettingsWindow = webviewWindow().create('settings', options);
   
   newSettingsWindow.once('tauri://created', () => {
     console.log('settings window created');

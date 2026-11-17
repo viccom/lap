@@ -21,6 +21,7 @@ function setup() {
     isFocused: async () => focused,
     isFullscreen: async () => nativeFull,
     isMaximized: async () => false,
+    setFocus: async () => calls.push(['focus']),
     setFullscreen: async value => {
       if (!value && exitGate) { exitStarted(); await exitGate; }
       nativeFull = value;
@@ -29,9 +30,11 @@ function setup() {
     onResized: async callback => { listeners.add(callback); return () => listeners.delete(callback); },
   };
   const getCurrentWindow = () => appWindow;
-  const getCurrentWebview = () => ({ setFocus: async () => calls.push(['focus']) });
-  const lifecycle = new Function('getCurrentWindow', 'getCurrentWebview', 'window', 'Event', 'setTimeout', 'clearTimeout', manager + '; return { runPreviewWindowOperation, recoverPreviewWindowFocus };')(
-    getCurrentWindow, getCurrentWebview, { dispatchEvent: e => calls.push([e.type]) }, Event,
+  // previewWindow.ts now takes the window from the transport seam and gates on
+  // capabilities().native; the test injects both.
+  const capabilities = () => ({ native: true });
+  const lifecycle = new Function('getCurrentWebviewWindow', 'capabilities', 'window', 'Event', 'setTimeout', 'clearTimeout', manager + '; return { runPreviewWindowOperation, recoverPreviewWindowFocus };')(
+    getCurrentWindow, capabilities, { dispatchEvent: e => calls.push([e.type]) }, Event,
     fn => { const id = ++nextTimer; timers.set(id, fn); return id; }, id => timers.delete(id),
   );
   const create = new Function('ref', 'computed', 'props', 'config', 'getCurrentWindow', 'runPreviewWindowOperation', 'recoverPreviewWindowFocus', 'emit', 'isWin', component + '; return { toggleFullScreen, exitPreviewFullScreen, dispose() { previewDisposed = true; stopPreviewResizeListener(); return exitPreviewFullScreen(); }, get full() { return previewFullScreen.value; } };');

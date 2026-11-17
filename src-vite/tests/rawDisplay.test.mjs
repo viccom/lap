@@ -93,9 +93,11 @@ const loaderSource = ts.transpile(imageSource.slice(imageSource.indexOf('async f
 test('a superseded RAW response cannot replace the latest source or leak a blob URL', async () => {
   const requests = [];
   const urls = new Set();
-  const load = new Function('fetch', 'props', 'getPreviewUrl', 'appendRawDisplayParams', 'requestedRawOptions', 'Image', 'rawObjectUrls', `let rawAbortController = null; const rawViewerId = 'test-viewer'; ${loaderSource}; return loadRawImage;`)(
+  const load = new Function('fetch', 'props', 'getPreviewUrl', 'resolveMediaUrl', 'transportMode', 'appendRawDisplayParams', 'requestedRawOptions', 'Image', 'rawObjectUrls', `let rawAbortController = null; const rawViewerId = 'test-viewer'; ${loaderSource}; return loadRawImage;`)(
     (_url, options) => new Promise(resolve => requests.push({ resolve, signal: options.signal })),
-    { fileId: 42, fileVersion: 1 }, () => 'http://preview.localhost/test/42', appendRawDisplayParams,
+    { fileId: 42, fileVersion: 1 }, () => 'http://preview.localhost/test/42', (u) => new URL(u),
+    'tauri', // desktop path: no media signing (the Web path signs the full URL)
+    appendRawDisplayParams,
     { value: { mode: 'rendered', autoBright: true, preferPair: false } },
     class { naturalWidth = 100; naturalHeight = 100; async decode() {} }, urls,
   );
@@ -143,4 +145,37 @@ test('editor URL selects the export pipeline regardless of RAW browsing settings
   const browsing = new URL(getPreviewUrl(42, 'photo.dng')).searchParams;
   assert.equal(browsing.has('forEditing'), false);
   assert.equal(browsing.get('rawPairDisplay'), 'jpeg');
+});
+
+test('the Web RAW loader signs the full preview URL (including RAW params)', async () => {
+  // lapd requires an HMAC signature on media URLs, and the signature binds the
+  // whole path+query. Fetching the bare preview URL (as the desktop build does)
+  // returned "missing exp" 403, so the viewer showed "loading failed" for a
+  // perfectly good file. The Web path must sign the completed URL.
+  const requests = [];
+  const urls = new Set();
+  const signed = [];
+  const load = new Function(
+    'fetch', 'props', 'getPreviewUrl', 'resolveMediaUrl', 'transportMode', 'signedAssetUrl',
+    'appendRawDisplayParams', 'requestedRawOptions', 'Image', 'rawObjectUrls',
+    `let rawAbortController = null; const rawViewerId = 'test-viewer'; ${loaderSource}; return loadRawImage;`,
+  )(
+    (url) => { requests.push(String(url)); return Promise.resolve({ ok: true, blob: async () => new Blob(['x']), headers: new Headers({ 'X-Raw-Source': 'embedded' }) }); },
+    { fileId: 42, fileVersion: 1 }, () => '/api/preview/default/42', (u) => new URL(u, 'http://127.0.0.1:17860'),
+    'http', // Web client
+    async (raw) => { signed.push(raw); return `${raw}&exp=1&sig=abc&dev=1`; },
+    appendRawDisplayParams,
+    { value: { mode: 'rendered', autoBright: true, preferPair: false } },
+    class { naturalWidth = 100; naturalHeight = 100; async decode() {} }, urls,
+  );
+  const loaded = await load('photo.dng');
+  assert.ok(loaded, 'the Web RAW loader must return the decoded image');
+  assert.equal(signed.length, 1, 'it must mint exactly one signature');
+  // The signed input must be the preview path WITH its RAW query params, so the
+  // signature covers every parameter the server validates.
+  assert.match(signed[0], /^\/api\/preview\/default\/42\?/);
+  assert.match(signed[0], /rawViewerId=test-viewer/);
+  // And the actual fetch must use the signed URL.
+  assert.equal(requests.length, 1);
+  assert.match(requests[0], /exp=1&sig=abc&dev=1/);
 });
