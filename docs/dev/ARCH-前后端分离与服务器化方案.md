@@ -503,6 +503,17 @@ src-vite/                      一套前端，两种传输
 - **诚实边界**：本次仅前端改动（无 `.rs` 变更，故未重跑 `cargo test`）；Web 端「新增相册」仍是**管理员 + 手输服务端路径**模型（浏览器无法浏览服务端文件系统），未新增浏览器端目录浏览。
 - **附带教训**：**「按钮没反应」式缺陷要顺链路追到底**——第一个死胡同（`openFolderDialog`→null）修好后，真正可用的那条路径（服务器页表单）本身也是坏的（`fileTypes:0` → 500）。只修表象会让用户以为"能用了一点"却仍失败。renderer 侧按钮点击在 IAB 里会被 overlay 拦截导致 locator click 超时；此类页面用 page-context click 验证交互、用 API/DB 复核持久化结果。
 
+**批次 5c（浏览器 E2E 全流程测试：从空库跑通主干路径 + 修复 Web 编辑器三处缺陷）· 已完成**（提交 `c726721f`）
+
+- **测试设置**：从**真实照片库**复制 39 个媒体（36 照片 + 3 视频，454MB，来自 `D:\Users\viccom\Pictures\董开源备份`）到临时目录；**全新空库**（临时 `--data-dir`）+ 真机 lapd 托管 `build:http` 产物 + IAB 浏览器，逐条走用户路径。真实库/桌面数据目录零改动。
+- **通过项（pass）**：① 登录页渲染、错误密码显示 `invalid credentials` 且留在页内、正确密码登录、刷新保持会话；② 空库 Welcome 屏；③ 点「新建相册」→ 跳设置服务器页；④ 按路径新增相册（toast 成功）→ 右键「扫描相册」→ 真实网格（39 文件 453MB、真实 EXIF Canon EOS 450D、缩略图渲染、状态栏 1/39）；⑤ 查看器打开、翻页（计数 3→5→4、加载原图 id 变化）、签名原图加载；⑥ 文件名搜索（IMG_2440 → 1 命中，文本匹配 + EXIF）；⑦ **视频播放真实可用**：`<video>` 源为签名 `/api/video/37?...sig=`，`readyState:4`、时长 46.1s、1080×1920 已解码；⑧ 设置页设备列表/生成配对码（6 位）/按路径新增；⑨ 拼图「返回」回网格；⑩ 编辑器加载真实图（签名 `/api/original/1` 4.47MB）→ 旋转 → 覆盖保存 → `/api/cmd/edit_image` 执行、磁盘文件真实改写、自动回网格。
+- **缺陷 1（编辑器预览永空）**：`ImageEditor.vue` 普通图片分支调 `getAssetSrc(file_path)`，该函数 **Web 恒返回 `''`**（浏览器无法按路径取服务端文件；函数注释已注明 Web 必须按 id）。修复：Web 分支改 `getMediaSrcForId(fileInfo.id)` + `signMediaUrl`（与 Content.vue 打印路径同一既定写法）。
+- **缺陷 2（rAF 挂死，批次 4.5 同类漏网）**：`onImageLoad` 在**嵌套裸 `requestAnimationFrame`** 里置 `imageReady=true`；Chromium 在标签页未被合成时暂停 rAF（实测 rAF 1 秒不触发、`visibilityState='hidden'` 但代码不可依赖它），`imageReady` 永不置真 → 图片 `display:none`。修复：改用批次 4.5 引入的 `afterNextPaint()`（帧+定时赛跑）。
+- **缺陷 3（保存后滞留编辑器）**：桌面端保存成功后父窗口 destroy 子窗口（`Content.vue:6323`）→ 回网格；Web 分支只 `requestRefresh` 不返回 → 用户卡在编辑器。修复：`ImageEditor.vue`/`Montage.vue` Web 保存成功分支在 `requestRefresh` 后 `closeOrBack()`（失败仍停留，与桌面一致）。
+- **验证**：新增 3 条守卫（`transport.test.mjs`）——「Web 保存须 closeOrBack 回网格」「Web 编辑器预览须按 file id 取源」「onImageLoad 须用 afterNextPaint 而非裸 rAF」；**三条均非空转已证**（各自回退 → 红，恢复 → 绿）。前端 `tests/*.test.mjs` **474/0**（+3）、`tests/` 全目录 **500/0**；两种构建 exit=0。
+- **诚实边界**：仅前端改动（无 `.rs`），未重跑 `cargo test`；`/image-editor` 无 `fileId` 直开会跳回 `/`（需上下文，符合预期）；IAB 中带大图渲染的页面偶发内部错误/截图失败，DOM/网络/磁盘证据已足够；移动端布局（5b）仍未做。
+- **附带教训**：① **E2E 是"运行时真的跑"的唯一证据**——本批三条缺陷守卫测试全绿却全坏（`getAssetSrc` 字符串在、`requestAnimationFrame` 在、`requestRefresh` 在，但运行时都不对）。② **批次 4.5 的 rAF 类缺陷只修了已知站**，编辑器这个漏网证明该类缺陷要**全仓 grep `requestAnimationFrame` 逐一体检**，而非只修报告到的点。③ **"取源函数在别的宿主返回空串"是 Web 端一类隐蔽坑**：`getAssetSrc` 桌面可用、Web 恒空；凡"按文件路径取内容"的调用点都要确认 Web 走的是按 id 的签名端点。
+
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。
