@@ -844,7 +844,7 @@ import { getExternalDropUris, getExternalHttpDropUrls, getExternalFileDropPaths,
 
 import PrintImage from '@/components/PrintImage.vue';
 import { defineAsyncComponent, ref, watch, computed, createVNode, onMounted, onBeforeUnmount, nextTick, render, markRaw } from 'vue';
-import { emit as tauriEmit, listen } from '@/common/transport';
+import { emit as tauriEmit, listen, transportMode } from '@/common/transport';
 import { invoke } from '@/common/transport';
 import { ask, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { WebviewWindow, getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
@@ -893,6 +893,7 @@ import { isWin, isMac, isLinux, separator,
          clearCachedThumbnailDataUrl,
          extractFileName, combineFileName, getFolderPath, getFolderName, getSelectOptions, 
          shortenFilename, getSlideShowInterval, copyFilePaths, getClipboardItemPaths, getFullPath, normalizePathForCompare, isWithinRootPath, shouldUseBackendPreview } from '@/common/utils';
+import { afterNextPaint } from '@/common/nextPaint';
 
 import DropDownSelect from '@/components/DropDownSelect.vue';
 import ProgressBar from '@/components/ProgressBar.vue';
@@ -1610,7 +1611,7 @@ async function restoreFocusedFileAfterListRefresh() {
 
 async function waitForGroupedGridLayout() {
   await nextTick();
-  await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+  await afterNextPaint();
   gridViewRef.value?.refreshLayout();
   await nextTick();
 }
@@ -4180,9 +4181,9 @@ function scheduleContentRefresh(task: () => void) {
 }
 
 function waitForContentLoadingPaint() {
-  return new Promise<void>(resolve => {
-    requestAnimationFrame(() => setTimeout(resolve, 0));
-  });
+  // Frames stop arriving while the tab is not composited (see afterNextPaint);
+  // awaiting one here used to stall the whole content load.
+  return afterNextPaint();
 }
 
 function refreshContentFromSelectionChange() {
@@ -11866,7 +11867,30 @@ async function openImageViewer(
   const rightFileId = rightFile ? rightFile.id : 0;
   const leftNextFilePath = getNextImageFilePath(leftIndex);
   const rightNextFilePath = getNextImageFilePath(rightIndex);
-  
+
+  // Web client (phase 4): there are no secondary windows; open the viewer as a
+  // same-tab route carrying the same query the Tauri window would receive.
+  // ImageViewer.vue reads these params on mount, so no cross-window emit.
+  if (transportMode === 'http') {
+    if (!newViewer) {
+      // Updating an already-open viewer only matters for the desktop window;
+      // in the SPA the route is the viewer, so a non-new open is a no-op.
+      return;
+    }
+    const forceSplitParam = compareSplitCount || 0;
+    const compareModeParam = compareMode ? 1 : 0;
+    const query = `fileId=${leftFileId}&fileIndex=${leftIndex}&fileCount=${fileCount}` +
+      `&rightFileId=${rightFileId}&rightFileIndex=${rightIndex}` +
+      `&forceSplitCount=${forceSplitParam}&compareFileCount=${compareMode ? fileCount : 0}` +
+      `&compareMode=${compareModeParam}` +
+      `&nextFilePath=${encodeURIComponent(leftNextFilePath)}` +
+      `&rightNextFilePath=${encodeURIComponent(rightNextFilePath)}`;
+    videoRef.value?.pause();
+    const { default: router } = await import('@/common/router');
+    await router.push(`/image-viewer?${query}`);
+    return;
+  }
+
   // create a new window if it doesn't exist
   let imageWindow = await WebviewWindow.getByLabel(webViewLabel);
   if (!imageWindow) {
@@ -12165,7 +12189,7 @@ let startupReadyEmitted = false;
 watch([contentReady, showWelcomeContent], ([ready, welcome]) => {
   if (startupReadyEmitted || (!ready && !welcome)) return;
   startupReadyEmitted = true;
-  void nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => emit('startupReady'))));
+  void nextTick(() => { void afterNextPaint().then(() => emit('startupReady')); });
 }, { immediate: true });
 
 defineExpose({

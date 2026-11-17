@@ -2,6 +2,7 @@ import { provide, inject, computed, reactive, Ref } from 'vue';
 import { libConfig } from '@/common/config';
 import { useUIStore } from '@/stores/uiStore';
 import { selectFolder as apiSelectFolder } from '@/common/api';
+import { afterNextPaint } from '@/common/nextPaint';
 import { Album, Folder, AlbumSelectionContext, ALBUM_SELECTION_KEY } from '@/common/types';
 
 export type SelectionSource = 'album' | 'destFolder' | 'local';
@@ -150,9 +151,7 @@ export function useAlbumSelectionProvider(
         if (source === 'local') return;
         uiStore.requestCountUpdate({ source: 'album-folder', path: selectedPath });
 
-        await new Promise<void>(resolve => {
-            requestAnimationFrame(() => setTimeout(resolve, 0));
-        });
+        await afterNextPaint();
         const result = await apiSelectFolder(albumIdVal, selectedPath);
         const selectionIsCurrent = requestId === folderRequestId;
 

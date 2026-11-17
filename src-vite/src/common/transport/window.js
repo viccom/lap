@@ -43,6 +43,10 @@ class BrowserWindowStub {
   async setResizable() {}
   async maximize() {}
   async unmaximize() {}
+  // Resize/move listeners are desktop window events; a browser tab has none.
+  async onResized() { return () => {}; }
+  async onMoved() { return () => {}; }
+  async onFocusChanged() { return () => {}; }
 }
 
 let cached = null;

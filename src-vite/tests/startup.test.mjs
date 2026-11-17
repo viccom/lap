@@ -99,30 +99,68 @@ test('first-content readiness waits for a paint and emits only once', async () =
   for (const welcome of [false, true]) {
     const contentReady = ref(false);
     const showWelcomeContent = ref(welcome);
-    const frames = [];
+    const paints = [];
     const emitted = [];
-    new Function('watch', 'nextTick', 'contentReady', 'showWelcomeContent', 'requestAnimationFrame', 'defineEmits', code)(
-      watch, nextTick, contentReady, showWelcomeContent,
-      callback => frames.push(callback), () => event => emitted.push(event),
+    const afterNextPaint = () => new Promise(resolve => paints.push(resolve));
+    new Function('watch', 'nextTick', 'contentReady', 'showWelcomeContent', 'afterNextPaint', 'defineEmits', code)(
+      watch, nextTick, contentReady, showWelcomeContent, afterNextPaint, () => event => emitted.push(event),
     );
     if (!welcome) {
       await nextTick();
-      assert.equal(frames.length, 0);
+      assert.equal(paints.length, 0);
       contentReady.value = true;
     }
     await nextTick();
     await nextTick();
     assert.equal(emitted.length, 0);
-    frames.shift()();
-    assert.equal(emitted.length, 0);
-    frames.shift()();
+    paints.shift()();
+    await nextTick();
     assert.deepEqual(emitted, ['startupReady']);
     contentReady.value = false;
     await nextTick();
     contentReady.value = true;
     await nextTick();
-    assert.equal(frames.length, 0);
+    assert.equal(paints.length, 0);
     assert.equal(emitted.length, 1);
+  }
+});
+
+test('afterNextPaint releases the caller when the browser never paints a frame', async () => {
+  const source = await readFile(new URL('../src/common/nextPaint.ts', import.meta.url), 'utf8');
+  const { afterNextPaint } = await import(`data:text/javascript;base64,${Buffer.from(ts.transpile(source, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext })).toString('base64')}`);
+  // Chromium suspends requestAnimationFrame while the tab's renderer is not
+  // composited (backgrounded / occluded / automated): the callback never runs.
+  // The Web client used to hang on "loading" forever in exactly that state.
+  const realRaf = globalThis.requestAnimationFrame;
+  globalThis.requestAnimationFrame = () => 1; // accepted, never called back
+  try {
+    const started = Date.now();
+    await afterNextPaint(25);
+    assert.ok(Date.now() - started < 2000, 'must be released by the timer fallback, not hang');
+  } finally {
+    if (realRaf === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = realRaf;
+  }
+});
+
+test('afterNextPaint still defers to a real frame when frames arrive', async () => {
+  const source = await readFile(new URL('../src/common/nextPaint.ts', import.meta.url), 'utf8');
+  const { afterNextPaint } = await import(`data:text/javascript;base64,${Buffer.from(ts.transpile(source, { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext })).toString('base64')}`);
+  const realRaf = globalThis.requestAnimationFrame;
+  const pending = [];
+  globalThis.requestAnimationFrame = (callback) => { pending.push(callback); return 1; };
+  try {
+    let settled = false;
+    const painted = afterNextPaint(5000).then(() => { settled = true; });
+    assert.equal(pending.length, 1);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(settled, false, 'must not resolve before the frame is delivered');
+    pending[0]();
+    await painted;
+    assert.equal(settled, true);
+  } finally {
+    if (realRaf === undefined) delete globalThis.requestAnimationFrame;
+    else globalThis.requestAnimationFrame = realRaf;
   }
 });
 
@@ -132,23 +170,32 @@ test('Home starts warmup and update checking once, including the corrupt-library
   const code = ts.transpile(home.slice(start, home.indexOf('onMounted(async () => {', start)), {
     target: ts.ScriptTarget.ES2022,
   });
-  for (const autoCheckUpdates of [false, true]) {
-    const calls = [];
-    const frames = [];
-    const databaseCorrupted = ref(false);
-    const finish = new Function('watch', 'nextTick', 'databaseCorrupted', 'requestAnimationFrame', 'performance', 'invoke', 'config', 'checkForUpdates', 'uiStore',
-      code + ';return finishStartup;')(
-      watch, nextTick, databaseCorrupted, callback => frames.push(callback), { mark() {} },
-      async (...args) => calls.push(args), { settings: { imageSearch: { model: 1 }, autoCheckUpdates } },
-      () => calls.push(['update']), { startupReady: false },
-    );
-    databaseCorrupted.value = true;
-    await nextTick();
-    await nextTick();
-    assert.equal(calls.length, 0);
-    frames.shift()();
-    frames.shift()();
-    finish();
-    assert.deepEqual(calls, autoCheckUpdates ? [['finish_startup', { model: 1 }], ['update']] : [['finish_startup', { model: 1 }]]);
+  // The desktop shell records startup telemetry through `finish_startup`; the
+  // Web client must skip it (lapd does not expose that command) and only run
+  // the update check.
+  for (const native of [true, false]) {
+    for (const autoCheckUpdates of [false, true]) {
+      const calls = [];
+      const paints = [];
+      const databaseCorrupted = ref(false);
+      const afterNextPaint = () => new Promise(resolve => paints.push(resolve));
+      const finish = new Function('watch', 'nextTick', 'databaseCorrupted', 'afterNextPaint', 'capabilities', 'performance', 'invoke', 'config', 'checkForUpdates', 'uiStore',
+        code + ';return finishStartup;')(
+        watch, nextTick, databaseCorrupted, afterNextPaint, () => ({ native }), { mark() {} },
+        async (...args) => calls.push(args), { settings: { imageSearch: { model: 1 }, autoCheckUpdates } },
+        () => calls.push(['update']), { startupReady: false },
+      );
+      databaseCorrupted.value = true;
+      await nextTick();
+      await nextTick();
+      assert.equal(calls.length, 0);
+      paints.shift()();
+      await nextTick();
+      finish(); // idempotent: the readiness path already ran
+      const expected = [];
+      if (native) expected.push(['finish_startup', { model: 1 }]);
+      if (autoCheckUpdates) expected.push(['update']);
+      assert.deepEqual(calls, expected, `native=${native} autoCheckUpdates=${autoCheckUpdates}`);
+    }
   }
 });

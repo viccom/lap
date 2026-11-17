@@ -315,6 +315,7 @@ import {
   isWithinRootPath,
 } from '@/common/utils';
 import { getAlbumQueueIndex, getAlbumScanState, getAlbumScanIcon, shouldAnimateAlbumScanIcon } from '@/common/scanStatus';
+import { afterNextPaint } from '@/common/nextPaint';
 import { getAllAlbums, getAlbumVisibleCounts, getAllAlbumFolders, reorderAlbums, addAlbum, editAlbum, removeAlbum, getDragPayload, isDirectoryAccessible,
          fetchFolder, expandFinalFolder, getFileThumbById,
          getAlbum, checkAlbumAccessibility, cancelIndexing as cancelIndexingApi, listenIndexProgress, listenIndexFinished, recountAlbum } from '@/common/api';
@@ -1387,26 +1388,26 @@ const clickAlbum = async (album: Album) => {
   const selectionChanged = !isMainSourceActive.value || config.main.sidebarIndex !== SIDEBAR.ALBUM
     || selection.albumId.value !== album.id || !selection.selected.value;
   selection.selectAlbum(album);
-  requestAnimationFrame(() => {
-    setTimeout(async () => {
-      const previous = album.is_accessible;
-      const isAccessible = await refreshAlbumAccess(album);
-      if (libraryId !== libConfig._libraryId) return;
-      await applyAlbumAccess(album, isAccessible, libraryId, { previousAvailable: previous, selectionChanged });
-      if (!isAccessible) {
-        if (!album.children) await loadCachedAlbumTree(album);
-      } else if (!album.children) {
-        const subFolders = await fetchFolder(album.path, false, config.settings.folderSort);
-        if (subFolders) {
-          album.children = [subFolders];
-          // A leaf album still has a useful root-folder node for folder
-          // actions and context. Show it when the album is selected.
-          if (!subFolders.has_subfolders) {
-            album.is_expanded = true;
-          }
+  // A frame is enough on a live tab; afterNextPaint keeps this from stalling
+  // when the tab is not being composited (the album would never load).
+  void afterNextPaint().then(async () => {
+    const previous = album.is_accessible;
+    const isAccessible = await refreshAlbumAccess(album);
+    if (libraryId !== libConfig._libraryId) return;
+    await applyAlbumAccess(album, isAccessible, libraryId, { previousAvailable: previous, selectionChanged });
+    if (!isAccessible) {
+      if (!album.children) await loadCachedAlbumTree(album);
+    } else if (!album.children) {
+      const subFolders = await fetchFolder(album.path, false, config.settings.folderSort);
+      if (subFolders) {
+        album.children = [subFolders];
+        // A leaf album still has a useful root-folder node for folder
+        // actions and context. Show it when the album is selected.
+        if (!subFolders.has_subfolders) {
+          album.is_expanded = true;
         }
       }
-    }, 0);
+    }
   });
 };
 
@@ -1460,9 +1461,7 @@ const focusAlbumListRoot = (event: MouseEvent) => {
   albumListRootRef.value?.focus({ preventScroll: true });
 };
 
-const waitForNextFrame = () => new Promise<void>((resolve) => {
-  window.requestAnimationFrame(() => resolve());
-});
+const waitForNextFrame = () => afterNextPaint();
 
 const focusExpandedFolderTree = async (albumId: number) => {
   await nextTick();

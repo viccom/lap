@@ -456,7 +456,7 @@
 import { OVERLAY_CLICK_MOVE_TOLERANCE } from '@/common/constants';
 import { defineAsyncComponent, ref, computed, watch, onMounted, onUpdated, onBeforeUnmount, type Component, type CSSProperties } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getCurrentWebviewWindow as getCurrentWindow } from '@/common/transport/window.js';
 import { runPreviewWindowOperation, recoverPreviewWindowFocus } from '@/common/previewWindow';
 import { config, libConfig } from '@/common/config';
 import { useToast } from '@/common/toast';

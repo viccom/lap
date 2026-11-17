@@ -10,7 +10,7 @@
  
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
-import { emit, transportMode } from '@/common/transport';
+import { emit, transportMode, capabilities } from '@/common/transport';
 import { invoke } from '@/common/transport';
 import { isAuthenticated } from '@/common/auth';
 import { getCurrentWebviewWindow } from '@/common/transport/window.js';
@@ -120,7 +120,8 @@ onMounted(async () => {
     await nextTick();
     await win.show();
     performance.mark('startup-window-shown');
-    void invoke('record_startup_stage', { stage: 'window-shown' }).catch(console.error);
+    // Desktop startup telemetry: not on lapd's HTTP whitelist (phase 3).
+    if (capabilities().native) void invoke('record_startup_stage', { stage: 'window-shown' }).catch(console.error);
   }
 
   // Initialize library state from backend. The Web client skips this until
@@ -135,7 +136,7 @@ onMounted(async () => {
     // Continue anyway - user can retry from UI
   } finally {
     isReady.value = true;
-    if (win.label === 'main') {
+    if (win.label === 'main' && capabilities().native) {
       performance.mark('startup-library-state-ready');
       void invoke('record_startup_stage', { stage: 'library-state-ready' }).catch(console.error);
     }

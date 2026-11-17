@@ -184,10 +184,11 @@
 <script setup lang="ts">
 import { defineAsyncComponent, ref, computed, onBeforeUnmount, onMounted, watch, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { emit, listen } from '@/common/transport';
+import { emit, listen, capabilities } from '@/common/transport';
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { getName } from '@tauri-apps/api/app';
 import { invoke } from '@/common/transport';
+import { afterNextPaint } from '@/common/nextPaint';
 import { applyAlbumAccess, recheckOfflineAlbums } from '@/common/albumRecovery';
 import { config, libConfig } from '@/common/config';
 import { useAppUpdater } from '@/common/updater';
@@ -349,7 +350,9 @@ const currentLibrary = computed(() =>
 
 // Manage Libraries dialog state
 const showManageLibraries = ref(false);
-const showDesktopTitleBar = isWin || isLinux;
+// The custom title bar is a desktop chrome affordance (native window controls,
+// drag region); a browser tab has none, so the Web client drops it.
+const showDesktopTitleBar = capabilities().native && (isWin || isLinux);
 
 /// Splitter for resizing the left pane
 const isDraggingSplitter = ref(false);
@@ -482,11 +485,15 @@ async function finishStartup() {
   startupFinished = true;
   uiStore.startupReady = true;
   performance.mark('startup-first-content-ready');
-  void invoke('finish_startup', { model: config.settings.imageSearch.model || 0 }).catch(console.error);
+  // `finish_startup` is desktop startup telemetry and is not on lapd's HTTP
+  // whitelist; the Web client skips it instead of logging a 403.
+  if (capabilities().native) {
+    void invoke('finish_startup', { model: config.settings.imageSearch.model || 0 }).catch(console.error);
+  }
   if (config.settings.autoCheckUpdates !== false) void checkForUpdates(false);
 }
 watch(databaseCorrupted, corrupted => {
-  if (corrupted) void nextTick(() => requestAnimationFrame(() => requestAnimationFrame(() => finishStartup())));
+  if (corrupted) void afterNextPaint().then(() => finishStartup());
 });
 
 onMounted(async () => {
@@ -532,11 +539,17 @@ onMounted(async () => {
   });
   window.addEventListener('focus', handleAccessRecovery);
 
-  try {
-    const name = await getName();
-    if (name) appName.value = name;
-  } catch (e) {
-    console.error('Failed to get app name:', e);
+  // `getName` is a Tauri app API; over the HTTP transport there is no such
+  // call, so the Web client falls back to the document title.
+  if (capabilities().native) {
+    try {
+      const name = await getName();
+      if (name) appName.value = name;
+    } catch (e) {
+      console.error('Failed to get app name:', e);
+    }
+  } else {
+    appName.value = document.title || 'Lap';
   }
 
 });

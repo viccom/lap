@@ -215,7 +215,7 @@
 import { isOriginalStorageUnavailable, isOriginalUnavailable, setAlbumAccessibility, resetFileAccessibility } from '@/common/availability';
 import { ref, watch, computed, onMounted, onUnmounted, reactive } from 'vue';
 import { getCurrentWebviewWindow } from '@/common/transport/window.js';
-import { emit, listen } from '@/common/transport';
+import { emit, listen, transportMode } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
 import { useUIStore } from '@/stores/uiStore';
@@ -1302,6 +1302,12 @@ const toggleNativeFullScreen = () => {
 };
 
 const closeWindow = () => {
+  // Web client (phase 4): the viewer is a same-tab route, not a window —
+  // go back to the grid instead of trying to close a browser tab.
+  if (transportMode === 'http') {
+    void import('@/common/router').then(({ default: router }) => router.back());
+    return;
+  }
   appWindow.close();
 }
 

@@ -2,8 +2,14 @@ import { createApp, watch } from 'vue'
 import { i18n, initializeLanguage, resolveSystemLanguage } from '@/common/i18n'
 import { createPinia } from 'pinia'
 import piniaPersistedState from 'pinia-plugin-persistedstate'
-import { emit, listen, transportMode } from '@/common/transport'
+import { emit, listen, transportMode, capabilities } from '@/common/transport'
 import { invoke } from '@/common/transport'
+// Desktop startup telemetry is not on lapd's HTTP whitelist (phase 3 keeps the
+// bridge to app commands); the Web client fires these only in the desktop shell.
+const recordStartupStage = (stage) => {
+  if (!capabilities().native) return
+  void invoke('record_startup_stage', { stage }).catch(console.error)
+}
 import { getCurrentWebviewWindow } from '@/common/transport/window.js'
 // Web client: navigator.language is the browser equivalent of plugin-os's
 // locale; the real plugin has no browser implementation (phase 4).
@@ -99,7 +105,7 @@ if (config.settings.language === initialLanguage) {
 }
 else i18n.global.locale.value = config.settings.language
 performance.mark('startup-language-ready')
-if (isMainWindow) void invoke('record_startup_stage', { stage: 'language-ready' }).catch(console.error)
+if (isMainWindow) recordStartupStage('language-ready')
 
 // Set up global properties
 app.config.globalProperties.$invoke = invoke
@@ -120,7 +126,7 @@ app.use(i18n)
 // Mount the app
 app.mount('#app')
 performance.mark('startup-app-mounted')
-if (isMainWindow) void invoke('record_startup_stage', { stage: 'app-mounted' }).catch(console.error)
+if (isMainWindow) recordStartupStage('app-mounted')
 
 // Listen for events
 if (isMainWindow) {

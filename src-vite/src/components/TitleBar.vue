@@ -72,7 +72,9 @@
 
 import { ref, watch } from 'vue';
 import { emit } from '@/common/transport';
-import { getCurrentWindow  } from '@tauri-apps/api/window';
+// Window facade: the real Tauri window in the desktop shell, a browser-safe
+// stub in the Web client (the raw `@tauri-apps/api/window` module throws there).
+import { getCurrentWebviewWindow as getCurrentWindow } from '@/common/transport/window.js';
 import { isWin, isMac, isLinux } from '@/common/utils';
 import { capabilities } from '@/common/transport';
 
