@@ -155,7 +155,10 @@ async function addByPath() {
   adding.value = true;
   try {
     const name = albumName.value.trim() || path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() || path;
-    const album = await addAlbum(path, name, '', { fileTypes: 0, smallImageFilter: 0, excludedFolders: [] });
+    // file_types is a 1..=7 bitmask on the backend (1=photos, 2=videos,
+    // 4=RAW); 0 is rejected as "Invalid album filters". 7 = accept all types,
+    // matching the desktop album-edit default (no excluded types).
+    const album = await addAlbum(path, name, '', { fileTypes: 7, smallImageFilter: 0, excludedFolders: [] });
     if (!album) throw new Error(t('settings.server.add_album_failed'));
     toast.success(t('settings.server.add_album_success', { name }));
     albumPath.value = '';

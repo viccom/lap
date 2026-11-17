@@ -206,6 +206,36 @@ test('addAlbum routes the desktop to add_album and the Web to the scope-free twi
   assert.ok(body.includes("'add_album'"), 'the desktop path must call add_album');
   assert.ok(body.includes("'add_album_by_path'"), 'the Web path must call add_album_by_path');
 });
+
+test('the Web add-album entry sends a valid 1..=7 file_types bitmask', async () => {
+  // The backend (Album::edit) rejects file_types outside 1..=7 with 500
+  // "Invalid album filters". 0 (the obvious-looking "no filter") is invalid;
+  // the desktop album-edit form defaults to 7 (accept all). The Web server-path
+  // entry must match, or adding an album 500s and the button looks broken.
+  const src = readFileSync(
+    new URL('../src/components/SettingsServer.vue', import.meta.url),
+    'utf8',
+  );
+  const call = src.slice(src.indexOf('addAlbum('), src.indexOf('addAlbum(') + 160);
+  const m = call.match(/fileTypes:\s*(\d+)/);
+  assert.ok(m, 'SettingsServer must pass an explicit fileTypes');
+  const ft = Number(m[1]);
+  assert.ok(ft >= 1 && ft <= 7, `fileTypes must be 1..=7 (got ${ft})`);
+});
+
+test('the Web shell routes the add-album request to the server-path entry', async () => {
+  // Welcome.vue's "新建相册" emits `add-album-requested`. On the desktop the
+  // handler opens a folder picker; on the Web there is none (openFolderDialog
+  // returns null), so the desktop branch is a silent no-op. The Web branch must
+  // go to the working server-path entry instead.
+  const src = readFileSync(new URL('../src/views/Home.vue', import.meta.url), 'utf8');
+  const start = src.indexOf("listen('add-album-requested'");
+  assert.ok(start >= 0, 'Home.vue must listen for add-album-requested');
+  const body = src.slice(start, src.indexOf('});', start));
+  assert.ok(/capabilities\(\)\.native/.test(body), 'the handler must branch on host capabilities');
+  assert.ok(/SERVER_SETTINGS_TAB/.test(body), 'the Web branch must route to the server settings tab');
+  assert.ok(/clickSettings\(/.test(body), 'the Web branch must navigate to settings');
+});
 test('http transport: server_info is fetched and device management posts JSON', async () => {
   const calls = [];
   const t = createHttpTransport({

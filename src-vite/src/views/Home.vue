@@ -194,7 +194,7 @@ import { useAppUpdater } from '@/common/updater';
 import { useUIStore } from '@/stores/uiStore';
 import { isWin, isMac, isLinux, SCALE_VALUES } from '@/common/utils';
 import { matchesShortcut, ShortcutPlatform } from '@/common/shortcuts';
-import { SIDEBAR, SETTINGS_TAB, SETTINGS_BASE_WIDTH, SETTINGS_BASE_HEIGHT, PANEL_ANIMATION_MS } from '@/common/constants';
+import { SIDEBAR, SETTINGS_TAB, SERVER_SETTINGS_TAB, SETTINGS_BASE_WIDTH, SETTINGS_BASE_HEIGHT, PANEL_ANIMATION_MS } from '@/common/constants';
 import { getAppConfig, getLibraryVisibleCounts, switchLibrary, cancelIndexing, cancelFaceIndex } from '@/common/api';
 
 // vue components
@@ -512,6 +512,13 @@ onMounted(async () => {
   void checkLibraryEmpty();
 
   unlistenAddAlbumRequested = await listen('add-album-requested', async () => {
+    // Web client: there is no folder picker (openFolderDialog returns null), so
+    // the desktop flow below is a silent dead-end. Send the user to the working
+    // entry — Settings → 服务器 → add-album-by-server-path (§9-7).
+    if (!capabilities().native) {
+      await clickSettings(SERVER_SETTINGS_TAB);
+      return;
+    }
     if (config.main.sidebarIndex !== SIDEBAR.ALBUM) config.main.sidebarIndex = SIDEBAR.ALBUM;
     await nextTick();
     (panelRef.value as any)?.clickNewAlbum?.();
