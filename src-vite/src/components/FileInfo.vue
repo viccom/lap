@@ -571,7 +571,7 @@ import ImageNavigator from '@/components/ImageNavigator.vue';
 import { invoke } from '@/common/transport';
 import { navigatorLayout } from '@/common/imageNavigator';
 import { h, ref, nextTick, computed, watch, onBeforeUnmount, onMounted } from 'vue';
-import { listen } from '@/common/transport';
+import { listen, transportMode } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
 import { useUIStore } from '@/stores/uiStore';
@@ -605,6 +605,8 @@ import {
   combineFileName,
   isValidFileName,
   getAssetSrc,
+  getMediaSrcForId,
+  signMediaUrl,
 } from '@/common/utils';
 import {
   IconCopy,
@@ -1023,6 +1025,11 @@ const previewVideoPath = computed(() => {
   if (isMotionPhoto.value) return motionPhotoVideoPath.value;
   return props.fileInfo?.file_path;
 });
+// Web client playback addresses video by id (batch 4.9): live photo's moving
+// part has its own id, otherwise the still's id serves /api/video/{id}.
+const previewVideoId = computed(() => (
+  isLivePhoto.value ? Number(props.fileInfo?.live_photo_video_id || 0) : Number(props.fileInfo?.id || 0)
+));
 const canPreviewVideo = computed(() => (
   (isVideoFile.value || isLivePhoto.value || isMotionPhoto.value)
   && !!previewVideoPath.value
@@ -1146,7 +1153,14 @@ async function playPreviewVideo() {
   const video = previewVideoRef.value;
   if (!video || request !== videoPreviewRequest) return;
 
-  video.src = getAssetSrc(previewVideoPath.value);
+  // Web client: resolve via /api/video/{id} + signature (batch 4.9); desktop
+  // keeps the path-based convertFileSrc source.
+  let src = getAssetSrc(previewVideoPath.value);
+  if (transportMode === 'http') {
+    src = (await signMediaUrl(getMediaSrcForId(previewVideoId.value, 'video'))) || src;
+    if (!video || request !== videoPreviewRequest) return;
+  }
+  video.src = src;
   video.muted = true;
 
   try {

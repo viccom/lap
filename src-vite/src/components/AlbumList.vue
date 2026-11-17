@@ -299,7 +299,7 @@ import { externalDragKind, updateExternalDrag, resetExternalDrag, finishExternal
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus'
-import { listen, emit as tauriEmit } from '@/common/transport';
+import { listen, emit as tauriEmit, transportMode } from '@/common/transport';
 import { config, libConfig } from '@/common/config';
 import { useUIStore } from '@/stores/uiStore';
 import {
@@ -307,6 +307,7 @@ import {
   getThumbUrl,
   getThumbnailDataUrl,
   getThumbnailDataUrlInflight,
+  signMediaUrl,
   isWin,
   isMac,
   normalizePathForCompare,
@@ -912,7 +913,10 @@ const loadAlbumCover = async (
   delete albumCoverErrors.value[albumId];
   if (coverFileId) {
     let url = getThumbUrl(coverFileId, bustCache, config.settings.thumbnailSize);
-    if (isWin && !url.startsWith('data:')) {
+    if (transportMode === 'http') {
+      // Web client: lapd requires the media signature on thumbnail URLs (batch 4.9).
+      url = await signMediaUrl(url);
+    } else if (isWin && !url.startsWith('data:')) {
       const inflight = getThumbnailDataUrlInflight(coverFileId, config.settings.thumbnailSize);
       const dataUrl = await (inflight || setThumbnailDataUrlInflight(
         coverFileId,

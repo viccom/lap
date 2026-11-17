@@ -852,6 +852,7 @@ import { PREVIEW_WINDOW_FOCUS_RESTORED } from '@/common/previewWindow';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
 import { useUIStore } from '@/stores/uiStore';
+import { useViewerSessionStore } from '@/stores/viewerSessionStore';
 import { getAlbum, getAllAlbums, recountAlbum, getQueryCountAndSum, getQueryTimeLine, getQueryFiles, getFilesByIds, getGroupedQueryRows, getGroupedFilePosition, getGroupFileIds, getQueryFileIds, syncAlbumFolderMtimes,
          getSmartQueryCountAndSum, getSmartQueryTimeLine, getSmartQueryFiles, getSmartGroupedQueryRows, getSmartGroupFileIds, getSmartQueryFileIds, getSmartQueryFilePosition,
          copyImages, renameFile, moveFile, moveFileOutsideLibrary, copyFile, withFileTransferBatch, deleteFile, deleteFilePermanently, batchDeleteFiles, editFileComment, getFileThumb, getFileThumbs, getFileInfo,
@@ -892,7 +893,7 @@ import { isWin, isMac, isLinux, separator,
          getCachedThumbnailDataUrl,
          clearCachedThumbnailDataUrl,
          extractFileName, combineFileName, getFolderPath, getFolderName, getSelectOptions, 
-         shortenFilename, getSlideShowInterval, copyFilePaths, getClipboardItemPaths, getFullPath, normalizePathForCompare, isWithinRootPath, shouldUseBackendPreview } from '@/common/utils';
+         shortenFilename, getSlideShowInterval, copyFilePaths, getClipboardItemPaths, getFullPath, normalizePathForCompare, isWithinRootPath, shouldUseBackendPreview, getMediaSrcForId, signMediaUrl } from '@/common/utils';
 import { afterNextPaint } from '@/common/nextPaint';
 
 import DropDownSelect from '@/components/DropDownSelect.vue';
@@ -989,6 +990,7 @@ const props = defineProps({
 const { locale, messages, t } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
 const uiStore = useUIStore();
+const viewerSession = useViewerSessionStore();
 
 const contentTitle = ref("");
 
@@ -6587,6 +6589,40 @@ function restoreInitialSelectionIfNeeded() {
   void updateSelectedImage(selectedItemIndex.value);
 }
 
+/**
+ * Web client only (phase 4, batch 4.9): the viewer/editor/montage are same-tab
+ * routes, so Content unmounts while they are open and any save made there is
+ * reported through the viewer-session store instead of a cross-window event.
+ * Called once after the first list load; mirrors what the desktop listeners do.
+ */
+let viewerSessionRefreshChecked = false;
+async function consumeViewerSessionRefreshOnce() {
+  if (transportMode !== 'http' || viewerSessionRefreshChecked) return;
+  viewerSessionRefreshChecked = true;
+  await consumeViewerSessionRefresh();
+}
+
+async function consumeViewerSessionRefresh() {
+  if (transportMode !== 'http') return;
+  const pending = viewerSession.consumeRefresh();
+  if (!pending) return;
+  if (pending.kind === 'editor') {
+    const { sourceFileId, saveAsNew, filePath } = pending.payload || {};
+    const sourceId = Number(sourceFileId || 0);
+    const saveAsContext = sourceId > 0 ? viewerSession.editorSaveAsContexts.get(sourceId) || null : null;
+    if (sourceId > 0) viewerSession.editorSaveAsContexts.delete(sourceId);
+    if (!saveAsNew && filePath) uiStore.updateFileVersion(filePath);
+    await onFileSaved(true, { saveAsNew, filePath, saveAsContext });
+  } else if (pending.kind === 'montage') {
+    const { filePath } = pending.payload || {};
+    if (filePath && normalizePathForCompare(getFolderPath(filePath)) === normalizePathForCompare(viewerSession.montageSourceFolder)) {
+      await onFileSaved(true, { saveAsNew: true, filePath, saveAsContext: viewerSession.montageSaveAsContext });
+    } else if (filePath) {
+      toast.success(localeMsg.value.tooltip.save_image.save_as_success || localeMsg.value.tooltip.save_image.success);
+    }
+  }
+}
+
 onBeforeUnmount(() => {
   if (scanStreamFlushTimer) {
     clearTimeout(scanStreamFlushTimer);
@@ -7528,6 +7564,7 @@ async function initializeGroupedFileList(requestId: number, retainedFiles?: Map<
   gridViewRef.value?.refreshLayout?.();
   markDedupSourceUpdated(requestId);
   if (!retainedFiles) restoreInitialSelectionIfNeeded();
+  void consumeViewerSessionRefreshOnce();
   restoreScrollAfterRefresh();
   if (totalFileCount.value === 0) {
     openImageViewer(0, false, true);
@@ -7832,6 +7869,7 @@ async function getFileList(
       fileList.value = createVirtualFileSlots(totalFileCount.value);
       markDedupSourceUpdated(requestId);
       restoreInitialSelectionIfNeeded();
+      void consumeViewerSessionRefreshOnce();
       restoreScrollAfterRefresh();
       if (totalFileCount.value === 0) {
         openImageViewer(0, false, true);
@@ -11879,6 +11917,15 @@ async function openImageViewer(
     }
     const forceSplitParam = compareSplitCount || 0;
     const compareModeParam = compareMode ? 1 : 0;
+    // Snapshot the ordered ids the viewer will walk so its prev/next needs no
+    // live Content (phase 4, batch 4.9). A compare session carries its own list;
+    // a normal session uses the grid's query order. `getCurrentQueryFileIds()`
+    // returns the same flat order `fileList` (and the viewer index) use — the
+    // placeholder window must NOT be mapped/filtered, which would shift indices.
+    const sessionIds = isCompareRequest
+      ? viewerFiles.map((item: any) => Number(item?.id || 0)).filter((id: number) => id > 0)
+      : ((await getCurrentQueryFileIds()) || []).map((id: any) => Number(id)).filter((id: number) => id > 0);
+    viewerSession.openSession(sessionIds, leftIndex);
     const query = `fileId=${leftFileId}&fileIndex=${leftIndex}&fileCount=${fileCount}` +
       `&rightFileId=${rightFileId}&rightFileIndex=${rightIndex}` +
       `&forceSplitCount=${forceSplitParam}&compareFileCount=${compareMode ? fileCount : 0}` +
@@ -12026,6 +12073,10 @@ async function openMontage() {
     }
     montageSaveAsContext = getCurrentSaveAsContext(images[0]);
     montageSourceFolder = getFolderPath(images[0].file_path);
+    // Content unmounts under the montage route; carry the save-as context in
+    // the session store so the remount can match its save target (batch 4.9).
+    viewerSession.montageSaveAsContext = montageSaveAsContext;
+    viewerSession.montageSourceFolder = montageSourceFolder;
     const { default: router } = await import('@/common/router');
     await router.push(`${webRouteForWindowLabel('montage')}?fileIds=${imageIds.slice(0, MONTAGE_MAX_PHOTOS).join(',')}`);
     return;
@@ -12109,6 +12160,9 @@ async function openImageEditor(index: number) {
 
   // Web client: no secondary windows — the editor is a route.
   if (transportMode === 'http') {
+    // Content unmounts under the editor route, so carry the save-as context in
+    // the session store for the remount to consume (batch 4.9).
+    viewerSession.editorSaveAsContexts.set(fileId, getCurrentSaveAsContext(file));
     const { default: router } = await import('@/common/router');
     await router.push(`${webRouteForWindowLabel('imageeditor')}?fileId=${fileId}`);
     return;
@@ -12158,7 +12212,7 @@ async function printImage(index: number) {
   const fileType = Number(selectedFile.file_type || 1);
 
   try {
-    const source = shouldUseBackendPreview(selectedFile.file_path, fileType)
+    let source = shouldUseBackendPreview(selectedFile.file_path, fileType)
       ? getPreviewUrl(
         fileId,
         selectedFile.file_path,
@@ -12166,6 +12220,14 @@ async function printImage(index: number) {
         Number(selectedFile.modified_at || 0),
       )
       : getAssetSrc(selectedFile.file_path, Number(selectedFile.modified_at || 0));
+    // Web client: preview/original URLs need the media signature, and a
+    // browser cannot use the path-based asset URL at all (batch 4.9).
+    if (transportMode === 'http') {
+      if (!shouldUseBackendPreview(selectedFile.file_path, fileType)) {
+        source = getMediaSrcForId(fileId, 'image', Number(selectedFile.modified_at || 0)) || source;
+      }
+      source = await signMediaUrl(source);
+    }
     await printImageView.value?.print(source);
   } catch (error) {
     console.error('Failed to prepare image for printing:', error);

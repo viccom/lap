@@ -285,13 +285,14 @@ import { MONTAGE_MAX_PHOTOS, MONTAGE_BACKGROUND_PRESETS, MONTAGE_PAGE_SIZES } fr
 import { ref, toRefs, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
+import { useViewerSessionStore } from '@/stores/viewerSessionStore';
 import { config } from '@/common/config';
 import { isWin, isLinux, getFolderPath, getFullPath, combineFileName, getSelectOptions, getThumbUrl, signMediaUrl, isValidFileName, formatFileSize, formatDimensionText, formatTimestamp, formatCameraInfo, formatCaptureSettings } from '@/common/utils';
 import { getFileInfo, checkFileExists, renderMontage } from '@/common/api';
 import { computeMontageLayout, shuffled, type MontageItem } from '@/common/montageLayout';
 import { getAspectRatio } from '@/common/layout';
-import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
-import { emit as tauriEmit, capabilities } from '@/common/transport';
+import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel, closeOrBack } from '@/common/transport/window.js';
+import { emit as tauriEmit, capabilities, transportMode } from '@/common/transport';
 import { open as openDialog, message } from '@/common/transport/dialog.js';
 
 import PrintImage from '@/components/PrintImage.vue';
@@ -309,6 +310,7 @@ const PRINT_PAGES: PageKey[] = ['a4', 'photo'];
 const router = useRouter();
 const { t, locale, messages } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
+const viewerSession = useViewerSessionStore();
 const appWindow = getCurrentWebviewWindow();
 const showDesktopTitleBar = isWin || isLinux;
 
@@ -748,7 +750,12 @@ async function confirmSave() {
       outputFormat: outputFormat.value,
       quality: [90, 80, 60][config.montage.quality] || 80,
     });
-    await tauriEmit('message-from-montage', { type: 'success', filePath: destFilePath });
+    if (transportMode === 'http') {
+      // Web client: Content is unmounted; leave a refresh signal for its remount.
+      viewerSession.requestRefresh('montage', { filePath: destFilePath });
+    } else {
+      await tauriEmit('message-from-montage', { type: 'success', filePath: destFilePath });
+    }
   } catch (error) {
     saveError.value = `${t('msgbox.montage.save_failed')} ${error}`;
   } finally {
@@ -758,6 +765,11 @@ async function confirmSave() {
 
 async function closeWindow() {
   if (isProcessing.value) return; // the render reports back through this window
+  // Web client: no window to close — go back to the grid (batch 4.8/4.9).
+  if (transportMode === 'http') {
+    closeOrBack();
+    return;
+  }
   try {
     await appWindow.close();
   } catch {

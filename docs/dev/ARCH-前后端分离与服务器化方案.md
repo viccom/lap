@@ -403,6 +403,25 @@ src-vite/                      一套前端，两种传输
 - **验证**：前端 `tests/*.test.mjs` **453/0**（+2 守卫）；`tests/` 全目录 **479/0**；两种构建 exit=0；`cargo test --workspace` **647/0/10 exit=0**（本批零 Rust 改动）。**真实 lapd 浏览器实测**：`/settings` 上 `data-testid="web-back"` 可见，点击 → 回到 `/`；新开 `/montage`（无历史）点击 → 回退到 `/`（兜底生效）。lapd 托管产物与本地 `build:http` entry hash 一致（`index-B7LLGEM9.js`），新 chunk `SubpageBackButton-*.js` 可服务端取到。
 - **诚实边界**：桌面端行为未改动（组件自门控 + 守卫覆盖）；PWA/manifest、`favicon.ico` 404 仍留批次 5。
 
+**批次 4.9（浏览器版核心体验补齐：跨页会话 + 视频可播放 + 收尾）· 已完成**
+
+- **触发**：对「浏览器版 vs 桌面版差异」做了穷尽审计（3 个 Explore 子代理 + 逐条亲验），确认三类**真实功能缺陷**（非宿主能力差异），并修复。
+- **缺陷 B（查看器翻页/幻灯片在浏览器失效）**：桌面靠 `emit('message-from-image-viewer')` → `Content.vue` 回传 `update-img`；Web 端二级页改成**同标签页路由**后 `Content` 被卸载（`App.vue` 是裸 `<router-view>`，无 `KeepAlive`），接收者消失；且回传走 `webviewWindow().getByLabel('imageviewer').emit(...)`，Web 下 `getByLabel` 恒 `null`。**浏览器实证**：修复前点「下一张」，文件名与索引不变。
+- **缺陷 C（编辑器/拼图保存后主网格不刷新）**：`ImageEditor.vue` / `Montage.vue` 的 `message-from-*` 同样无人接收。
+- **缺陷 A（视频在浏览器完全无法播放）**：`http.js` 的 `assetUrl('asset')` 在 Web **恒返回空串**；`Video.vue`/`Thumbnail.vue`/`FileInfo.vue` 的播放/预览源走 `getAssetSrc` → 空。后端 `/api/video/{file_id}` 与 `/api/original/{file_id}` 早已存在（含 Range/206 + HMAC 强制签名），前端零引用。
+- **缺陷 D/E/F（收尾）**：若干媒体 URL 未签名（Web 403）；`BrowserWindowStub` 缺 `destroy`/`isVisible`（关闭按钮点了没反应）；守卫正则漏掉动态 `import('@tauri-apps/...')`。
+- **收口（方案 A：跨页会话上移 Pinia store，桌面多窗口模型零改动）**：
+  - 新增 `stores/viewerSessionStore.js`：`orderedIds`（打开查看器时快照的**按当前查询/分组顺序**的完整 id 列表）、`selectionIndex`（查看器当前 index，供主网格回来跟随）、`pendingRefresh`（保存后一次性刷新信号）+ 保存上下文（`editorSaveAsContexts`/`montageSourceFolder`/`montageSaveAsContext`）。
+  - `Content.vue`：Web 分支 `openImageViewer` 在 `router.push` 前 `viewerSession.openSession(await getCurrentQueryFileIds(), leftIndex)`（normal 用查询顺序、compare 用其自带列表——**placeholder 窗口不能 filter，否则索引移位**）；`onMounted` 首屏加载后 `consumeViewerSessionRefreshOnce()` → 走桌面同款 `onFileSaved`。
+  - `ImageViewer.vue`：`requestFileAtIndex` 的 Web 分支改为 `viewerSession.fileIdAt(index)` 解析 + `setSelectionIndex`，不再 emit（桌面路径不变）；`fileCount` 用会话长度。
+  - `ImageEditor.vue` / `Montage.vue`：Web 分支保存成功 → `requestRefresh(kind, payload)`（+ 关闭走 `closeOrBack`）。
+  - 新增 `utils.ts:getMediaSrcForId(fileId, kind)`：Web 下产出 `/api/original|video/{id}`（桌面返回空），配合现成 `signMediaUrl` 签名。`Video.vue` 在 Web 下**直连 `/api/video/{file_id}`**（跳过 `prepareVideo` 转码缓存分支——其产物是服务端路径，Web 无端点），且 `fallbackToPrepared` 在 Web 直接报错以免 `loadDirect⇄loadPrepared` 无限递归；`MediaViewer.vue` 的 live-photo `<Video>` 补 `:fileId`。
+  - 未签名补点：`Content.vue`（打印）、`PhotoMapView.vue`（地图标记，改异步签名后回填 `img.src`）、`Image.vue`（缩略图/离线占位）、`AlbumList.vue`/`SmartAlbumList.vue`（相册封面）、`DedupPane.vue`（`resolveDedupThumbnail` 改 async）。
+  - `window.js`：`BrowserWindowStub` 补 `destroy`/`isVisible`，删重复的 `isMinimized`；`Montage.vue`/`ImageEditor.vue`/`Settings.vue` 的关闭/取消/Esc 加 Web 分支走 `closeOrBack()`。`Settings.vue` 的 `updateSettingsWindowSize` 补 `capabilities().native` 早退。
+- **守卫（非空转已证）**：`tests/transport.test.mjs` +4 例——① stub 必须实现 `close/destroy/isVisible/hide/setFocus`（移除 `destroy` 已验证变红）；② `getMediaSrcForId` 必须 Web-only 且产出 `/api/{endpoint}/{id}`；③ 查看器 Web 分支必须从会话 store 解析 id，Content 必须 `openSession`/`consumeRefresh`；④ 编辑器/拼图必须走 store/`closeOrBack`。原「宿主专属 Tauri 模块」守卫的 `forbidden` 正则**补上动态 `import('@tauri-apps/...')`** 形式（`main.js`/`Home.vue`/`Settings.vue` 因已按 native/transport 门控而加入 allowlist）。
+- **验证**：前端 `tests/*.test.mjs` **459/0**（+6 例，含 Web 视频与「Web 失败不递归」用例）；`tests/` 全目录 **485/0**；两种构建 exit=0；`cargo test --workspace` **647/0/10 exit=0**（本批零 Rust 改动）。**真实 lapd 浏览器实测（真库只读副本）**：从网格 Ctrl+双击打开查看器 → **点「下一张」`IMG_2218.CR2 (1/)` → `IMG_2219.CR2 (2/)`**、点「上一张」回退、连点 3 次到 `IMG_2221 (4/)`；**视频播放**：`<video>` `readyState=4`、`1080×1920`、时长 46s、`paused=false`，`currentSrc` 为已签名 `/api/video/2892?dev=…&exp=…&sig=…`；`/image-editor` 点「取消」→ 回 `/`；`/settings` 按 `Esc` → 回 `/`。
+- **诚实边界**：视频/原图真机播放依赖库内**可达**媒体（本轮用 D: 盘 `董开源备份` 的 87 个真实视频验证）；F: 盘旧库不可达无法验。不改桌面多窗口模型（桌面回归靠前端测试 + 桌面构建 exit=0 + 桌面路径仅新增 `transportMode` 分支外零改动）。大库 `openSession` 快照全量 id 有一次性开销，本批接受。能力差异的 UI 提示/隐藏（壁纸假成功、文件对话框无提示、更新器按钮无反馈、剪贴板 404 文案）留 4.10。
+
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。

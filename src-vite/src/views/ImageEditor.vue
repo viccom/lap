@@ -550,13 +550,14 @@
 import { ref, computed, onMounted, onUnmounted, nextTick, watch, type CSSProperties } from 'vue';
 import { useRouter } from 'vue-router';
 import { useUIStore } from '@/stores/uiStore';
+import { useViewerSessionStore } from '@/stores/viewerSessionStore';
 import { useI18n } from 'vue-i18n';
 import { config } from '@/common/config';
 import { isWin, isLinux, SCALE_VALUES, getFolderPath, getFileExtension, shortenFilename, getFullPath, combineFileName, getSelectOptions, getAssetSrc, getPreviewUrl, getThumbUrl, signMediaUrl, shouldUseBackendPreview } from '@/common/utils';
 import { editImage, checkFileExists, getFileInfo } from '@/common/api';
 import { getMaxInscribedRect, clampCenterInRotatedRect, maxResizeT } from '@/common/geometry';
-import { getCurrentWebviewWindow } from '@/common/transport/window.js';
-import { emit as tauriEmit, listen } from '@/common/transport';
+import { getCurrentWebviewWindow, closeOrBack } from '@/common/transport/window.js';
+import { emit as tauriEmit, listen, transportMode } from '@/common/transport';
 
 watch(() => config.imageEditor, (preferences) => {
   void tauriEmit('image-editor-config-changed', JSON.parse(JSON.stringify(preferences)));
@@ -597,16 +598,35 @@ const { locale, messages } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
 
 const uiStore = useUIStore();
+const viewerSession = useViewerSessionStore();
 const appWindow = getCurrentWebviewWindow();
 const showDesktopTitleBar = isWin || isLinux;
 
 function sendToParent(payload: Record<string, any>) {
+  // Web client (phase 4, batch 4.9): Content is unmounted under the editor
+  // route, so record a one-shot refresh signal it consumes on remount instead
+  // of emitting into a channel with no receiver.
+  if (transportMode === 'http') {
+    if (payload.type === 'success') {
+      viewerSession.requestRefresh('editor', {
+        sourceFileId: Number(payload.sourceFileId || 0),
+        saveAsNew: !!payload.saveAsNew,
+        filePath: payload.filePath || '',
+      });
+    }
+    return;
+  }
   void tauriEmit('message-from-image-editor', payload).catch((error) => {
     console.error('Failed to notify parent from image editor:', error);
   });
 }
 
 async function closeEditorWindow() {
+  // Web client: no window to close — go back to the grid (batch 4.9).
+  if (transportMode === 'http') {
+    closeOrBack();
+    return;
+  }
   try {
     await appWindow.close();
   } catch (error) {

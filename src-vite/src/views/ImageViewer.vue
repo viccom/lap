@@ -224,6 +224,7 @@ import { emit, listen, transportMode } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
 import { useUIStore } from '@/stores/uiStore';
+import { useViewerSessionStore } from '@/stores/viewerSessionStore';
 import { config, libConfig } from '@/common/config';
 import { isWin, isMac, isLinux, copyFilePaths, getClipboardItemPaths, getSlideShowInterval, SCALE_VALUES } from '@/common/utils';
 import { matchesShortcut, ShortcutActionId, ShortcutPlatform, VIEW_BACKGROUND_SHORTCUTS } from '@/common/shortcuts';
@@ -258,6 +259,7 @@ import {
 const { locale, messages, t } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
 const uiStore = useUIStore();
+const viewerSession = useViewerSessionStore();
 const toast = useToast();
 
 const appWindow = getCurrentWebviewWindow()
@@ -1166,7 +1168,53 @@ watch(() => [fileIndex.value, fileCount.value], () => {
 });
 
 function requestFileAtIndex(index: number, pane: Pane = 'left') {
+  // Web client (phase 4, batch 4.9): the viewer is a same-tab route, so Content
+  // is unmounted and cannot answer `message-from-image-viewer`. Resolve the
+  // index against the session snapshot the grid stored instead.
+  if (transportMode === 'http') {
+    const fileIdAt = viewerSession.fileIdAt(index);
+    const total = viewerSession.orderedIds.length || fileCount.value;
+    if (fileIdAt <= 0) return;
+    const nextId = viewerSession.fileIdAt(index + 1);
+    const nextPath = nextFilePathOf(nextId);
+    if (pane === 'right') {
+      rightFileId.value = fileIdAt;
+      rightFileIndex.value = index;
+      rightNextFilePath.value = nextPath;
+    } else if (pane === 'bottomLeft' || pane === 'bottomRight') {
+      extraPaneState[pane].fileId = fileIdAt;
+      extraPaneState[pane].fileIndex = index;
+      extraPaneState[pane].nextFilePath = nextPath;
+    } else {
+      fileId.value = fileIdAt;
+      fileIndex.value = index;
+      nextFilePath.value = nextPath;
+      viewerSession.setSelectionIndex(index);
+    }
+    fileCount.value = total;
+    return;
+  }
   emit('message-from-image-viewer', { message: 'request-file-at-index', index, pane });
+}
+
+/**
+ * The `nextFilePath` the viewer keeps for prefetch: only the next entry's path
+ * when it is an image. The Web session only carries ids, so the path lookup is
+ * best-effort (empty is fine; `fileId` drives the actual load).
+ */
+function nextFilePathOf(nextId: number): string {
+  if (!(nextId > 0)) return '';
+  const known = fileInfoOfId(nextId);
+  return known && known.file_type === 1 ? known.file_path : '';
+}
+
+function fileInfoOfId(id: number): any {
+  if (fileId.value === id) return fileInfo.value;
+  if (rightFileId.value === id) return rightFileInfo.value;
+  for (const pane of ['bottomLeft', 'bottomRight'] as const) {
+    if (extraPaneState[pane].fileId === id) return extraPaneState[pane].fileInfo;
+  }
+  return null;
 }
 
 function getFileInfoByPane(pane: Pane = 'left') {

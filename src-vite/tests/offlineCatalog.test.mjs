@@ -133,6 +133,8 @@ function previewFixture({ backend = false, thumbnail = true } = {}) {
     imageNaturalSize: ref([{ width: 512, height: 256 }, { width: 0, height: 0 }]),
     imageSize: ref([{ width: 512, height: 256 }, { width: 0, height: 0 }]), scale: ref([1, 1]),
     maxScale: ref(10), offlinePreview: ref(false), preloadCache: new Map(), props: { fileId: 42, fileVersion: 1 },
+    transportMode: 'tauri',
+    signMediaUrl: async (url) => url,
     getPreviewUrl: () => 'preview://localhost/test/42?v=1',
     getEffectiveThumbnailSrc: async () => thumbnail ? 'thumbnail' : '',
     loadPlaceholderResource: async src => {

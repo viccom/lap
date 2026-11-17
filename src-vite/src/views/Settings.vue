@@ -1137,7 +1137,7 @@
 <script setup lang="ts">
 
 import { ref, watch, computed, onMounted, onUnmounted, onBeforeUnmount } from 'vue';
-import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
+import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel, closeOrBack } from '@/common/transport/window.js';
 import { emit, capabilities } from '@/common/transport';
 import { ask, open as openDialog } from '@/common/transport/dialog.js';
 import { useI18n } from 'vue-i18n';
@@ -2556,7 +2556,7 @@ function handleKeyDown(event: KeyboardEvent) {
       if (showRestoreDialog.value) { showRestoreDialog.value = false; return; }
       if (showChangeDbStorageDialog.value) { showChangeDbStorageDialog.value = false; return; }
       if (showResetDbStorageDialog.value) { showResetDbStorageDialog.value = false; return; }
-      appWindow.close(); // Close the window
+      closeOrBack(); // Close the window (desktop) or go back to the grid (Web)
       break;
   }
 }
@@ -2763,6 +2763,9 @@ function applyWindowScale(scale: number) {
 }
 
 async function updateSettingsWindowSize(scale: number) {
+  // Only the desktop shell has a resizable window; the Web client's settings
+  // page is a full-tab route, so skip before touching the Tauri dpi module.
+  if (!capabilities().native) return;
   const normalizedScale = normalizeScale(scale);
   const width = Math.round(SETTINGS_BASE_WIDTH * normalizedScale);
   const height = Math.round(SETTINGS_BASE_HEIGHT * normalizedScale);

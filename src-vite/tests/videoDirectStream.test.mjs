@@ -7,7 +7,7 @@ const source = fs.readFileSync(new URL('../src/components/Video.vue', import.met
 const start = source.indexOf('  const loadDirect = async');
 const code = ts.transpile(source.slice(start, source.indexOf('  // Matroska files', start)), { target: ts.ScriptTarget.ES2022 });
 
-function setup(isLinux, filePath, resolveUrl = async () => 'http://127.0.0.1/video') {
+function setup(isLinux, filePath, resolveUrl = async () => 'http://127.0.0.1/video', { mode = 'tauri', webSrc = async () => 'http://127.0.0.1/api/video/7?exp=1&sig=x' } = {}) {
   const calls = [], listeners = {}, timers = [];
   const player = {
     reset() { calls.push('reset'); },
@@ -18,12 +18,12 @@ function setup(isLinux, filePath, resolveUrl = async () => 'http://127.0.0.1/vid
     videoWidth: () => 1920,
     videoHeight: () => 1080,
   };
-  const create = new Function('isLinux', 'filePath', 'getVideoStreamUrl', 'getAssetSrc', 'player', 'resetCompatibilityProcessing', 'loadPrepared', 'handleSuccessfulLoad', 'loadAttemptCleanups', 'setTimeout', 'clearTimeout', 'DIRECT_PLAYBACK_TIMEOUT_MS', `
+  const create = new Function('isLinux', 'filePath', 'getVideoStreamUrl', 'getAssetSrc', 'transportMode', 'webVideoSrc', 'player', 'resetCompatibilityProcessing', 'loadPrepared', 'handleSuccessfulLoad', 'loadAttemptCleanups', 'hasError', 'errorMessage', 'getFallbackErrorMessage', 'setTimeout', 'clearTimeout', 'DIRECT_PLAYBACK_TIMEOUT_MS', `
     let currentLoadId = 1, currentLoadingId = 1, nextUpIndex = 0;
     ${code}
     return { load: loadDirect, cancel() { currentLoadingId++; } };
   `);
-  const controls = create(isLinux, filePath, async path => { calls.push(['stream', path]); return resolveUrl(); }, path => `asset:${path}`, player, () => {}, mode => calls.push(['prepare', mode]), () => calls.push('success'), [], fn => { timers.push(fn); return timers.length; }, () => {}, 8000);
+  const controls = create(isLinux, filePath, async path => { calls.push(['stream', path]); return resolveUrl(); }, path => `asset:${path}`, mode, webSrc, player, () => {}, mode2 => calls.push(['prepare', mode2]), () => calls.push('success'), [], { value: false }, { value: '' }, () => 'fallback-error', fn => { timers.push(fn); return timers.length; }, () => {}, 8000);
   return { ...controls, calls, listeners, timers };
 }
 
@@ -81,3 +81,23 @@ test('switching video during URL resolution prevents stale player changes or fal
     assert.deepEqual(t.calls, [['stream', '/clip.mp4']]);
   }
 });
+
+test('Web client resolves playback through /api/video/{file_id} instead of a path', async () => {
+  const t = setup(false, 'D:/photos/clip.mp4', async () => 'http://127.0.0.1/x', { mode: 'http' });
+  await t.load('video/mp4');
+  assert.ok(
+    t.calls.some(c => c?.src === 'http://127.0.0.1/api/video/7?exp=1&sig=x'),
+    'the Web source must be the signed /api/video URL',
+  );
+  assert.ok(!t.calls.some(c => c?.src === 'asset:D:/photos/clip.mp4'), 'must not use the path-based asset URL');
+});
+
+test('a failed Web direct attempt surfaces an error instead of recursing into prepare', async () => {
+  const t = setup(false, 'D:/photos/clip.mp4', async () => 'http://127.0.0.1/x', { mode: 'http' });
+  await t.load('video/mp4');
+  // The direct attempt errors: on the Web there is no transcode fallback, so it
+  // must NOT call loadPrepared (which delegates back into loadDirect → loop).
+  t.listeners.error();
+  assert.ok(!t.calls.some(c => c?.[0] === 'prepare'), 'Web failure must not trigger compatibility processing');
+});
+

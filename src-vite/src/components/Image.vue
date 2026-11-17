@@ -208,6 +208,7 @@ import {
   getThumbUrl,
   getThumbnailDataUrl,
   getThumbnailDataUrlInflight,
+  signMediaUrl,
   isWin,
   setThumbnailDataUrlInflight,
 } from '@/common/utils';
@@ -711,6 +712,9 @@ async function getEffectiveThumbnailSrc() {
   const fileId = props.fileId;
   if (!fileId) return '';
   const thumbUrl = getThumbUrl(fileId, false, config.settings.thumbnailSize, props.fileVersion);
+  // Web client (batch 4.9): the thumbnail URL is unsigned; lapd rejects it, so
+  // sign before use. Desktop keeps the raw URL (custom scheme).
+  if (transportMode === 'http') return (await signMediaUrl(thumbUrl)) || thumbUrl;
   if (!isWin) return thumbUrl;
   if (thumbUrl.startsWith('data:')) {
     resolvedThumbnailSrc.value = thumbUrl;
@@ -1289,7 +1293,9 @@ async function showOfflinePreview(filePath: string, loadingId: number) {
   } catch { /* Try thumbnail next. */ }
   if (!loaded && props.fileId) {
     const preview = getPreviewUrl(props.fileId, filePath, false, props.fileVersion);
-    try { loaded = await loadPlaceholderResource(`${preview}${preview.includes('?') ? '&' : '?'}cachedOnly=true`); } catch { /* Try thumbnail next. */ }
+    // Web client: sign the preview URL (lapd requires the media signature; 4.9).
+    const signed = transportMode === 'http' ? ((await signMediaUrl(preview)) || preview) : preview;
+    try { loaded = await loadPlaceholderResource(`${signed}${signed.includes('?') ? '&' : '?'}cachedOnly=true`); } catch { /* Try thumbnail next. */ }
   }
   if (!loaded) {
     try { loaded = await loadPlaceholderResource(await getEffectiveThumbnailSrc()); } catch { /* No local preview. */ }

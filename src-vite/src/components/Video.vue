@@ -86,8 +86,9 @@ import { config } from '@/common/config';
 import { IconVideoSlash, IconVideoPlay, IconVideoReplay, IconVideoPause } from '@/common/icons';
 import videojs from 'video.js/core';
 import 'video.js/dist/video-js.min.css';
-import { getThumbUrl, getAssetSrc, isLinux, isMac, isWin } from '@/common/utils';
+import { getThumbUrl, getAssetSrc, getMediaSrcForId, signMediaUrl, isLinux, isMac, isWin } from '@/common/utils';
 import { openFileWithApp } from '@/common/api';
+import { transportMode } from '@/common/transport';
 import zhCN from 'video.js/dist/lang/zh-CN.json';
 import {
   prepareVideo,
@@ -124,8 +125,11 @@ const playerEpochs = ref([0, 0]);
 const videoJsLang = computed(() => (config.settings.language === 'zh' ? 'zh-CN' : config.settings.language));
 
 const offlinePoster = ref('');
-watch(() => [props.originalUnavailable, props.fileId, props.thumbnailSrc], () => {
-  offlinePoster.value = props.thumbnailSrc || (props.fileId ? getThumbUrl(props.fileId, false, config.settings.thumbnailSize) : '');
+watch(() => [props.originalUnavailable, props.fileId, props.thumbnailSrc], async () => {
+  const poster = props.thumbnailSrc || (props.fileId ? getThumbUrl(props.fileId, false, config.settings.thumbnailSize) : '');
+  // Web client: thumbnail URLs need the media signature (batch 4.9); desktop
+  // returns the URL unchanged from signMediaUrl.
+  offlinePoster.value = poster ? await signMediaUrl(poster) : '';
 }, { immediate: true });
 const hasError = ref(false);
 const errorMessage = ref('');
@@ -488,6 +492,19 @@ const clickPlayVideo = () => {
   getActivePlayer()?.play();
 };
 
+/**
+ * Web client (batch 4.9): a browser tab cannot address a server file by path,
+ * so playback resolves through `/api/video/{file_id}` (signed). The desktop
+ * shell keeps the path-based `getAssetSrc` / `prepareVideo` flow unchanged.
+ * Returns '' when the Web client has no id — the caller falls back to a path.
+ */
+async function webVideoSrc(): Promise<string> {
+  if (transportMode !== 'http') return '';
+  const raw = getMediaSrcForId(props.fileId, 'video');
+  if (!raw) return '';
+  return signMediaUrl(raw);
+}
+
 const loadVideo = async (filePath: string) => {
   if (!filePath) return;
   clearLoadingOverlayTimer();
@@ -611,6 +628,14 @@ const loadVideo = async (filePath: string) => {
   };
 
   const loadPrepared = async (force: VideoPrepareMode = null) => {
+    // Web client (batch 4.9): transcoding writes a server-side cache path that a
+    // browser cannot address, and the backend serves `/api/video/{file_id}`
+    // directly (Range/206). So skip prepare and play the original stream; an
+    // unsupported codec then surfaces as a normal playback error.
+    if (transportMode === 'http') {
+      void loadDirect(getDirectPlaybackType(filePath));
+      return;
+    }
     startCompatibilityProcessing(currentLoadId);
     try {
       const result = await prepareVideo(filePath, playerId, force, backendRequestId);
@@ -685,6 +710,11 @@ const loadVideo = async (filePath: string) => {
       playbackSrc = isLinux && /\.(mp4|m4v)$/i.test(filePath)
         ? await getVideoStreamUrl(filePath)
         : getAssetSrc(filePath);
+      // Web client: no path-based asset URL — resolve via /api/video/{file_id}
+      // (batch 4.9). The desktop branch above stays unchanged.
+      if (transportMode === 'http') {
+        playbackSrc = (await webVideoSrc()) || playbackSrc;
+      }
     } catch (error) {
       if (currentLoadId !== currentLoadingId) return;
       console.warn('[Video] Direct stream URL unavailable, preparing a compatible source...', error);
@@ -717,6 +747,15 @@ const loadVideo = async (filePath: string) => {
       directAttemptSettled = true;
       cleanupDirectAttempt();
       if (currentLoadId !== currentLoadingId) return;
+      // Web client: there is no transcoding endpoint to fall back to, and
+      // `loadPrepared` delegates back to `loadDirect` here — re-entering it
+      // would loop forever. Surface the failure instead (batch 4.9).
+      if (transportMode === 'http') {
+        player.reset();
+        hasError.value = true;
+        errorMessage.value = getFallbackErrorMessage();
+        return;
+      }
       player.reset();
       console.warn('[Video] Direct playback failed, preparing a compatible source...');
       loadPrepared('compatible');

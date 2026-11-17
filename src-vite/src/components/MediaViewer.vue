@@ -339,6 +339,7 @@
         <Video
           class="h-full w-full"
           :filePath="livePhotoVideoPath"
+          :fileId="livePhotoVideoId"
           :rotate="file?.rotate ?? 0"
           :isZoomFit="isZoomFit"
           :isSlideShow="isSlideShow"
@@ -631,6 +632,14 @@ const motionPhotoVideoPath = ref<string | null>(null);
 const livePhotoVideoPath = computed(() =>
   isLivePhoto.value ? props.file?.live_photo_video_path : motionPhotoVideoPath.value,
 );
+// Web client playback addresses video by id (batch 4.9). A live photo's moving
+// part is its own file (live_photo_video_id); a motion photo's is the still's id
+// served by the same /api/video endpoint. Either way Video resolves the stream.
+const livePhotoVideoId = computed(() => {
+  if (isLivePhoto.value) return Number(props.file?.live_photo_video_id || 0);
+  if (isMotionPhoto.value) return Number(props.file?.id || 0);
+  return 0;
+});
 const livePhotoViewport = ref<Record<string, number | boolean> | null>(null);
 let motionPhotoVideoRequestSeq = 0;
 

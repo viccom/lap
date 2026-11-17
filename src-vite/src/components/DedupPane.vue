@@ -511,6 +511,7 @@ import {
   formatFolderBreadcrumb,
   getThumbnailDataUrl,
   getThumbUrl,
+  signMediaUrl,
   isMac,
   formatTimestamp,
 } from '@/common/utils';
@@ -920,7 +921,7 @@ async function hydrateSimilarThumbnails(groups: any[], activeGroupId: number | n
       null,
       file.album_id || 0,
     );
-    file.thumbnail = resolveDedupThumbnail(file, thumb);
+    file.thumbnail = await resolveDedupThumbnail(file, thumb);
   }));
 }
 
@@ -1426,18 +1427,21 @@ async function hydrateGroupThumbnails(groups: any[], activeGroupId: number | nul
           null,
           file.album_id || 0,
         );
-        file.thumbnail = resolveDedupThumbnail(file, thumb);
+        file.thumbnail = await resolveDedupThumbnail(file, thumb);
       })());
     }
   }
   await Promise.all(tasks);
 }
 
-function resolveDedupThumbnail(file: any, thumb: Parameters<typeof getThumbnailDataUrl>[0]) {
+async function resolveDedupThumbnail(file: any, thumb: Parameters<typeof getThumbnailDataUrl>[0]) {
   const size = config.settings.thumbnailSize;
   const version = Number(file.modified_at || 0);
   if (!thumb && !file.cloud_only && !isOriginalUnavailable(file)) {
-    return getThumbUrl(file.id, false, size, version) || thumbnailPlaceholder;
+    const url = getThumbUrl(file.id, false, size, version);
+    if (!url) return thumbnailPlaceholder;
+    // Web client: lapd requires the media signature (batch 4.9).
+    return (await signMediaUrl(url)) || url;
   }
   return getThumbnailDataUrl(thumb, thumbnailPlaceholder, false, size, version);
 }

@@ -140,7 +140,8 @@ import { listen } from '@/common/transport';
 import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus';
 import { config, libConfig } from '@/common/config';
 import { useUIStore } from '@/stores/uiStore';
-import { getThumbUrl, getThumbnailDataUrl, getThumbnailDataUrlInflight, isWin, setThumbnailDataUrlInflight } from '@/common/utils';
+import { getThumbUrl, getThumbnailDataUrl, getThumbnailDataUrlInflight, signMediaUrl, isWin, setThumbnailDataUrlInflight } from '@/common/utils';
+import { transportMode } from '@/common/transport';
 import { getFileThumbById, getSmartQueryCountAndSum } from '@/common/api';
 import { IconAdd, IconClose, IconDragHandle, IconEdit, IconMore, IconFolderCog, IconOrder, IconSearch, IconTrash } from '@/common/icons';
 import TButton from '@/components/TButton.vue';
@@ -234,16 +235,27 @@ watch(smartAlbumSearch, () => {
 const getSmartAlbumCoverSrc = (smartAlbum: any) => {
   const coverFileId = Number(smartAlbum?.coverFileId || 0);
   if (!coverFileId) return '';
-  return isWin ? smartAlbumCoverUrls.value[String(smartAlbum.id)] || '' : getThumbUrl(coverFileId, false, config.settings.thumbnailSize);
+  // Web client: mirror the Windows data-URL cache pattern so the signed URL can
+  // be resolved once and read synchronously here (batch 4.9).
+  if (isWin || transportMode === 'http') {
+    return smartAlbumCoverUrls.value[String(smartAlbum.id)] || '';
+  }
+  return getThumbUrl(coverFileId, false, config.settings.thumbnailSize);
 };
 
 const loadWindowsSmartAlbumCovers = async (albums: any[]) => {
-  if (!isWin) return;
+  if (!isWin && transportMode !== 'http') return;
   const loadToken = ++smartAlbumCoverLoadToken;
 
   const covers = await Promise.all(albums.map(async (smartAlbum) => {
     const coverFileId = Number(smartAlbum?.coverFileId || 0);
     if (!coverFileId) return [String(smartAlbum.id), ''] as const;
+
+    if (transportMode === 'http') {
+      // Web: no data-URL path; sign the thumbnail URL directly.
+      const signed = await signMediaUrl(getThumbUrl(coverFileId, false, config.settings.thumbnailSize));
+      return [String(smartAlbum.id), signed] as const;
+    }
 
     const inflight = getThumbnailDataUrlInflight(coverFileId, config.settings.thumbnailSize);
     const url = await (inflight || setThumbnailDataUrlInflight(

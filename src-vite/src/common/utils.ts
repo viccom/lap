@@ -790,14 +790,38 @@ export function getAssetSrc(filePath: string, fileVersion = 0): string {
   const uiStore = useUIStore();
   const localVersion = uiStore.getFileVersion(filePath);
   const base = transportAssetUrl('asset', { filePath, win: isWin });
-  // No Web endpoint for arbitrary paths until phase 3; degrade to empty rather
-  // than emit a query-only URL that would resolve against the current page.
+  // No Web endpoint for arbitrary paths; a browser tab cannot name a server
+  // file by path. Web call sites use getMediaSrcForId(file_id) instead (the
+  // /api/original|video/{id} endpoints), which is also what the media signature
+  // is scoped to.
   if (!base) return '';
   const params = new URLSearchParams();
   if (fileVersion > 0) params.set('v', String(fileVersion));
   if (localVersion > 0) params.set('u', String(localVersion));
   const query = params.toString();
   return query ? `${base}?${query}` : base;
+}
+
+/**
+ * Web-only media source for a file we only know by id (batch 4.9).
+ *
+ * The desktop shell maps an arbitrary path to a `convertFileSrc` URL via
+ * `getAssetSrc`; the Web client has no such endpoint and can only address
+ * `/api/original/{id}` (images) or `/api/video/{id}` (videos), which are also
+ * the shapes the HMAC media signature covers. Returns '' in the desktop shell
+ * (callers keep using `getAssetSrc` there) and when no id is available, so a
+ * caller can fall back to the path-based source.
+ *
+ * The result is NOT signed; pair it with `signMediaUrl(url)` before assigning
+ * it to `src`/`fetch`, exactly like `getThumbUrl`/`getPreviewUrl` call sites do.
+ */
+export function getMediaSrcForId(fileId: number, kind: 'image' | 'video' = 'image', fileVersion = 0): string {
+  if (transportMode !== 'http') return '';
+  const id = Number(fileId || 0);
+  if (!(id > 0)) return '';
+  const endpoint = kind === 'video' ? 'video' : 'original';
+  const version = Number(fileVersion || 0);
+  return `/api/${endpoint}/${id}${version > 0 ? `?v=${version}` : ''}`;
 }
 
 /**

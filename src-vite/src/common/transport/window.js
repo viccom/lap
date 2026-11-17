@@ -48,6 +48,8 @@ class BrowserWindowStub {
   async show() {}
   async hide() {}
   async close() { window.close(); } // browsers ignore scripted close on non-opener tabs
+  async destroy() { window.close(); }
+  async isVisible() { return true; }
   async setFocus() { window.focus(); }
   async listen() { return () => {}; }
   async onCloseRequested() { return () => {}; }
@@ -71,7 +73,6 @@ class BrowserWindowStub {
   async setResizable() {}
   async maximize() {}
   async unmaximize() {}
-  async isMinimized() { return false; }
   async innerSize() { return { width: window.innerWidth, height: window.innerHeight, toLogical: () => ({ width: window.innerWidth, height: window.innerHeight }) }; }
   async outerPosition() { return { x: 0, y: 0, toLogical: () => ({ x: 0, y: 0 }) }; }
   async scaleFactor() { return window.devicePixelRatio || 1; }

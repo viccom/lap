@@ -240,7 +240,7 @@ import { useI18n } from 'vue-i18n';
 import { useUIStore } from '@/stores/uiStore';
 import { config } from '@/common/config';
 import { THUMBNAIL_BADGE } from '@/common/constants';
-import { isMac, shortenFilename, formatFileSize, formatDimensionText, formatDuration, formatTimestamp, formatCaptureSettings, formatCaptureSettingValue, formatCameraInfo, getAssetSrc, getThumbUrl, getFileExtension } from '@/common/utils';
+import { isMac, shortenFilename, formatFileSize, formatDimensionText, formatDuration, formatTimestamp, formatCaptureSettings, formatCaptureSettingValue, formatCameraInfo, getAssetSrc, getThumbUrl, getMediaSrcForId, signMediaUrl, getFileExtension } from '@/common/utils';
 import { isWebViewVideoPlaybackDisabled, getGStreamerAvailability } from '@/common/video';
 import { claimHoverPreview, releaseHoverPreview } from '@/common/hoverPreview';
 import ContextMenu from '@/components/ContextMenu.vue';
@@ -331,6 +331,11 @@ const rawJpegPairBadge = computed(() => {
   return ['heic', 'heif', 'hif'].includes(extension) ? 'RAW+HEIC' : 'RAW+JPEG';
 });
 const previewVideoPath = computed(() => isLivePhoto.value ? props.file.live_photo_video_path : props.file?.file_path);
+// Web client playback addresses the video by id (batch 4.9); a live photo's
+// moving part is its own file, otherwise the still's id.
+const previewVideoId = computed(() => (
+  isLivePhoto.value ? Number(props.file?.live_photo_video_id || 0) : Number(props.file?.id || 0)
+));
 const canPreviewVideo = computed(() => (
   !originalUnavailable.value && (isVideoFile.value || isLivePhoto.value)
   && !!previewVideoPath.value
@@ -343,7 +348,21 @@ const isAnimatableImageFile = computed(() => ANIMATABLE_IMAGE_EXTENSIONS.has(
   getFileExtension(props.file?.name || props.file?.file_path || '').toLowerCase(),
 ));
 const isGifFile = computed(() => getFileExtension(props.file?.name || props.file?.file_path || '').toLowerCase() === 'gif');
-const animatedImagePreviewSrc = computed(() => getAssetSrc(props.file?.file_path || '', Number(props.file?.modified_at || 0)));
+const animatedImagePreviewSrc = ref('');
+// Web client addresses the original by id (/api/original/{id}) and must sign it;
+// the desktop shell keeps the path-based convertFileSrc URL (batch 4.9).
+watch(
+  [() => props.file?.id, () => props.file?.file_path, () => props.file?.modified_at],
+  async () => {
+    if (transportMode === 'http') {
+      const raw = getMediaSrcForId(Number(props.file?.id || 0), 'image', Number(props.file?.modified_at || 0));
+      animatedImagePreviewSrc.value = raw ? await signMediaUrl(raw) : '';
+    } else {
+      animatedImagePreviewSrc.value = getAssetSrc(props.file?.file_path || '', Number(props.file?.modified_at || 0));
+    }
+  },
+  { immediate: true },
+);
 const canPreviewAnimatedImage = computed(() => !originalUnavailable.value && !props.file?.cloud_only
   && isAnimatableImageFile.value && !!animatedImagePreviewSrc.value);
 const isGeometryGridStyle = computed(() => config.settings.grid.style === 2 || config.settings.grid.style === 3);
@@ -489,7 +508,14 @@ function startVideoPreview() {
     const video = previewVideoRef.value;
     if (!video || request !== videoPreviewRequest) return;
 
-    video.src = getAssetSrc(previewVideoPath.value);
+    // Web client: resolve via /api/video/{id} + signature; desktop keeps the
+    // path-based convertFileSrc source (batch 4.9).
+    let src = getAssetSrc(previewVideoPath.value);
+    if (transportMode === 'http') {
+      src = (await signMediaUrl(getMediaSrcForId(previewVideoId.value, 'video'))) || src;
+    }
+    if (!video || request !== videoPreviewRequest) return;
+    video.src = src;
     video.muted = true;
 
     try {

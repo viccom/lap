@@ -42,7 +42,8 @@ import {
   getSmartQueryFileIds,
   openExternalUrl,
 } from '@/common/api'
-import { getThumbUrl, isMac } from '@/common/utils'
+import { getThumbUrl, signMediaUrl, isMac } from '@/common/utils'
+import { transportMode } from '@/common/transport'
 import { useUIStore } from '@/stores/uiStore'
 import { IconExternal, IconMapCenter, IconMapDefault, IconMapSatellite, IconZoomIn, IconZoomOut } from '@/common/icons'
 import TButton from '@/components/TButton.vue'
@@ -439,11 +440,12 @@ async function openPhotoCluster(cluster) {
 function addPhotoMarker(lat, lon, fileId, count, cluster = null) {
   if (lat == null || lon == null) return
   const size = Number(config.settings.mapMarkerSize || 64);
+  const thumbUrl = getThumbUrl(fileId, false, config.settings.thumbnailSize || 512);
   const icon = L.divIcon({
     className: 'map-photo-marker-wrapper',
     iconSize: [size, size + 8],
     iconAnchor: [Math.round(size / 2), size + 8],
-    html: `<div class="map-photo-marker"><img src="${getThumbUrl(fileId, false, config.settings.thumbnailSize || 512)}" />${count > 1 ? `<span>${count > 999 ? '999+' : count}</span>` : ''}</div>`,
+    html: `<div class="map-photo-marker"><img${thumbUrl ? ` src="${thumbUrl}"` : ''} />${count > 1 ? `<span>${count > 999 ? '999+' : count}</span>` : ''}</div>`,
   })
   const marker = L.marker([lat, lon], { icon, keyboard: false }).addTo(markerLayer)
   marker.photoFileId = Number(fileId)
@@ -467,6 +469,15 @@ function addPhotoMarker(lat, lon, fileId, count, cluster = null) {
     fadeFrames.add(frame)
   }
   const image = element?.querySelector('img')
+  // Web client: lapd needs the media signature; swap the signed URL in before
+  // the load/complete check so the fade still waits for the real image (4.9).
+  if (image && transportMode === 'http' && thumbUrl) {
+    void signMediaUrl(thumbUrl).then((signed) => {
+      if (!signed || !map || retiringMarkers.has(marker) || !markerLayer.hasLayer(marker)) return
+      if (image.getAttribute('src') === signed) return
+      image.src = signed
+    }).catch(() => { /* keep the raw URL; the error path still shows the marker */ })
+  }
   if (!image || image.complete) show()
   else {
     image.addEventListener('load', show, { once: true })

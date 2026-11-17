@@ -269,8 +269,14 @@ test('no source file imports a host-specific Tauri module outside the seam', () 
   // explicitly gated; each entry must name the file and why it is allowed.
   const allowed = new Set([
     'src/common/updater.ts', // imports the updater/process plugins; checkForUpdates() returns early unless native
+    'src/main.js',           // dynamic import('@tauri-apps/plugin-os') only in the non-http branch (navigator.language on Web)
+    'src/views/Home.vue',    // dynamic import('@tauri-apps/api/app') only inside `if (capabilities().native)`
+    'src/views/Settings.vue',// dynamic import('@tauri-apps/api/dpi') only after `if (!capabilities().native) return;`
   ]);
-  const forbidden = /from '@tauri-apps\/(api\/(window|webview(Window)?|app|dpi)|plugin-(dialog|os|updater|process))'/;
+  // Catch BOTH the static `from '@tauri-apps/...'` and the dynamic
+  // `import('@tauri-apps/...')` form; the latter previously slipped the guard
+  // entirely (batch 4.9 audit).
+  const forbidden = /(from\s+['"]@tauri-apps\/(api\/(window|webview(Window)?|app|dpi)|plugin-(dialog|os|updater|process))['"]|import\(\s*['"]@tauri-apps\/(api\/(window|webview(Window)?|app|dpi)|plugin-(dialog|os|updater|process))['"])/;
   const walk = (dir) => {
     const out = [];
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -351,6 +357,51 @@ test('every secondary page header carries the Web back affordance', () => {
   // must actually render the button, not merely import it.
   const titleBar = readFileSync(join(root, 'components/TitleBar.vue'), 'utf8').replace(/\r\n/g, '\n');
   assert.ok(/<SubpageBackButton\b/.test(titleBar), 'TitleBar must render <SubpageBackButton>');
+});
+
+// -- batch 4.9: cross-page session, video-by-id, stub completeness ----------
+test('the browser window stub implements every method the close paths call', () => {
+  const src = readFileSync(new URL('../src/common/transport/window.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const stub = src.slice(src.indexOf('class BrowserWindowStub'), src.indexOf('function createWebWebviewWindow'));
+  // /montage, /image-editor and Settings close via close→isVisible→destroy; a
+  // missing method threw a swallowed TypeError and left the button dead.
+  for (const method of ['close', 'destroy', 'isVisible', 'hide', 'setFocus']) {
+    assert.ok(new RegExp(`async ${method}\\(`).test(stub), `BrowserWindowStub must implement ${method}()`);
+  }
+});
+
+test('the Web media helper maps ids to signed-able /api endpoints, desktop stays path-based', () => {
+  const src = readFileSync(new URL('../src/common/utils.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const fn = src.slice(src.indexOf('export function getMediaSrcForId'), src.indexOf('\n}', src.indexOf('export function getMediaSrcForId')));
+  // Must only fire in the Web client and only for a real id.
+  assert.ok(/if \(transportMode !== 'http'\) return '';/.test(fn), 'getMediaSrcForId must be Web-only');
+  assert.ok(/kind === 'video' \? 'video' : 'original'/.test(fn), 'getMediaSrcForId must pick video vs original');
+  assert.ok(fn.includes('/api/${endpoint}/${id}'), 'getMediaSrcForId must build /api/{endpoint}/{id}');
+});
+
+test('the Web viewer resolves prev/next from the session store, not the dead event channel', () => {
+  const root = new URL('../src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  const store = readFileSync(join(root, 'stores/viewerSessionStore.js'), 'utf8').replace(/\r\n/g, '\n');
+  for (const action of ['openSession', 'fileIdAt', 'setSelectionIndex', 'requestRefresh', 'consumeRefresh']) {
+    assert.ok(new RegExp(`${action}\\(`).test(store), `viewerSessionStore must define ${action}()`);
+  }
+  const viewer = readFileSync(join(root, 'views/ImageViewer.vue'), 'utf8').replace(/\r\n/g, '\n');
+  const fn = viewer.slice(viewer.indexOf('function requestFileAtIndex'), viewer.indexOf('function getFileInfoByPane'));
+  assert.ok(/transportMode === 'http'/.test(fn), 'requestFileAtIndex must branch on the Web client');
+  assert.ok(/viewerSession\.fileIdAt\(/.test(fn), 'the Web branch must resolve ids from the session store');
+  // Content snapshots the ids the viewer walks when it opens the route.
+  const content = readFileSync(join(root, 'components/Content.vue'), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(/viewerSession\.openSession\(/.test(content), 'Content must open the viewer session with its ordered ids');
+  assert.ok(/viewerSession\.consumeRefresh\(/.test(content), 'Content must consume the pending refresh on remount');
+});
+
+test('the editor/montage report saves through the session store on the Web', () => {
+  const root = new URL('../src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  for (const rel of ['views/ImageEditor.vue', 'views/Montage.vue']) {
+    const src = readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
+    assert.ok(/transportMode === 'http'/.test(src), `${rel} must branch on the Web client`);
+    assert.ok(/requestRefresh\(|closeOrBack\(/.test(src), `${rel} must use the session store / closeOrBack on the Web`);
+  }
 });
 
 test('the dialog seam degrades file pickers to null and keeps confirm/alert', async () => {
