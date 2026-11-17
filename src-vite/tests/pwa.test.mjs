@@ -45,4 +45,13 @@ test('the service worker is registered on the Web client only', async () => {
   assert.match(httpBranch, /serviceWorker\.register\('\/sw\.js'\)/);
   // And nowhere else: exactly one registration call in the file.
   assert.equal((main.match(/serviceWorker\.register\(/g) || []).length, 1);
+  // Registration must not depend solely on the `load` event: the awaits above it
+  // (checkSession / serverInfo) can finish after `load` has already fired, in
+  // which case a listener attached at this point never runs. Register eagerly
+  // when the document is already complete.
+  assert.match(
+    httpBranch,
+    /document\.readyState\s*===\s*'complete'/,
+    'must register eagerly when the load event has already fired',
+  );
 });

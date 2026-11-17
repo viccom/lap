@@ -125,10 +125,16 @@ if (transportMode === 'http') {
     .catch(() => {})
   // Install the app-shell service worker so the PWA opens offline. Web only:
   // the desktop shell has no service worker and its assets come from the bundle.
+  // Register eagerly when the document has already finished loading: the awaits
+  // above (checkSession / serverInfo) can outlast the `load` event, so waiting
+  // for it would attach the listener too late and never register.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js').catch(() => {})
-    })
+    const registerSw = () => navigator.serviceWorker.register('/sw.js').catch(() => {})
+    if (document.readyState === 'complete') {
+      registerSw()
+    } else {
+      window.addEventListener('load', registerSw)
+    }
   }
 }
 
