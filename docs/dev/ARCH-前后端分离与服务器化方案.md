@@ -532,9 +532,23 @@ src-vite/                      一套前端，两种传输
 - **产出**：[docs/dev/E2E-端到端测试清单.md](E2E-端到端测试清单.md)——可测功能全清单（§1–§8）+ 环境搭建脚本（§0）+ 基线台账（§10）+ 变更影响矩阵（§11）+ 历史缺陷教训（§12）。AGENTS.md 已加指针。
 - **诚实边界（更新 5d 的未覆盖清单）**：仍**未**实测——幻灯片逐帧推进、人脸重置索引、编辑器另存、拼图导出、设备吊销、语言/主题切换、限流阈值、优雅退出逐项；均登记在 E2E 手册 §10「未覆盖」。
 
-### 阶段 5（可选）· 桌面客户端模式 / 商店壳
+### 阶段 5 · 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。
+
+**批次 5-1（桌面「连接服务器」客户端模式：连接 + 锁检测 + 不碰本地库）· 已完成**
+
+- **触发**：方案 §3.7/§6 要求桌面内嵌模式启动时检测 `lapd.lock`，已有服务在跑就不得再开 SQLite（风险 **R2**，标为「高」）。此前 `src-tauri/src/main.rs` **零** `lapd` 引用，桌面**无条件** `create_db()`，与服务同库并发写——R2 完全未缓解。
+- **架构决策（含与方案本意的差异声明）**：采用**薄客户端窗口**——客户端模式下 Tauri 主窗口 `navigate()` 到 lapd 托管的 Web UI（§3.3 的同一套 Vue，登录走服务端网页登录/同源 Cookie）。**不**走「运行时把 Tauri 传输切成 HTTP」：那需要把传输接缝改成 late-bound（`transport/index.js` + 43 处 `transportMode` 常量）、并给 lapd 补 CORS 白名单 + Bearer 令牌持久化 + SSE 跨域令牌（`EventSource` 不能带自定义头），涉及认证/暴露面，属高风险深改。「原生外壳 + 运行时 HTTP 传输」作为后续增量（届时独立安全评审）。方案 §8 否决的是**默认**退化为纯客户端；本批 **opt-in**，内嵌仍是默认，不冲突。
+- **实现**：
+  - 新增 `src-tauri/src/t_client.rs`（桌面专属 glue，不进 lap-core）：纯函数 `client_target_from_args`（`--connect <url>` / `--connect=<url>`，显式优先于环境变量 `LAP_CONNECT`）、`data_dir_from_args`（`--data-dir`，镜像 lapd，供隔离测试/便携运行——**让客户端模式可在临时目录验证而绝不碰真实数据目录**）、`running_server_target`（读 `<data>/lapd.lock` 的 `{pid,port,startedAt}`，pid 存活且非本进程才返回 `http://127.0.0.1:<port>`）；`pid_alive` 跨平台（Windows `OpenProcess`，不可判定按「存活」保守处理）。
+  - `main.rs`：`main()` 启动早期（`init_process_states` 后）解析 `--data-dir`→`set_data_dir_override`、解析 `client_target`（显式 > 活锁 > 内嵌）；`.setup()` 首行分流——客户端模式**只**装事件 sink + `set_app_identifier`，**跳过** `t_paths`/`create_db`/`init_video_cache`/`restore_album_scopes`/`spawn_scheduler`/`t_menu`，`window.set_decorations(true)`（窗口按 `tauri.conf.json` 以 frameless 创建，远端页无自绘标题栏，需还原原生边框否则不可拖动/关闭）+ `navigate` + `show`，随后 `return Ok(())`。`on_window_event`：客户端模式下点关闭直接 `exit(0)`（无托盘、无本地核需保活）。
+  - **零前端改动**（远端 Web UI 原样复用）。
+- **验证（单元）**：`cargo test --workspace` = **656/0/10 exit=0**（基线 652 + `t_client` 4：flag/env 优先级与两种拼写、`--data-dir` 两种拼写、锁检测的活/己/陈/坏四态）。**非空转已证**：把 `client_target_from_args` 的 env 分支改 `None` → 对应断言红，恢复 → 绿。
+- **验证（运行时真跑，临时库，真库零接触）**：起 lapd(17863, 隔离 data-dir) → 前面挂一个**日志反代**(17862，因 lapd 不记请求) → 桌面 `Lap.exe` 指向它。证据：① **显式 `--connect` 路径**与**自动锁检测路径**（`--data-dir` + 植入 `lapd.lock` 指向活 pid + 反代端口）都让主窗口加载**远端** Web 壳（反代日志见 `/`、`/api/auth/*`、`/assets/Home-*.js`）；② 通过整窗**真实登录**（发送键）→ 服务端 `auth_audit` 记 `login_ok device=web` + `device_tokens` 新增 `standard` 令牌，随后主界面真实加载（`get_all_albums`/`get_query_count_and_sum` 等）；③ 客户端模式桌面数据目录**只有我植入的锁，零 `.db`**（`create_db` 确未执行），而服务端目录拥有全部库；④ 截图确认主窗口渲染主界面。
+- **回归**：内嵌模式（无参、无锁）仍启动并**新建本地 `libraries/default.db`（迁移到 v28）**、对远端**零请求**（反代日志不增长）。
+- **诚实边界**：① 本机自动化会话下**内嵌**窗口不自动显现（前端 `win.show()` 路径未触发）——已用 **git stash 基线二进制对照**证明**该现象与本次改动无关**（基线同样不显），非本批回归；② 未在 macOS/Linux 验证；③ 移动端布局（5b）已并入手机 App 计划；F3 暂缓；④ 「原生外壳 + 运行时 HTTP 传输」未做，见上文差异声明。
+- **本批未做**：原生对话框式「是否以客户端模式连接？」确认 UX（需 pre-window 对话框）；客户端模式托盘/常驻；客户端模式下本地缓存/离线。
 
 ---
 

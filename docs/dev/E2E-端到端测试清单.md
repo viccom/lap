@@ -69,6 +69,29 @@ curl -s http://127.0.0.1:17861/api/server_info   # 期望 200 + JSON
 rm -rf /c/Users/viccom/AppData/Local/Temp/lap-e2e
 ```
 
+### 0.5 桌面「客户端模式」（§8.8–8.10）复跑
+
+客户端模式 = 桌面**不**开本地库，主窗口连远端 lapd。桌面与 lapd 的 `dist/` 是同一 outDir，且**调试版 Tauri 用 devUrl 而非内嵌 dist**——客户端模式窗口从 lapd 取壳，所以先跑一次 `npm run build:http`。
+
+```bash
+# 1) 起 lapd（隔离 data-dir）+ 设密码
+lapd --data-dir <temp>\srv --set-admin-password 1
+lapd --port 17863 --data-dir <temp>\srv --web-dir <repo>\src-vite\dist &
+
+# 2) lapd 不记请求；需要请求级证据时前置一个日志反代（17862→17863）
+python -I logproxy.py 17862 17863 <temp>\proxy.log &
+
+# 3a) 显式连接：桌面 → 反代
+Lap.exe --connect http://127.0.0.1:17862 --data-dir <temp>\desk &
+# 3b) 自动锁检测：植入指向活 pid + 反代端口的锁，再只带 --data-dir 启动
+echo {"pid":<lapd_pid>,"port":17862,"startedAt":1} > <temp>\desk\lapd.lock
+Lap.exe --data-dir <temp>\desk &
+
+# 4) 判据：<temp>\desk 只有锁、零 *.db；proxy.log 见远端壳与 /api/auth/*；
+#    在服务端 lapd.db 查 auth_audit(login_ok) 与 device_tokens。
+```
+
+
 ---
 
 ## 1. 鉴权与启动
@@ -189,6 +212,9 @@ rm -rf /c/Users/viccom/AppData/Local/Temp/lap-e2e
 | 8.5 | 路径分隔符取服务端 | `server_info.pathSeparator` 注入（非浏览器 UA） | ✅ |
 | 8.6 | 限流 | 读 1200/min、写 60/min per device（读宽写紧） | ⚠ 未压到阈值（历史实测） |
 | 8.7 | 优雅退出 | 停收新命令 + 取消任务 + flush WAL + 释放锁 | ⚠ 未逐项断言 |
+| 8.8 | 桌面客户端模式（显式 `--connect <url>`） | 桌面主窗口加载**远端** lapd Web UI；数据目录**零 `.db`**（未开本地库）；服务端 `auth_audit` 出现来自桌面的 `login_ok` + `device_tokens` 新增 `standard` 行 | ✅ 5-1 |
+| 8.9 | 桌面客户端模式（自动锁检测） | 无 `--connect`，但 `<data>/lapd.lock` 有活的外来 pid → 自动进入客户端模式并连 `127.0.0.1:<port>`；不取锁、不建库 | ✅ 5-1 |
+| 8.10 | 内嵌模式回归（无参、无锁） | 照常启动并新建本地 `libraries/default.db`；对远端零请求 | ✅ 5-1 |
 
 ---
 
@@ -204,7 +230,7 @@ npm run build && npm run build:http          # 都须 exit=0；build:http 最后
 
 # Rust（改动 src-tauri 时）
 source docs/dev/build-env.sh
-cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo test --workspace  # 基线 652/0/10
+cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo test --workspace  # 基线 656/0/10
 ```
 
 **门禁与本文档的关系**：门禁是"单元/契约"层；本文 §1–§8 是"运行时真跑"层。二者
@@ -214,11 +240,12 @@ cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo 
 
 ## 10. 基线台账（最近一次全量）
 
-日期：2026-11-17（批次 5d）｜环境：真机 lapd + IAB + 39 真实媒体
+日期：2026-11-17（批次 5d + 阶段 5-1）｜环境：真机 lapd + IAB + 39 真实媒体（§8.8–8.10 为真机桌面 + 隔离 data-dir）
 
-- 通过：§1 全、§2 全、§3（3.1–3.3,3.5–3.7）、§4（4.1–4.13）、§5（5.1–5.8）、§6（6.1–6.3,6.6,6.7）、§7（7.1–7.3）、§8（8.1–8.5）
+- 通过：§1 全、§2 全、§3（3.1–3.3,3.5–3.7）、§4（4.1–4.13）、§5（5.1–5.8）、§6（6.1–6.3,6.6,6.7）、§7（7.1–7.3）、§8（8.1–8.5, **8.8–8.10**）
 - 未覆盖：3.4 幻灯片逐帧、5.9 重置、6.4 另存、6.5 拼图导出、7.4 吊销、7.5 语言/主题、8.6 限流阈值、8.7 优雅退出逐项
 - 本批修复并回归：4.8（状态行刷新）
+- 阶段 5-1 新增：8.8/8.9/8.10（桌面客户端模式 显式连接 / 自动锁检测 / 内嵌回归）
 
 ---
 
@@ -234,6 +261,7 @@ cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo 
 | `Person` / `t_face` | §5 全 |
 | `ImageEditor` / `Montage` | §6 全 |
 | PWA / `main.js` 启动 | §8.1–8.4 |
+| `main.rs` 启动链 / `t_client`（客户端模式） | §8.8–8.10（**必须同时复核内嵌回归：客户端模式不得开本地库、内嵌不得被误切**） |
 | 任何删除/写盘路径 | 对应条目的**磁盘/DB 复核**（不只 UI） |
 
 ---

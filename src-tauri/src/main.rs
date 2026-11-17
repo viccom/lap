@@ -30,6 +30,7 @@ use lap_core::{
 use lap_core::t_http;
 
 
+mod t_client;
 mod t_cmds;
 mod t_drag;
 mod t_embed;
@@ -115,6 +116,35 @@ async fn main() {
     // Pin process-level state before anything reads it, so timing state (like
     // StartupState::started) reflects process start (see t_state).
     t_state::init_process_states();
+
+    // Client mode (plan §3.7/§5): if explicitly pointed at a server, or a lapd
+    // owns the data directory we would use, do NOT open the embedded backend —
+    // two processes must never write one library. The decision is made once
+    // here and consumed in `setup` below. Explicit config (--connect / env)
+    // always wins over automatic lock detection.
+    let env_connect = std::env::var("LAP_CONNECT").ok();
+    let args: Vec<String> = std::env::args().collect();
+    // Optional isolated data directory (mirrors `lapd --data-dir`): applied
+    // before anything reads the data path, so both the lock probe below and
+    // the embedded boot resolve against it. Absent → the per-user default.
+    if let Some(dir) = t_client::data_dir_from_args(&args) {
+        eprintln!("lap: data dir → {}", dir.display());
+        t_config::set_data_dir_override(dir);
+    }
+    let client_target = t_client::client_target_from_args(&args, env_connect.as_deref())
+        .or_else(|| {
+            t_config::get_app_data_dir()
+                .ok()
+                .and_then(|dir| t_client::running_server_target(&dir, std::process::id()))
+        });
+    if let Some(url) = &client_target {
+        eprintln!("lap: client mode → {url}");
+    }
+    // Copy captured by the window-event handler below: in client mode there is
+    // no local backend or tray, so closing the window must quit the process
+    // rather than hide it.
+    let is_client_mode = client_target.is_some();
+
     let builder = tauri::Builder::default();
     let builder = t_protocol::register_protocols(builder);
 
@@ -143,9 +173,42 @@ async fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .setup(|_app| {
+        .setup(move |_app| {
             t_startup::mark("setup-started");
             t_events::set_sink(std::sync::Arc::new(TauriEventSink(_app.handle().clone())));
+            // The identifier is needed for the window title / app-data naming
+            // on both paths; it has no side effects on the library.
+            t_config::set_app_identifier(&_app.config().identifier);
+
+            // Client mode: this process must not touch the library. Point the
+            // main window at the server's Web UI, keep the OS-native window
+            // decorations (the remote page is not one of our self-drawn-titlebar
+            // windows, so a frameless window could not be moved or closed), and
+            // return before any local initialization (no create_db, no scopes,
+            // no scheduler, no menu — its items drive the local core).
+            if let Some(url) = client_target.as_deref() {
+                if let Some(window) = _app.get_webview_window("main") {
+                    // The window is created frameless (tauri.conf.json
+                    // decorations:false) because our own UI draws its title
+                    // bar. The remote Web UI does not, so restore the OS-native
+                    // frame here or the window could not be moved or closed.
+                    let _ = window.set_decorations(true);
+                    match tauri::Url::parse(url) {
+                        Ok(parsed) => {
+                            if let Err(e) = window.navigate(parsed) {
+                                eprintln!("client mode: navigate to {url} failed: {e}");
+                            }
+                        }
+                        Err(e) => eprintln!("client mode: invalid server url {url}: {e}"),
+                    }
+                    if let Err(e) = window.show() {
+                        eprintln!("client mode: show failed: {e}");
+                    }
+                }
+                t_startup::mark("client-mode-ready");
+                return Ok(());
+            }
+
             // Pin the directories the core needs so it never reaches for an
             // AppHandle (see t_paths). Seeded verbatim from Tauri so the
             // resolved locations stay byte-identical.
@@ -158,7 +221,6 @@ async fn main() {
                 });
             }
             t_video::init_ffmpeg_path();
-            t_config::set_app_identifier(&_app.config().identifier);
             t_menu::install_app_menu(&_app.handle())?;
 
             #[cfg(not(target_os = "macos"))]
@@ -211,7 +273,7 @@ async fn main() {
 
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(move |window, event| {
             if window.label() != "main" {
                 return;
             }
@@ -219,6 +281,13 @@ async fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Prevent the default close so we can decide what to do per platform.
                 api.prevent_close();
+
+                // Client mode has no tray and no local core to keep alive:
+                // closing the window is a real quit on every platform.
+                if is_client_mode {
+                    window.app_handle().exit(0);
+                    return;
+                }
 
                 // macOS convention: closing the window hides it; the app stays
                 // alive and can be reopened via the Dock icon (handled by
