@@ -36,7 +36,16 @@ const LOGIN_LIMIT: u32 = 5;
 const FAIL_LOCK_THRESHOLD: u32 = 5;
 const FAIL_LOCK: Duration = Duration::from_secs(300);
 const CMD_WINDOW: Duration = Duration::from_secs(60);
+/// Mutating/admin commands stay on the tight §3.6 budget (60/min/device).
 const CMD_LIMIT: u32 = 60;
+/// Read commands get their own, far wider budget. Measured cost of ONE view
+/// switch in the browser: ~50 commands (album list, counts, timeline, a
+/// get_query_files window, and ~29 thumbnail batches) — so the 60/min ceiling
+/// that is right for mutations throttled normal browsing after a single switch,
+/// and the Web client surfaced the resulting 429s as a logged-out "loading"
+/// screen. 1200/min (20/s sustained, ≈24 view switches per minute) is well
+/// above anything a human produces while still bounding a runaway client.
+const READ_LIMIT: u32 = 1200;
 #[allow(dead_code)] // consumed by the media endpoints (batch 3.3 follow-up)
 const MEDIA_PREFIXES: [&str; 4] = ["/api/thumb/", "/api/preview/", "/api/original/", "/api/video/"];
 
@@ -152,8 +161,10 @@ pub struct AuthService {
     password_path: PathBuf,
     pairing: Mutex<Option<PairingSlot>>,
     login_limiter: RateLimiter,
-    #[allow(dead_code)] // consumed by the whitelist middleware (batch 3.3 follow-up)
+    /// Mutating/admin commands (tight §3.6 budget).
     cmd_limiter: RateLimiter,
+    /// Read commands (wider budget; see READ_LIMIT).
+    read_limiter: RateLimiter,
     lockout: LoginLockout,
 }
 
@@ -208,6 +219,7 @@ impl AuthService {
             pairing: Mutex::new(None),
             login_limiter: RateLimiter::new(LOGIN_LIMIT, LOGIN_WINDOW),
             cmd_limiter: RateLimiter::new(CMD_LIMIT, CMD_WINDOW),
+            read_limiter: RateLimiter::new(READ_LIMIT, CMD_WINDOW),
             lockout: LoginLockout::default(),
         })
     }
@@ -336,10 +348,11 @@ impl AuthService {
         }
     }
 
-    /// Per-device command rate limit (§3.6: 60/min/device).
-    #[allow(dead_code)] // consume in the whitelist middleware (follow-up commit)
-    pub fn check_cmd_rate(&self, token_id: i64) -> bool {
-        self.cmd_limiter.check(&token_id.to_string())
+    /// Per-device command rate limit (§3.6: 60/min/device for mutations;
+    /// reads get READ_LIMIT so browsing is not throttled).
+    pub fn check_cmd_rate(&self, token_id: i64, read: bool) -> bool {
+        let limiter = if read { &self.read_limiter } else { &self.cmd_limiter };
+        limiter.check(&token_id.to_string())
     }
 
     #[allow(dead_code)] // consume in the whitelist middleware (follow-up commit)
@@ -604,7 +617,10 @@ impl AuthService {
             if exposure == "admin" && token.scope != SCOPE_ADMIN && !loopback {
                 return Err(AuthError::Forbidden("admin scope required".into()));
             }
-            if !self.check_cmd_rate(token.id) {
+            // Reads and mutations have separate budgets: a browsing session
+            // legitimately issues dozens of reads per view switch, while the
+            // tight limit belongs on state changes.
+            if !self.check_cmd_rate(token.id, exposure == "read") {
                 return Err(AuthError::RateLimited("command rate limit exceeded".into()));
             }
         }
@@ -974,17 +990,62 @@ mod tests {
             h
         };
         let lan: std::net::IpAddr = "10.0.0.1".parse().unwrap();
+        // Mutations keep the tight §3.6 budget.
         for _ in 0..CMD_LIMIT {
-            auth.authorize_request(&headers_for(&token_a), Some("get_app_config"), Some(lan))
+            auth.authorize_request(&headers_for(&token_a), Some("save_library_state"), Some(lan))
                 .unwrap();
         }
         assert!(matches!(
-            auth.authorize_request(&headers_for(&token_a), Some("get_app_config"), Some(lan)),
+            auth.authorize_request(&headers_for(&token_a), Some("save_library_state"), Some(lan)),
             Err(AuthError::RateLimited(_))
         ));
         // Device B is unaffected by A's window.
-        auth.authorize_request(&headers_for(&token_b), Some("get_app_config"), Some(lan))
+        auth.authorize_request(&headers_for(&token_b), Some("save_library_state"), Some(lan))
             .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Browsing is read-heavy: a view switch costs dozens of reads, so the read
+    /// budget must be far wider than the mutation one (and independent of it).
+    #[tokio::test(start_paused = true)]
+    async fn read_commands_get_a_wider_budget_than_mutations() {
+        let dir = scratch("read-rate");
+        AuthService::set_admin_password(&dir, "pw").unwrap();
+        let auth = AuthService::open(&dir).unwrap();
+        let (token, ..) = auth.login("pw", "dev", "10.0.0.1").unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {token}").parse().unwrap(),
+        );
+        let lan: std::net::IpAddr = "10.0.0.1".parse().unwrap();
+
+        // Reads sail past the mutation ceiling.
+        for _ in 0..(CMD_LIMIT * 3) {
+            auth.authorize_request(&headers, Some("get_query_files"), Some(lan))
+                .unwrap();
+        }
+        // The mutation budget was not touched by those reads.
+        for _ in 0..CMD_LIMIT {
+            auth.authorize_request(&headers, Some("save_library_state"), Some(lan))
+                .unwrap();
+        }
+        assert!(
+            matches!(
+                auth.authorize_request(&headers, Some("save_library_state"), Some(lan)),
+                Err(AuthError::RateLimited(_))
+            ),
+            "mutations must still be limited while reads are flowing"
+        );
+        // And the read budget itself still ends in a 429 at READ_LIMIT.
+        for _ in 0..(READ_LIMIT - CMD_LIMIT * 3) {
+            auth.authorize_request(&headers, Some("get_query_files"), Some(lan))
+                .unwrap();
+        }
+        assert!(matches!(
+            auth.authorize_request(&headers, Some("get_query_files"), Some(lan)),
+            Err(AuthError::RateLimited(_))
+        ));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

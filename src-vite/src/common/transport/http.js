@@ -49,14 +49,24 @@ export function createHttpTransport({
     });
     if (res.status === 401) {
       signalUnauthorized();
-      throw new Error(`command ${name} failed: HTTP 401`);
+      throw commandError(name, res.status);
     }
     if (!res.ok) {
-      throw new Error(`command ${name} failed: HTTP ${res.status}`);
+      throw commandError(name, res.status);
     }
     // Commands may legitimately return no body.
     const text = await res.text();
     return text ? JSON.parse(text) : null;
+  }
+
+  // The HTTP status travels with the error: callers must be able to tell "the
+  // session is gone (401)" from "the request failed for another reason (429,
+  // 5xx, network)" — treating the latter as a logout bounced valid sessions to
+  // /login whenever the rate limiter kicked in.
+  function commandError(name, status) {
+    const error = new Error(`command ${name} failed: HTTP ${status}`);
+    error.status = status;
+    return error;
   }
 
   // One shared EventSource fanned out to per-name subscribers, opened lazily.
@@ -134,7 +144,14 @@ export function createHttpTransport({
 
   async function authStatus() {
     const res = await fetchImpl(`${baseUrl}/api/auth/status`);
-    if (!res.ok) return { auth: false, passwordSet: false };
+    // A failed status read is a server-side problem, not "no password set":
+    // reporting `passwordSet: false` here would send the app to the setup
+    // screen (and, before the fix, log a valid session out).
+    if (!res.ok) {
+      const error = new Error(`auth status failed: HTTP ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
     const text = await res.text();
     return text ? JSON.parse(text) : { auth: false, passwordSet: false };
   }

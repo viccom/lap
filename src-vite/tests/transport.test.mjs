@@ -94,11 +94,26 @@ test('http transport: a no-arg command sends an empty object', async () => {
   assert.equal(body, '{}');
 });
 
-test('http transport: a non-2xx response throws with the command name', async () => {
+test('http transport: a non-2xx response throws with the command name and the status', async () => {
   const t = createHttpTransport({
     fetchImpl: async () => ({ ok: false, status: 403, text: async () => '' }),
   });
   await assert.rejects(() => t.invoke('forbidden_cmd'), /forbidden_cmd.*403/);
+});
+
+test('http transport: failures carry the HTTP status so callers can tell a 401 from a 429', async () => {
+  // The session probe must only log out on 401; a rate-limited (429) probe says
+  // nothing about the session. That decision needs the status on the error.
+  for (const status of [401, 429, 500]) {
+    const t = createHttpTransport({
+      fetchImpl: async () => ({ ok: false, status, text: async () => '' }),
+    });
+    await assert.rejects(
+      () => t.invoke('get_app_config'),
+      (error) => error.status === status,
+      `status ${status} must travel with the error`,
+    );
+  }
 });
 
 test('http transport: emit reaches a same-tab listen handler', async () => {

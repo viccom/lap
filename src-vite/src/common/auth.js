@@ -43,15 +43,20 @@ export function subscribeAuth(fn) {
 }
 
 /** Probe the session: status says whether a password is configured; a live
- *  token is confirmed by a cheap read command. A 401 from the probe means the
- *  Cookie is absent/expired. */
+ *  token is confirmed by a cheap read command. Only a 401 from the probe means
+ *  the Cookie is absent/expired — every other failure (429 rate limit, 5xx, a
+ *  transient network error) says nothing about the session and must NOT log the
+ *  user out. Conflating the two used to bounce valid sessions to /login. */
 export async function checkSession() {
   if (!isWeb) { authenticated = true; scope = 'desktop'; return true; }
   let status;
   try {
     status = await authStatus();
   } catch {
-    authenticated = false; notify(); return false;
+    // /api/auth/status is unauthenticated and cheap; a failure here is a server
+    // problem, not proof of a missing session.
+    notify();
+    return authenticated;
   }
   passwordSet = status?.passwordSet === true;
   if (!passwordSet) {
@@ -65,8 +70,14 @@ export async function checkSession() {
   try {
     await invoke('get_app_config', {});
     authenticated = true; notify(); return true;
-  } catch {
-    authenticated = false; notify(); return false;
+  } catch (error) {
+    if (error?.status === 401) {
+      authenticated = false; notify(); return false;
+    }
+    // Keep the last known state: the app stays usable and a real 401 on a later
+    // command still redirects through `markExpired`.
+    notify();
+    return authenticated;
   }
 }
 
