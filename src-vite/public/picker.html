@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lap · Servers</title>
+  <!--
+    Local server picker for the thin client (`--features client`).
+    This page is loaded from the app's own origin (http://tauri.localhost), so
+    it DOES have the Tauri API (`window.__TAURI__.core.invoke`). The remote
+    lapd page it navigates to does not — which is exactly why server management
+    lives here and not over there.
+  -->
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      background: #1d232a; color: #e5e7eb;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .card { width: min(560px, 92vw); background: #232a33; border-radius: 14px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,.45); }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #9ca3af; font-size: 13px; margin: 0 0 18px; }
+    .row { display: flex; gap: 8px; }
+    input {
+      flex: 1; padding: 9px 11px; border-radius: 8px; border: 1px solid #3a434f;
+      background: #1a2029; color: inherit; font-size: 14px; outline: none;
+    }
+    input:focus { border-color: #6d7cff; }
+    button {
+      padding: 9px 14px; border-radius: 8px; border: 1px solid #3a434f; cursor: pointer;
+      background: #2b333e; color: inherit; font-size: 14px;
+    }
+    button.primary { background: #4f5bff; border-color: #4f5bff; color: #fff; }
+    button:hover { filter: brightness(1.12); }
+    ul { list-style: none; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid #333c47; border-radius: 10px; }
+    li .name { font-weight: 600; }
+    li .url { color: #9ca3af; font-size: 12px; }
+    li.current { border-color: #4f5bff; }
+    .grow { flex: 1; min-width: 0; }
+    .grow .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty { color: #9ca3af; font-size: 13px; margin-top: 18px; }
+    .err { color: #ff8080; font-size: 13px; min-height: 18px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Lap · 服务器</h1>
+    <p class="sub">管理并连接到 lapd 服务器。连接后本窗口将显示该服务器的照片库。</p>
+
+    <form id="add" class="row">
+      <input id="name" placeholder="名称（可选，如：家里 NAS）" />
+      <input id="url" placeholder="地址，如 192.168.1.9:17860" required />
+      <button class="primary" type="submit">添加</button>
+    </form>
+    <div id="err" class="err"></div>
+
+    <ul id="list"></ul>
+    <div id="empty" class="empty" hidden>还没有服务器。在上方添加一个。</div>
+  </div>
+
+  <script>
+    const invoke = window.__TAURI__?.core?.invoke;
+    const listEl = document.getElementById('list');
+    const emptyEl = document.getElementById('empty');
+    const errEl = document.getElementById('err');
+
+    function fail(msg) { errEl.textContent = msg || ''; }
+
+    if (!invoke) {
+      fail('Tauri API 不可用：此页面必须由 Lap 薄客户端加载。');
+    }
+
+    async function refresh() {
+      fail('');
+      const cfg = await invoke('client_list_servers');
+      listEl.innerHTML = '';
+      const servers = cfg.servers || [];
+      emptyEl.hidden = servers.length > 0;
+      for (const s of servers) {
+        const li = document.createElement('li');
+        if (cfg.current === s.url) li.className = 'current';
+        const grow = document.createElement('div');
+        grow.className = 'grow';
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = s.name;
+        const url = document.createElement('div');
+        url.className = 'url';
+        url.textContent = s.url + (cfg.current === s.url ? ' · 当前' : '');
+        grow.append(name, url);
+        const connect = document.createElement('button');
+        connect.className = 'primary';
+        connect.textContent = '连接';
+        connect.onclick = () => window.__connect(s.url);
+        const del = document.createElement('button');
+        del.textContent = '删除';
+        del.onclick = async () => { await invoke('client_remove_server', { url: s.url }); refresh(); };
+        li.append(grow, connect, del);
+        listEl.append(li);
+      }
+    }
+
+    // Named so inline onclick can reach it.
+    window.__connect = async (url) => {
+      try {
+        await invoke('client_connect', { url });
+      } catch (e) {
+        fail(String(e));
+      }
+    };
+
+    document.getElementById('add').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const name = document.getElementById('name').value;
+      const url = document.getElementById('url').value;
+      try {
+        await invoke('client_add_server', { name, url });
+        document.getElementById('name').value = '';
+        document.getElementById('url').value = '';
+        refresh();
+      } catch (e) {
+        fail(String(e));
+      }
+    });
+
+    if (invoke) refresh().catch((e) => fail(String(e)));
+  </script>
+</body>
+</html>

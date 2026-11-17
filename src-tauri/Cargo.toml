@@ -33,7 +33,11 @@ strip = true
 opt-level = 3
 
 [dependencies]
-lap-core = { path = "crates/lap-core" }
+# The embedded backend. Optional so the thin client (`--features client`) can
+# be built WITHOUT it: not linking lap-core means its build.rs (libraw /
+# libjpeg-turbo / libheif / libde265) and the whole AI stack never compile or
+# link, which is what makes the thin client small.
+lap-core = { path = "crates/lap-core", optional = true }
 drag = { path = "vendor/drag" }
 tauri = { version = "2", features = [
     "macos-private-api",
@@ -109,8 +113,17 @@ windows = { version = "0.61.3", default-features = false, features = ["Win32_Fou
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
-default = ["custom-protocol"]
+default = ["custom-protocol", "embedded"]
 custom-protocol = ["tauri/custom-protocol"]
+# Full desktop app: links the whole backend (`lap-core`) and registers every
+# local Tauri command. This is the default and unchanged behaviour.
+embedded = ["dep:lap-core"]
+# Thin client: no local backend. The window navigates to a remote `lapd`
+# server's Web UI; no library is opened and no local commands are registered.
+# Build with `--no-default-features --features client`. It keeps
+# `custom-protocol` so the bundled picker page is served from
+# `tauri://localhost`.
+client = ["custom-protocol"]
 devtools = ["tauri/devtools"]
 # Windows console subsystem opt-in: the default build (debug included) uses
 # the GUI subsystem so double-clicking the exe does not flash a console

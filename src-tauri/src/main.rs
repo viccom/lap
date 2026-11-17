@@ -15,10 +15,14 @@
  * date:    2024-08-08
  */
 use tauri::Manager;
+#[cfg(feature = "embedded")]
 use tauri_plugin_aptabase::EventTracker;
 
 // The core lives in lap-core; importing the module names keeps the
-// bare `t_x::…` paths below unchanged. (t_http is Linux-only.)
+// bare `t_x::…` paths below unchanged. (t_http is Linux-only.) The thin
+// client build (`--features client`) does not link lap-core, so all of this —
+// and every module that depends on it — is gated to `embedded`.
+#[cfg(feature = "embedded")]
 use lap_core::{
     t_config,
     t_events,
@@ -26,30 +30,50 @@ use lap_core::{
     t_sqlite,
     t_state,
 };
-#[cfg(target_os = "linux")]
+#[cfg(all(feature = "embedded", target_os = "linux"))]
 use lap_core::t_http;
 
 
+#[cfg(feature = "embedded")]
 mod t_client;
+#[cfg(feature = "embedded")]
 mod t_cmds;
+#[cfg(feature = "embedded")]
 mod t_drag;
+#[cfg(feature = "embedded")]
 mod t_embed;
+#[cfg(feature = "embedded")]
 mod t_fts;
+#[cfg(feature = "embedded")]
 mod t_af_area;
+// The menu module is Tauri-only (no lap-core), so it compiles in both builds.
 mod t_menu;
+#[cfg(feature = "client")]
+mod client_cmds;
+#[cfg(feature = "client")]
+mod servers;
+#[cfg(feature = "embedded")]
 mod t_pasteboard;
-mod t_scopes;
+#[cfg(feature = "embedded")]
 mod t_protocol;
+#[cfg(feature = "embedded")]
+mod t_scopes;
+#[cfg(feature = "embedded")]
 mod t_startup;
+#[cfg(feature = "embedded")]
 mod t_video;
+#[cfg(feature = "embedded")]
 mod t_vl;
+#[cfg(feature = "embedded")]
 mod t_vl_schedule;
 
 /// Desktop adapter for the process-level event sink: forwards emitted events
 /// to the Tauri shell. Lives here (not in `t_events`) so the sink module stays
 /// Tauri-free and the same core can later run under `lapd` with an SSE sink.
+#[cfg(feature = "embedded")]
 struct TauriEventSink(tauri::AppHandle);
 
+#[cfg(feature = "embedded")]
 impl t_events::EventSink for TauriEventSink {
     fn emit(&self, name: &str, payload: serde_json::Value) {
         use tauri::Emitter;
@@ -113,37 +137,44 @@ async fn main() {
         eprintln!("Unhandled panic: {}", panic_info);
     }));
 
+    #[cfg(feature = "embedded")]
+    run_embedded().await;
+
+    #[cfg(all(feature = "client", not(feature = "embedded")))]
+    run_client().await;
+}
+
+/// Full desktop app: links the backend, opens the library, and registers every
+/// local Tauri command. This is the default build and is unchanged from before
+/// the embedded/client split.
+#[cfg(feature = "embedded")]
+async fn run_embedded() {
     // Pin process-level state before anything reads it, so timing state (like
     // StartupState::started) reflects process start (see t_state).
     t_state::init_process_states();
 
-    // Client mode (plan §3.7/§5): if explicitly pointed at a server, or a lapd
-    // owns the data directory we would use, do NOT open the embedded backend —
-    // two processes must never write one library. The decision is made once
-    // here and consumed in `setup` below. Explicit config (--connect / env)
-    // always wins over automatic lock detection.
-    let env_connect = std::env::var("LAP_CONNECT").ok();
+    // Two processes must never write one library (risk R2, plan §3.7): if a
+    // live `lapd` owns the data directory we would open, refuse to start
+    // rather than race it for the SQLite files. This desktop build is the
+    // full/embedded app; it never connects to a server itself.
     let args: Vec<String> = std::env::args().collect();
     // Optional isolated data directory (mirrors `lapd --data-dir`): applied
-    // before anything reads the data path, so both the lock probe below and
-    // the embedded boot resolve against it. Absent → the per-user default.
+    // before anything reads the data path, so the lock probe below and the
+    // embedded boot both resolve against it. Absent → the per-user default.
     if let Some(dir) = t_client::data_dir_from_args(&args) {
         eprintln!("lap: data dir → {}", dir.display());
         t_config::set_data_dir_override(dir);
     }
-    let client_target = t_client::client_target_from_args(&args, env_connect.as_deref())
-        .or_else(|| {
-            t_config::get_app_data_dir()
-                .ok()
-                .and_then(|dir| t_client::running_server_target(&dir, std::process::id()))
-        });
-    if let Some(url) = &client_target {
-        eprintln!("lap: client mode → {url}");
+    if let Some(addr) = t_config::get_app_data_dir()
+        .ok()
+        .and_then(|dir| t_client::conflicting_server(&dir, std::process::id()))
+    {
+        eprintln!(
+            "lap: another instance is using this library (a Lap server is running at {addr}).\n\
+             Close it, or use the Web client / thin-client build to connect to it."
+        );
+        std::process::exit(1);
     }
-    // Copy captured by the window-event handler below: in client mode there is
-    // no local backend or tray, so closing the window must quit the process
-    // rather than hide it.
-    let is_client_mode = client_target.is_some();
 
     let builder = tauri::Builder::default();
     let builder = t_protocol::register_protocols(builder);
@@ -176,38 +207,8 @@ async fn main() {
         .setup(move |_app| {
             t_startup::mark("setup-started");
             t_events::set_sink(std::sync::Arc::new(TauriEventSink(_app.handle().clone())));
-            // The identifier is needed for the window title / app-data naming
-            // on both paths; it has no side effects on the library.
+            // The identifier is needed for the window title / app-data naming.
             t_config::set_app_identifier(&_app.config().identifier);
-
-            // Client mode: this process must not touch the library. Point the
-            // main window at the server's Web UI, keep the OS-native window
-            // decorations (the remote page is not one of our self-drawn-titlebar
-            // windows, so a frameless window could not be moved or closed), and
-            // return before any local initialization (no create_db, no scopes,
-            // no scheduler, no menu — its items drive the local core).
-            if let Some(url) = client_target.as_deref() {
-                if let Some(window) = _app.get_webview_window("main") {
-                    // The window is created frameless (tauri.conf.json
-                    // decorations:false) because our own UI draws its title
-                    // bar. The remote Web UI does not, so restore the OS-native
-                    // frame here or the window could not be moved or closed.
-                    let _ = window.set_decorations(true);
-                    match tauri::Url::parse(url) {
-                        Ok(parsed) => {
-                            if let Err(e) = window.navigate(parsed) {
-                                eprintln!("client mode: navigate to {url} failed: {e}");
-                            }
-                        }
-                        Err(e) => eprintln!("client mode: invalid server url {url}: {e}"),
-                    }
-                    if let Err(e) = window.show() {
-                        eprintln!("client mode: show failed: {e}");
-                    }
-                }
-                t_startup::mark("client-mode-ready");
-                return Ok(());
-            }
 
             // Pin the directories the core needs so it never reaches for an
             // AppHandle (see t_paths). Seeded verbatim from Tauri so the
@@ -281,13 +282,6 @@ async fn main() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Prevent the default close so we can decide what to do per platform.
                 api.prevent_close();
-
-                // Client mode has no tray and no local core to keep alive:
-                // closing the window is a real quit on every platform.
-                if is_client_mode {
-                    window.app_handle().exit(0);
-                    return;
-                }
 
                 // macOS convention: closing the window hides it; the app stays
                 // alive and can be reopened via the Dock icon (handled by
@@ -631,5 +625,102 @@ async fn main() {
         Err(err) => {
             eprintln!("Error while running application: {}", err);
         }
+    }
+}
+
+/// Thin client: no local backend. The window shows a remote `lapd` server's
+/// Web UI; a native menu (Rust-side, the only control surface that works when a
+/// remote page is shown) switches between servers, and a local picker page
+/// manages the list. Built with `--no-default-features --features client`, so
+/// `lap-core` (the C image libraries, the AI stack, every local command) is
+/// never linked.
+#[cfg(all(feature = "client", not(feature = "embedded")))]
+async fn run_client() {
+    // Load the persisted server list. A missing/corrupt file yields an empty
+    // list (never a hard failure) so the user can always re-add servers.
+    let path = match servers::default_config_path() {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("thin client: {e}");
+            return;
+        }
+    };
+    let config = servers::load_from(&path);
+    // An explicit `LAP_CONNECT` (handy for scripts/tests) wins over the saved
+    // choice without persisting it.
+    let startup_target = std::env::var("LAP_CONNECT")
+        .ok()
+        .and_then(|raw| servers::normalize_url(&raw))
+        .or_else(|| config.current.clone());
+
+    let builder = client_cmds::register_picker_protocol(tauri::Builder::default())
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        & !tauri_plugin_window_state::StateFlags::VISIBLE,
+                )
+                .build(),
+        )
+        .plugin(tauri_plugin_shell::init())
+        .manage(client_cmds::ClientState {
+            path: path.clone(),
+            config: std::sync::Mutex::new(config.clone()),
+        })
+        .invoke_handler(tauri::generate_handler![
+            client_cmds::client_list_servers,
+            client_cmds::client_add_server,
+            client_cmds::client_remove_server,
+            client_cmds::client_connect,
+            client_cmds::client_show_picker,
+        ])
+        .setup(move |app| {
+            let _ = t_menu::install_client_menu(&app.handle().clone(), &config);
+            if let Some(window) = app.get_webview_window("main") {
+                // Our UI normally draws its own title bar (decorations:false in
+                // tauri.conf.json). The remote Web UI does not, so restore the
+                // OS-native frame or the window could not be moved or closed.
+                let _ = window.set_decorations(true);
+                match startup_target.as_deref() {
+                    Some(url) => {
+                        if let Err(e) = client_cmds::navigate_main(&app.handle().clone(), url) {
+                            eprintln!("thin client: {e}");
+                        }
+                    }
+                    // No configured server: open the local picker so the user
+                    // can add one. This page is served by our own origin and so
+                    // has the Tauri API.
+                    None => {
+                        let _ = client_cmds::client_show_picker(app.handle().clone());
+                    }
+                }
+                let _ = window.show();
+            }
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            let servers = app
+                .state::<client_cmds::ClientState>()
+                .config
+                .lock()
+                .unwrap()
+                .servers
+                .clone();
+            t_menu::handle_client_menu_event(app, &event.id().0, &servers);
+        })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            // No local core or tray to keep alive: closing the window quits.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                window.app_handle().exit(0);
+            }
+        });
+
+    match builder.build(tauri::generate_context!()) {
+        Ok(app) => app.run(|_app_handle, _event| {}),
+        Err(err) => eprintln!("Error while running thin client: {err}"),
     }
 }

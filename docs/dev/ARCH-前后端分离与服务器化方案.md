@@ -550,6 +550,30 @@ src-vite/                      一套前端，两种传输
 - **诚实边界**：① 本机自动化会话下**内嵌**窗口不自动显现（前端 `win.show()` 路径未触发）——已用 **git stash 基线二进制对照**证明**该现象与本次改动无关**（基线同样不显），非本批回归；② 未在 macOS/Linux 验证；③ 移动端布局（5b）已并入手机 App 计划；F3 暂缓；④ 「原生外壳 + 运行时 HTTP 传输」未做，见上文差异声明。
 - **本批未做**：原生对话框式「是否以客户端模式连接？」确认 UX（需 pre-window 对话框）；客户端模式托盘/常驻；客户端模式下本地缓存/离线。
 
+> **⚠ 批次 5-1 与 5-2 已被阶段 6 取代（2026-11-17）**：5-1 的「同一 `Lap.exe` 运行时进入客户端模式」与 5-2 的「启动弹窗」方向作废，改由**独立 feature 构建的薄客户端**实现（下方批次 6-1/6-2/6-3）。保留本段仅作历史记录。
+
+**批次 6-1（撤销 5-1/5-2 方向；完整版保留锁冲突拒启）· 已完成**
+
+- **决策**：完整桌面版**只做本机**，不再有「运行时连远端」；连远端归独立的薄客户端。删除了 5-1 的 `navigate`-到-远端 与 5-2 的启动 Yes/No 弹窗，以及 `--connect`/`LAP_CONNECT`/`decide_client_mode`。
+- **保留（R2 兜底）**：完整版启动遇 `<data>/lapd.lock` 指向**活的外来 pid** → 打印提示并 **exit(1)**，绝不与服务端抢库。`t_client.rs` 收敛为纯锁检测（`data_dir_from_args` + `conflicting_server` + `pid_alive`）。
+- **验证**：`cargo test --workspace` 654/0/10（较 657 少 3 = 删掉的 5-1/5-2 逻辑用例）。**真机**：植入活锁后完整版 `exit=1`、提示清晰、**未建库**。
+
+**批次 6-2（feature 拆分：一份源码，两个 exe）· 已完成**
+
+- `Cargo.toml`：`lap-core` 改 **optional**；`default = ["custom-protocol", "embedded"]`；新增 `embedded = ["dep:lap-core"]` 与 `client = ["custom-protocol"]`。
+- `main.rs`：`main()` 仅分派；`run_embedded()`（原逻辑逐字保留）+ `run_client()`（薄客户端）。`use lap_core::…`、11 个依赖内核的 `mod`、217 条 `invoke_handler`、内嵌 setup 链、`TauriEventSink` 全部 `#[cfg(feature="embedded")]` 门控；`t_menu` 两构建通用。
+- **实测体积**：完整版 `Lap.exe` **165 MB** → 薄客户端 **14.9 MB**（libraw/libjpeg-turbo/libheif/libde265 + ort + tokenizers 全未链接）。
+- **验证**：`cargo build`（默认=完整版）与 `cargo test --workspace` **无回归**（654/0/10）；`cargo build --no-default-features --features client` 产出薄 exe 且**零警告**；薄客户端连真机 lapd → 建立连接 → UIA 确认渲染远端登录页。
+
+**批次 6-3（薄客户端多服务器）· 已完成**
+
+- **壳内新增 `servers.rs`**（Tauri-free，`serde_json` + `dirs`）：`ServersConfig { servers, current }` 的增/删/选/持久化（原子写、坏文件回退空）；`LAP_DATA_DIR` 覆盖配置目录（供隔离测试）。
+- **壳内新增 `client_cmds.rs`**（仅 `client` 构建）：命令 `client_list_servers`/`client_add_server`/`client_remove_server`/`client_connect`/`client_show_picker`；共享 `connect_and_persist`（选中即持久化 + 导航，供命令与菜单复用）；`picker` **自定义 URI scheme** 由 Rust `include_str!` 内嵌 `picker.html` 并注册（因 debug Tauri 用 `devUrl` 不内嵌 dist，必须自带）；`navigate_main`。
+- **原生菜单**（`t_menu.rs`，全桌面平台）：列出各服务器（当前项标 `●`）+「管理服务器…」+ 退出；点击服务器 → `connect_and_persist` + 重建菜单。菜单是**甲方案下唯一可靠的原生控制面**（远端 lapd 页无 Tauri API）。
+- **本地选择页** `src-vite/public/picker.html`：增删服务器、连接（本地 origin ⇒ 有 `__TAURI__.core.invoke`）。
+- **真机多服务器 E2E**：起两台 lapd(17868 A / 17869 B) → 薄客户端预置两台、`current=A` → 菜单 `[● A][   B]` → 点 B → **配置 `current` 持久化为 17869**、连接切到 B、菜单变 `[   A][● B]` → 重启（不带 `LAP_CONNECT`）**记住并加载 B**。薄客户端数据目录**零本地库**。
+- **验证**：前端 475/0 未变；两构建 exit=0；`cargo test --workspace` 654/0/10；`client` feature `servers` 单测 5/5。
+
 ---
 
 ## 5. 命令契约（维护规则）

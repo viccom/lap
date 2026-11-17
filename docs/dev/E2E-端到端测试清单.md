@@ -215,6 +215,10 @@ Lap.exe --data-dir <temp>\desk &
 | 8.8 | 桌面客户端模式（显式 `--connect <url>`） | 桌面主窗口加载**远端** lapd Web UI；数据目录**零 `.db`**（未开本地库）；服务端 `auth_audit` 出现来自桌面的 `login_ok` + `device_tokens` 新增 `standard` 行 | ✅ 5-1 |
 | 8.9 | 桌面客户端模式（自动锁检测） | 无 `--connect`，但 `<data>/lapd.lock` 有活的外来 pid → 自动进入客户端模式并连 `127.0.0.1:<port>`；不取锁、不建库 | ✅ 5-1 |
 | 8.10 | 内嵌模式回归（无参、无锁） | 照常启动并新建本地 `libraries/default.db`；对远端零请求 | ✅ 5-1 |
+| 8.11 | **完整版锁冲突拒启（6-1 取代 8.9）** | 完整版启动遇 `<data>/lapd.lock` 活的外来 pid → 打印提示并 **exit=1**，**不建库** | ✅ 6-1 |
+| 8.12 | **薄客户端构建 + 连接（6-2）** | `cargo build --no-default-features --features client` 产出 exe（不链 `lap-core`，实测 165MB→14.9MB）→ 连真机 lapd 渲染远端登录页；数据目录零 `.db` | ✅ 6-2 |
+| 8.13 | **薄客户端多服务器（6-3）** | 预置 A/B 两台 + `current=A` → 菜单 `[● A][   B]` → 点 B → 配置 `current` 持久化为 B、连接切到 B、菜单变 `[   A][● B]`；重启（无 `LAP_CONNECT`）**记住并加载 B** | ✅ 6-3 |
+| 8.14 | **薄客户端首次运行（无服务器）** | 服务器列表为空 → 打开本地选择页（`picker://` 自定义 scheme，Rust `include_str!` 内嵌）→ 可增删/连接 | ✅ 6-3 |
 
 ---
 
@@ -230,7 +234,9 @@ npm run build && npm run build:http          # 都须 exit=0；build:http 最后
 
 # Rust（改动 src-tauri 时）
 source docs/dev/build-env.sh
-cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo test --workspace  # 基线 656/0/10
+cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo test --workspace  # 基线 654/0/10
+# 薄客户端（阶段 6 feature）：servers 单测
+cargo test -p Lap --no-default-features --features client  # 5/5
 ```
 
 **门禁与本文档的关系**：门禁是"单元/契约"层；本文 §1–§8 是"运行时真跑"层。二者
@@ -240,12 +246,13 @@ cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo 
 
 ## 10. 基线台账（最近一次全量）
 
-日期：2026-11-17（批次 5d + 阶段 5-1）｜环境：真机 lapd + IAB + 39 真实媒体（§8.8–8.10 为真机桌面 + 隔离 data-dir）
+日期：2026-11-17（批次 5d + 阶段 6）｜环境：真机 lapd + IAB + 39 真实媒体（§8.11–8.14 为真机桌面/薄客户端 + 隔离 data-dir）
 
-- 通过：§1 全、§2 全、§3（3.1–3.3,3.5–3.7）、§4（4.1–4.13）、§5（5.1–5.8）、§6（6.1–6.3,6.6,6.7）、§7（7.1–7.3）、§8（8.1–8.5, **8.8–8.10**）
+- 通过：§1 全、§2 全、§3（3.1–3.3,3.5–3.7）、§4（4.1–4.13）、§5（5.1–5.8）、§6（6.1–6.3,6.6,6.7）、§7（7.1–7.3）、§8（8.1–8.5, **8.11–8.14**）
 - 未覆盖：3.4 幻灯片逐帧、5.9 重置、6.4 另存、6.5 拼图导出、7.4 吊销、7.5 语言/主题、8.6 限流阈值、8.7 优雅退出逐项
 - 本批修复并回归：4.8（状态行刷新）
-- 阶段 5-1 新增：8.8/8.9/8.10（桌面客户端模式 显式连接 / 自动锁检测 / 内嵌回归）
+- 阶段 5-1（8.8–8.10）**已被阶段 6 取代**：连远端改由独立薄客户端构建承担
+- 阶段 6 新增：8.11 完整版锁冲突拒启 / 8.12 薄客户端构建+连接 / 8.13 薄客户端多服务器切换+持久化 / 8.14 首次运行本地选择页
 
 ---
 
@@ -261,7 +268,9 @@ cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo 
 | `Person` / `t_face` | §5 全 |
 | `ImageEditor` / `Montage` | §6 全 |
 | PWA / `main.js` 启动 | §8.1–8.4 |
-| `main.rs` 启动链 / `t_client`（客户端模式） | §8.8–8.10（**必须同时复核内嵌回归：客户端模式不得开本地库、内嵌不得被误切**） |
+| `main.rs` 启动链 / `t_client`（锁检测） | §8.10–8.11（**完整版锁冲突须拒启、内嵌不得被误切**） |
+| `Cargo.toml` feature / `run_client`（薄客户端） | §8.12–8.14（两 feature 都要 build + test；薄客户端不得链 `lap-core`） |
+| `servers.rs` / `client_cmds.rs` / `t_menu`（thin client） | §8.13–8.14（多服务器切换 + 持久化 + 菜单标记） |
 | 任何删除/写盘路径 | 对应条目的**磁盘/DB 复核**（不只 UI） |
 
 ---

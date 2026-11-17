@@ -1,27 +1,19 @@
-//! Desktop "connect to server" client mode (plan §3.7/§5).
+//! Data-directory lock inspection for the desktop shell (plan §3.7).
 //!
-//! The desktop normally embeds the backend: it opens the library SQLite and
-//! runs the whole core in-process. When a `lapd` server already owns the data
-//! directory — its `<data>/lapd.lock` names a live pid that is not us — starting
-//! the embedded backend would make two processes race for one library (risk
-//! R2, plan §6). Client mode instead points the main window at the server's own
-//! Web UI and opens no local database.
+//! Two processes must never write one photo library: the desktop embeds the
+//! backend and opens the library SQLite, while `lapd` may own the same data
+//! directory. `lapd` records ownership in `<data>/lapd.lock`; before the
+//! desktop opens the library it must check that lock and refuse to start when
+//! a live `lapd` already owns the directory (risk R2, plan §6).
 //!
-//! This module is desktop-only glue (argument parsing + lock inspection); it
-//! lives in the shell, not lap-core, because the core must stay Tauri-free and
-//! has no notion of "client vs embedded".
-//!
-//! Detection order (explicit beats implicit):
-//!   1. `--connect <url>` / `--connect=<url>` on the command line
-//!   2. `LAP_CONNECT` environment variable
-//!   3. a live foreign owner in `<data>/lapd.lock` → `http://127.0.0.1:<port>`
-//!   4. otherwise: embedded mode (unchanged default)
+//! This module is desktop-only glue and stays Tauri-free so the shell can use
+//! it on every build. The thin client (a separate build target) has no local
+//! library and does not consult this.
 
 use std::path::Path;
 
-/// Read a `--name value` / `--name=value` flag from the argument list. Used by
-/// both `--connect` and `--data-dir` so the desktop and `lapd` share the same
-/// flag spelling. `args` includes argv[0].
+/// Read a `--name value` / `--name=value` flag from the argument list. Shared
+/// spelling with `lapd` flags. `args` includes argv[0].
 fn flag_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     let prefix = String::from(name) + "=";
     let mut iter = args.iter();
@@ -36,21 +28,8 @@ fn flag_value<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     None
 }
 
-/// Decide the server URL for client mode from explicit configuration only.
-///
-/// `args` is the full process argument list (argv[0] included); `env_connect`
-/// is the value of `LAP_CONNECT` if set. A command-line flag always wins over
-/// the environment variable. Returns `None` when neither is given, leaving the
-/// embedded default in place.
-pub fn client_target_from_args(args: &[String], env_connect: Option<&str>) -> Option<String> {
-    if let Some(url) = flag_value(args, "--connect").and_then(normalize) {
-        return Some(url);
-    }
-    env_connect.and_then(normalize)
-}
-
 /// Optional `--data-dir` for the desktop shell, mirroring `lapd`. This exists
-/// so client/embedded mode can be exercised against an isolated directory
+/// so the embedded boot can be exercised against an isolated directory
 /// (tests, portable runs) without ever touching the real per-user data dir.
 pub fn data_dir_from_args(args: &[String]) -> Option<std::path::PathBuf> {
     flag_value(args, "--data-dir")
@@ -59,31 +38,17 @@ pub fn data_dir_from_args(args: &[String]) -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
 }
 
-/// Trim and ensure an `http(s)://` scheme, so `--connect 127.0.0.1:17860`
-/// works as well as a full URL. Blank input yields `None`.
-fn normalize(url: &str) -> Option<String> {
-    let url = url.trim();
-    if url.is_empty() {
-        return None;
-    }
-    if url.starts_with("http://") || url.starts_with("https://") {
-        Some(url.to_string())
-    } else {
-        Some(String::from("http://") + url)
-    }
-}
-
 /// If `<data_dir>/lapd.lock` names a live pid other than `own_pid`, return the
-/// URL of that server (`http://127.0.0.1:<port>`). A missing, unparsable, stale
-/// (dead pid) or self-owned lock yields `None`, so the embedded backend may
-/// start normally (plan §3.7: stale locks are taken over).
-pub fn running_server_target(data_dir: &Path, own_pid: u32) -> Option<String> {
+/// address of that server (`127.0.0.1:<port>`). A missing, unparsable, stale
+/// (dead pid) or self-owned lock yields `None`, so the desktop may open the
+/// library normally (plan §3.7: stale locks are taken over).
+pub fn conflicting_server(data_dir: &Path, own_pid: u32) -> Option<String> {
     let body = std::fs::read_to_string(data_dir.join("lapd.lock")).ok()?;
     let (pid, port) = parse_lock_owner(&body)?;
     if pid == own_pid || !pid_alive(pid) {
         return None;
     }
-    Some(format!("http://127.0.0.1:{port}"))
+    Some(format!("127.0.0.1:{port}"))
 }
 
 /// Read `{pid, port, …}` from a lock body. The lock file is written by
@@ -152,41 +117,6 @@ mod tests {
     }
 
     #[test]
-    fn connect_flag_wins_over_env_and_accepts_both_spellings() {
-        let argv = args(&["Lap.exe", "--connect", "192.168.1.5:17860"]);
-        assert_eq!(
-            client_target_from_args(&argv, Some("http://ignored")).as_deref(),
-            Some("http://192.168.1.5:17860")
-        );
-        let argv = args(&["Lap.exe", "--connect=http://host:1234"]);
-        assert_eq!(
-            client_target_from_args(&argv, None).as_deref(),
-            Some("http://host:1234")
-        );
-        // https is preserved verbatim.
-        let argv = args(&["Lap.exe", "--connect", "https://nas.local"]);
-        assert_eq!(
-            client_target_from_args(&argv, None).as_deref(),
-            Some("https://nas.local")
-        );
-    }
-
-    #[test]
-    fn env_var_is_used_only_without_a_flag() {
-        let argv = args(&["Lap.exe"]);
-        assert_eq!(
-            client_target_from_args(&argv, Some("127.0.0.1:9")).as_deref(),
-            Some("http://127.0.0.1:9")
-        );
-        // Blank values are ignored (no accidental client mode).
-        assert_eq!(client_target_from_args(&argv, Some("   ")), None);
-        assert_eq!(client_target_from_args(&argv, None), None);
-        // A flag with a missing value is ignored, not consumed as the URL.
-        let argv = args(&["Lap.exe", "--connect"]);
-        assert_eq!(client_target_from_args(&argv, None), None);
-    }
-
-    #[test]
     fn data_dir_flag_accepts_both_spellings_and_ignores_blank() {
         assert_eq!(
             data_dir_from_args(&args(&["Lap.exe", "--data-dir", "C:/tmp/x"])),
@@ -201,34 +131,34 @@ mod tests {
     }
 
     #[test]
-    fn lock_owner_query_needs_live_foreign_pid() {
+    fn conflict_query_needs_a_live_foreign_pid() {
         let dir = scratch("lock");
-        // No lock file → embedded mode.
-        assert_eq!(running_server_target(&dir, 111), None);
-        // A live foreign owner (use this very process as the "server") → its URL.
+        // No lock file → no conflict.
+        assert_eq!(conflicting_server(&dir, 111), None);
+        // A live foreign owner (use this very process as the "server").
         std::fs::write(
             dir.join("lapd.lock"),
             serde_json::json!({ "pid": std::process::id(), "port": 17860 }).to_string(),
         )
         .unwrap();
         assert_eq!(
-            running_server_target(&dir, std::process::id() + 1).as_deref(),
-            Some("http://127.0.0.1:17860")
+            conflicting_server(&dir, std::process::id() + 1).as_deref(),
+            Some("127.0.0.1:17860")
         );
-        // Our own pid is never treated as a foreign server.
-        assert_eq!(running_server_target(&dir, std::process::id()), None);
-        // A stale pid (unreachable) is taken over → embedded mode.
+        // Our own pid is never a conflict.
+        assert_eq!(conflicting_server(&dir, std::process::id()), None);
+        // A stale pid (unreachable) is not a conflict.
         std::fs::write(
             dir.join("lapd.lock"),
             serde_json::json!({ "pid": 4_000_000_000u64, "port": 1 }).to_string(),
         )
         .unwrap();
-        assert_eq!(running_server_target(&dir, 111), None);
-        // Unparsable / missing keys → embedded mode.
+        assert_eq!(conflicting_server(&dir, 111), None);
+        // Unparsable / missing keys → no conflict.
         std::fs::write(dir.join("lapd.lock"), "not json").unwrap();
-        assert_eq!(running_server_target(&dir, 111), None);
+        assert_eq!(conflicting_server(&dir, 111), None);
         std::fs::write(dir.join("lapd.lock"), serde_json::json!({ "pid": 1 }).to_string()).unwrap();
-        assert_eq!(running_server_target(&dir, 111), None);
+        assert_eq!(conflicting_server(&dir, 111), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
