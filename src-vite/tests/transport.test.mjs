@@ -466,6 +466,41 @@ test('the editor/montage report saves through the session store on the Web', () 
   }
 });
 
+test('a Web editor/montage save returns to the grid, like the desktop parent destroy', () => {
+  // The desktop parent destroys the child window after a successful save
+  // (Content.vue), so the user lands back on the grid. On the Web there is no
+  // window to destroy — the save branch must closeOrBack() too, or the user is
+  // stranded on the editor/montage page after saving.
+  const root = new URL('../src', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+  for (const rel of ['views/ImageEditor.vue', 'views/Montage.vue']) {
+    const src = readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
+    const i = src.indexOf("requestRefresh(");
+    assert.ok(i >= 0, `${rel} must request a refresh on the Web`);
+    // The same success branch (within ~400 chars) must also navigate back.
+    assert.ok(/closeOrBack\(\)/.test(src.slice(i, i + 400)), `${rel} must closeOrBack() after a successful Web save`);
+  }
+});
+
+test('the Web editor loads its preview by file id, not by server path', () => {
+  // getAssetSrc() returns '' on the Web (a browser cannot name a server file by
+  // path), so the editor's plain-image branch must use the id-addressed signed
+  // /api/original URL — otherwise the preview never renders.
+  const src = readFileSync(new URL('../src/views/ImageEditor.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.ok(/getMediaSrcForId\(\s*fileInfo\.value\.id/.test(src), 'the Web editor preview must use getMediaSrcForId(file id)');
+});
+
+test('the editor reports image-ready through afterNextPaint, not a bare rAF', () => {
+  // Chromium suspends requestAnimationFrame while a tab is not composited, so a
+  // bare rAF that gates imageReady would hide the preview forever. The editor
+  // must use the afterNextPaint race (phase 4, batch 4.5 class).
+  const src = readFileSync(new URL('../src/views/ImageEditor.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const start = src.indexOf('const onImageLoad =');
+  const load = src.slice(start, src.indexOf('\n};', start));
+  assert.ok(/afterNextPaint\(/.test(load), 'onImageLoad must await afterNextPaint, not a bare rAF');
+  assert.ok(!/requestAnimationFrame\(/.test(load), 'onImageLoad must not use a bare requestAnimationFrame');
+});
+
+
 test('the dialog seam degrades file pickers to null and keeps confirm/alert', async () => {
   const src = readFileSync(new URL('../src/common/transport/dialog.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   // open/save must not pretend to pick a server-side path in a browser.

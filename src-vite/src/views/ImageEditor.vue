@@ -553,9 +553,10 @@ import { useUIStore } from '@/stores/uiStore';
 import { useViewerSessionStore } from '@/stores/viewerSessionStore';
 import { useI18n } from 'vue-i18n';
 import { config } from '@/common/config';
-import { isWin, isLinux, SCALE_VALUES, getFolderPath, getFileExtension, shortenFilename, getFullPath, combineFileName, getSelectOptions, getAssetSrc, getPreviewUrl, getThumbUrl, signMediaUrl, shouldUseBackendPreview } from '@/common/utils';
+import { isWin, isLinux, SCALE_VALUES, getFolderPath, getFileExtension, shortenFilename, getFullPath, combineFileName, getSelectOptions, getAssetSrc, getPreviewUrl, getThumbUrl, signMediaUrl, shouldUseBackendPreview, getMediaSrcForId } from '@/common/utils';
 import { editImage, checkFileExists, getFileInfo } from '@/common/api';
 import { getMaxInscribedRect, clampCenterInRotatedRect, maxResizeT } from '@/common/geometry';
+import { afterNextPaint } from '@/common/nextPaint';
 import { getCurrentWebviewWindow, closeOrBack } from '@/common/transport/window.js';
 import { emit as tauriEmit, listen, transportMode, capabilities } from '@/common/transport';
 
@@ -605,7 +606,9 @@ const showDesktopTitleBar = capabilities().native && (isWin || isLinux);
 function sendToParent(payload: Record<string, any>) {
   // Web client (phase 4, batch 4.9): Content is unmounted under the editor
   // route, so record a one-shot refresh signal it consumes on remount instead
-  // of emitting into a channel with no receiver.
+  // of emitting into a channel with no receiver. The desktop parent destroys
+  // the editor window on success (Content.vue), so the Web client returns to
+  // the grid too — otherwise the user is stranded on the editor after saving.
   if (transportMode === 'http') {
     if (payload.type === 'success') {
       viewerSession.requestRefresh('editor', {
@@ -613,6 +616,7 @@ function sendToParent(payload: Record<string, any>) {
         saveAsNew: !!payload.saveAsNew,
         filePath: payload.filePath || '',
       });
+      closeOrBack();
     }
     return;
   }
@@ -1441,13 +1445,14 @@ const onImageLoad = async () => {
 
   autoFitVisualArea();
 
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      enableTransition.value = true;
-      imageReady.value = true;
-      isProcessing.value = false;
-    });
-  });
+  // A frame is enough on a live tab, but Chromium suspends requestAnimationFrame
+  // while the tab is not composited (backgrounded/occluded/automated), so a bare
+  // rAF here would leave imageReady=false and the preview hidden forever.
+  // afterNextPaint races the frame against a timer (phase 4, batch 4.5).
+  await afterNextPaint();
+  enableTransition.value = true;
+  imageReady.value = true;
+  isProcessing.value = false;
 };
 
 const initEditImageLoadingId = ref(0);
@@ -1478,6 +1483,13 @@ const initEditImage = async () => {
         if (loadingId !== initEditImageLoadingId.value) return;
       }
     })();
+  } else if (transportMode === 'http') {
+    // Web: there is no path-based asset endpoint (a browser cannot name a
+    // server file by path). Use the id-addressed original, signed like every
+    // other Web media URL. Without this the preview stays empty and the editor
+    // is unusable.
+    const raw = getMediaSrcForId(fileInfo.value.id, 'image', Number(fileInfo.value.modified_at || 0));
+    imageSrc.value = (await signMediaUrl(raw)) || '';
   } else {
     imageSrc.value = getAssetSrc(fileInfo.value.file_path);
   }

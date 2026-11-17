@@ -753,8 +753,11 @@ async function confirmSave() {
       quality: [90, 80, 60][config.montage.quality] || 80,
     });
     if (transportMode === 'http') {
-      // Web client: Content is unmounted; leave a refresh signal for its remount.
+      // Web client: Content is unmounted; leave a refresh signal for its remount
+      // and return to the grid — the desktop parent destroys the montage window
+      // on success (Content.vue), so staying open would strand the user here.
       viewerSession.requestRefresh('montage', { filePath: destFilePath });
+      closeOrBack();
     } else {
       await tauriEmit('message-from-montage', { type: 'success', filePath: destFilePath });
     }
