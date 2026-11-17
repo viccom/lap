@@ -482,7 +482,15 @@ src-vite/                      一套前端，两种传输
 - **service worker（`public/sw.js`，手写、**不引 workbox**）**：`install` 预缓存壳（`/`、`/index.html`、manifest、图标）；`fetch` 策略——**导航请求 network-first**（在线时新构建立即生效，离线回落缓存的 `index.html`）、**哈希静态资源 cache-first**、**`/api/*` 与跨域一律绕过**（签名媒体 URL 会过期、库是服务端状态，绝不缓存）。
 - **接线**：`index.html` 加 `<link rel="icon">`/`manifest`/`apple-touch-icon`/`theme-color`；`main.js` 在 **`transportMode === 'http'` 分支内**注册 `sw.js`（桌面壳无 service worker）。
 - **验证**：新增 `tests/pwa.test.mjs` 4 例（manifest 形状 + 图标文件存在 / index.html 链接 / sw 不缓存 `/api/` 且导航 network-first / 仅 Web 注册）；**非空转已证**（去掉 sw 的 `/api/` 绕过 + 加一处无门控注册 → 两例变红，恢复 → 绿）。前端 `tests/*.test.mjs` **469/0**、`tests/` 全目录 **495/0**；两种构建 exit=0。**真机 lapd 探测**（`--web-dir` 指向 dist）：`/favicon.ico` 200 `image/x-icon`、`/manifest.webmanifest` 200 `application/json`、`/sw.js` 200 `text/javascript`、图标 200 `image/png`、`/` 与 `/settings` 200——**favicon 404 消失**。
-- **诚实边界**：`sw.js` 的离线行为未在浏览器 DevTools 里实测（仅源码守卫 + 服务端端点探测）；未跑 Lighthouse 可安装项（需真机浏览器）；CACHE 版本常量 `lap-shell-v1` 若要改缓存策略需手动 bump。
+
+**批次 5a-fix（浏览器实测发现并修复：SW 从不自动注册）· 已完成**（提交 `2a052752`）
+
+- **浏览器实测复核 5a**（真机 lapd 托管 `build:http` 产物 + IAB 浏览器）：干净重载后 `navigator.serviceWorker.getRegistrations()` **恒为 0**，无 console 错误、应用正常挂载；仅**手动** `register('/sw.js')` 才生效（scope 返回、`activated`、预缓存壳）。→ 真实缺陷：自动注册从未执行。
+- **根因**：`main.js` 的注册只挂在 `window 'load'` 事件上，而该代码位于 http 分支内、且在 `await checkSession()` + `await serverInfo()` **之后**；两次网络往返可能在 `'load'` 已触发**之后**才完成，监听器挂上时事件已成过去 → 注册永不执行。（`document.readyState` 实测 `'complete'`，故任何"后挂 load 监听"都失效。）
+- **修复**：`main.js` — 文档 `readyState === 'complete'` 时**立即注册**，否则才挂 `'load'` 监听；注册逻辑抽成 `registerSw`。守卫测试补断言：http 分支内必须存在 `readyState === 'complete'` 的即时注册分支（**非空转已证**：回退修复 → 该例变红，恢复 → 绿）。
+- **真机验证**（修后重跑）：自动注册 → `registrationCount=1`、`active='activated'`、页面受控；首屏预缓存 6 项壳；受控后重载 → 追加 22 个哈希资源（共 28）；**停掉 lapd 后重载 → 应用完整挂载**（登录视图渲染、boot 屏消失、URL 跳 `/login`），47 个资源 `transferSize` 全为 0（全部命中缓存）→ **离线打开壳成立**。
+- **诚实边界（修订）**：5a 原记录"离线行为未实测"作废，现有 IAB 浏览器实测证据；**可安装性**（Chrome 安装提示）仍以 manifest 形状 + 图标可达为准，未走 Chrome 安装 UX（IAB 无安装入口）；CACHE 版本常量仍需手动 bump。
+- **附带教训**：源码守卫测试只能证明"字符串存在"，不能证明"运行时真的执行"——5a 的 4 例全绿却漏了这个"永不注册"，说明涉及**运行时事件时序**的逻辑必须浏览器实测（对齐 AGENTS「承重结论必须亲验」）。
 
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
