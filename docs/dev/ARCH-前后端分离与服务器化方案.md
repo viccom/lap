@@ -371,6 +371,22 @@ src-vite/                      一套前端，两种传输
 - **验证（实测）**：`lap-server` 62/0（含新限流测试）；前端 `tests/*.test.mjs` **446/0**；两种构建 exit=0。**浏览器实证（用户真实 URL `127.0.0.1:17860`，旧构建在此必跳 `/login`）**：先烧掉 180 条读命令（>旧 60 上限、<新 1200），随后三次连续刷新**全部停留在 `/` 且 384–397ms 出现首张缩略图、~1.1–1.3s 满屏 55 张**，切换视图 1↔0↔1 无掉登录、无「加载中」卡死；直连命令探针：300 条读 → 0 个 429，70 条写 → 恰好第 61 条起 429（写预算未被读影响）。
 - **诚实边界**：`get_file_thumbs` 走批量（每批 ≤4）但数量仍随可见行数增长（~29 批/首屏），是"每次切换 ~50 命令"的主因；若要进一步降，应把缩略图批次调大或改流式/懒加载——属性能优化批次，非本次"卡死/掉登录"根因。`favicon.ico` 404 与 PWA 仍留批次 5。**本次限流语义变更需同步 §3.6 文档与安全评审**：读命令从 60/min 放宽到 1200/min（写命令不变），理由是"读命令幂等且浏览本身即高频"。
 
+**批次 4.7（宿主层收口：把"见到一个补丁一个"改成单一入口 + 守卫）· 已完成（未提交）**：
+- **触发**：复审批次 4.5/4.6 时把"同一缺陷类"拓展开，发现**补丁式修复每轮都漏**：rAF 只修了被 await 的、window facade 只改了 3/6 个文件。于是改为系统性收口。
+- **实测暴露的三类新缺陷**（都在真实 lapd 浏览器上复现）：
+  1. **三个页面整页白屏**：`/settings`、`/image-editor`、`/montage` 在 `<script setup>` 顶层直调 `@tauri-apps/api/webviewWindow` 的 `getCurrentWebviewWindow()`，浏览器里抛 `Cannot read properties of undefined (reading 'metadata')` → body 长度 0。桌面这些是独立原生窗口，从不暴露。
+  2. **点击齿轮无反应**：`Home.clickSettings` / `Settings.openVlLab` / `VlLab.openSettings` 用 `WebviewWindow.getByLabel` 找次级窗口，浏览器里抛错。
+  3. **RAW/预览/缩略图 403 →「加载照片失败」**：`Image.vue` 的 `loadRawImage` 以及 `Montage.vue`/`ImageEditor.vue` 直接把 `getThumbUrl`/`getPreviewUrl` 的结果塞给 `<img>`/`fetch`，**未经 HMAC 签名**——lapd 以 `missing exp` 403 拒绝，用户看到"文件不存在或已损坏"（文件其实是好的）。
+- **收口（把宿主差异集中到 4 个 seam，并加守卫）**：
+  - `transport/window.js` 扩为完整窗口 seam：新增 `webviewWindow()`（提供 `getByLabel`/`create`，Web 下 `getByLabel` 返回 null、`create` 明报错）与 `webRouteForWindowLabel(label)`（desktop 窗口 label → Web 路由映射：settings/imageeditor/montage/vl-lab）。所有 `new WebviewWindow(...)` / `WebviewWindow.getByLabel(...)` 改走它。
+  - `transport/dialog.js`（新）：文件选择器在 Web 退化为 `null`（无浏览器等价），但 `ask`→`window.confirm`、`message`→`window.alert` 保留真实行为。8 个直接 import `plugin-dialog` 的文件改走它。
+  - `transport/os.js`（新）：`osLocale()` 在 Web 用 `navigator.language`，桌面用 `plugin-os`。`api.js` 改走它。
+  - `utils.ts` 新增 `resolveMediaUrl(url)`（相对路径按 `location.origin` 解析，修 `new URL('/api/...')` 在浏览器的 `Invalid URL` 崩溃）与 `signMediaUrl(url)`（Web 下补签名）；`Image.vue` RAW 加载改为**对含 RAW 参数的完整 URL 签名**（签名绑定 path+query，签裸 URL 必 403）；`Montage.vue`/`ImageEditor.vue` 的缩略图/预览改经 `signMediaUrl`。
+  - Web 分支：`clickSettings`/`openVlLab`/`openSettings`/`openImageEditor`/`openMontage` 在 Web 下 `router.push(webRouteForWindowLabel(...))`，不再尝试开窗。
+- **守卫（防再漂移，非空转已证）**：`tests/transport.test.mjs` 新增 4 例——① 全 `src` 树扫描：除 seam 文件与 `updater.ts`（checkForUpdates 有 native 早退）外，任何文件直接 import 宿主专属 Tauri 模块即红（注入一处 `@tauri-apps/api/webviewWindow` 已验证变红）；② window seam 必须为每个次级窗口提供 Web 路由；③ dialog seam 的 open/save 必须返回 null、ask/message 必须用 confirm/alert；④ `resolveMediaUrl` 必须带 origin base。
+- **验证**：前端 `tests/*.test.mjs` **451/0**（+5：4 守卫 + 1 RAW 签名回归；并修 `previewWindow`/`rawDisplay`/`systemLocale` 三个既有测试以适配新 seam）；两种构建 exit=0；`cargo test --workspace` **647/0/10 exit=0**（本批零 Rust 改动）。**浏览器全路由实测**（真实 lapd）：`/`、`/settings`、`/montage`、`/image-editor`、`/vl-lab`、`/image-viewer` 全部渲染（textLen>0）、**零白屏、零 console 错误**；`/settings` 点击齿轮可跳转；`/montage` 显示 2 张缩略图、`/image-editor` 加载 4096px 预览、`/image-viewer` 显示「RAW · 内嵌」——**三处媒体 403 全部消除**。
+- **诚实边界**：`/vl-lab` 的 `embed_status` 返回 500（AI 嵌入索引与本机配置不一致，环境/数据问题，非宿主层缺陷，未在本批处理）；`favicon.ico` 404 与 PWA 仍留批次 5；安装脚本仍暂缓。
+
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。
