@@ -123,6 +123,13 @@ if (transportMode === 'http') {
   await serverInfo()
     .then((info) => setPathSeparator(info?.pathSeparator))
     .catch(() => {})
+  // Install the app-shell service worker so the PWA opens offline. Web only:
+  // the desktop shell has no service worker and its assets come from the bundle.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {})
+    })
+  }
 }
 
 // Use the router and i18n

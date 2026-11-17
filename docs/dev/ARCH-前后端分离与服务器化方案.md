@@ -338,6 +338,7 @@ src-vite/                      一套前端，两种传输
 - 手机导航/网格/查看器手势；manifest + 最小手写 service worker（只缓存应用壳，不缓存媒体）；不引入 workbox（除非后续确有复杂缓存需求）。
 - **验收**：手机视口无横向滚动、可安装、离线打开壳；Lighthouse PWA 可安装项通过。
 - **回滚**：PWA 资源与响应式样式独立，可移除。
+- **拆分（2026-11-17）**：本阶段拆为 **5a 已做**（favicon + manifest + SW：可安装 + 离线壳）与 **5b 待做**（手机响应式布局 + 触摸手势）。用户裁定手机布局推迟到下一阶段，5a 先交付方案验收的前两条（可安装 / 离线打开壳）。
 
 **批次 4.1（lapd 内建静态托管）· 已完成**（提交 `ace3dd35`）：
 - `static_files.rs`（新）：同源托管 Web 产物——真实文件优先、未知非 `/api` 路径 SPA fallback 到 `index.html`（Vue Router `createWebHistory` 深链）、`/api/*` 永不回退到 SPA、百分号解码 + `..` 穿越拒绝、缺失 `.js/.css` 返回 404 而非 SPA 壳（避免隐藏构建错误）。手写 handler 而非 `ServeDir`：零依赖/feature 变更。`--web-dir` 旗标（默认 exe 旁 `resources/web`）；`server_info.capabilities.web` 反映是否实际托管。
@@ -472,6 +473,16 @@ src-vite/                      一套前端，两种传输
   - **生成器契约**：`gen-command-inventory.py` 的 `EXPOSURE` 加 `add_album_by_path: admin`；重跑 `gen-lapd-bridge.py`（**232 桥接 / 254 注册 / 22 跳过**，+1 桥接）与清单；`bridge_whitelist_covers_the_registration_exactly` 守卫的注册数 253→254。
 - **验证**：`cargo test --workspace` **652/0/10 exit=0**；前端 `tests/*.test.mjs` **465/0**、`tests/` 全目录 **491/0**（+2：`addAlbum` host 路由守卫 / server_info+设备端点 http 测试，**非空转已证**：把 `addAlbum` 的路由改回恒 `add_album` → 红，恢复 → 绿）；两种构建 exit=0。
 - **诚实边界**：未在真机 lapd 上端到端新增一个真实相册（仅链路/守卫/构建通过）；路径不可读的失败在**扫描**阶段暴露（与桌面语义一致），非即时校验。
+
+**批次 5a（PWA：favicon + manifest + 手写 service worker；不含手机布局）· 已完成**
+
+- **范围**：用户裁定只做 ① favicon ② PWA（可安装 + 离线打开壳）；**手机响应式布局推迟到下一阶段**。离线范围按 §9-5 = **仅应用壳 + 最近搜索历史**，不缓存媒体。
+- **favicon（修 §历史遗留的 404）**：此前 `index.html` 无图标声明、`public/` 不存在 → `/favicon.ico` 404（静态托管的「有扩展名即按文件处理」规则直接 404）。用 `cargo tauri icon` 生成 `public/{favicon.ico, icon-192.png, icon-512.png, apple-touch-icon.png}`（Vite 原样拷到 `dist/`）。
+- **manifest**：`public/manifest.webmanifest`（`display: standalone`、`start_url:/`、`scope:/`、192/512 图标，512 标 maskable）。
+- **service worker（`public/sw.js`，手写、**不引 workbox**）**：`install` 预缓存壳（`/`、`/index.html`、manifest、图标）；`fetch` 策略——**导航请求 network-first**（在线时新构建立即生效，离线回落缓存的 `index.html`）、**哈希静态资源 cache-first**、**`/api/*` 与跨域一律绕过**（签名媒体 URL 会过期、库是服务端状态，绝不缓存）。
+- **接线**：`index.html` 加 `<link rel="icon">`/`manifest`/`apple-touch-icon`/`theme-color`；`main.js` 在 **`transportMode === 'http'` 分支内**注册 `sw.js`（桌面壳无 service worker）。
+- **验证**：新增 `tests/pwa.test.mjs` 4 例（manifest 形状 + 图标文件存在 / index.html 链接 / sw 不缓存 `/api/` 且导航 network-first / 仅 Web 注册）；**非空转已证**（去掉 sw 的 `/api/` 绕过 + 加一处无门控注册 → 两例变红，恢复 → 绿）。前端 `tests/*.test.mjs` **469/0**、`tests/` 全目录 **495/0**；两种构建 exit=0。**真机 lapd 探测**（`--web-dir` 指向 dist）：`/favicon.ico` 200 `image/x-icon`、`/manifest.webmanifest` 200 `application/json`、`/sw.js` 200 `text/javascript`、图标 200 `image/png`、`/` 与 `/settings` 200——**favicon 404 消失**。
+- **诚实边界**：`sw.js` 的离线行为未在浏览器 DevTools 里实测（仅源码守卫 + 服务端端点探测）；未跑 Lighthouse 可安装项（需真机浏览器）；CACHE 版本常量 `lap-shell-v1` 若要改缓存策略需手动 bump。
 
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
