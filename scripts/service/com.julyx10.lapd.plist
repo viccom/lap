@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for lapd (macOS).
+  Install:  cp com.julyx10.lapd.plist ~/Library/LaunchAgents/
+            launchctl load -w ~/Library/LaunchAgents/com.julyx10.lapd.plist
+  First run: macOS asks for Full Disk Access before lapd can read photo folders
+  (System Settings → Privacy & Security → Full Disk Access → add lapd).
+  Adjust the program path and --data-dir to your install.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.julyx10.lapd</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Applications/Lap/lapd</string>
+    <string>--data-dir</string>
+    <string>/Users/REPLACE_ME/Library/Application Support/com.julyx10.lap</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+</dict>
+</plist>

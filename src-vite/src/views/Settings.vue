@@ -866,6 +866,8 @@
         </div>
 
         <!-- Advanced Tab -->
+        <SettingsServer v-else-if="!isNative && config.settings.tabIndex === SERVER_SETTINGS_TAB" />
+
         <div v-else-if="config.settings.tabIndex === SETTINGS_TAB.ADVANCED" class="flex flex-col space-y-2">
 
           <!-- thumbnail cache -->
@@ -1143,7 +1145,7 @@ import { ask, open as openDialog } from '@/common/transport/dialog.js';
 import { useI18n } from 'vue-i18n';
 import { config, libConfig } from '@/common/config';
 import { normalizeThumbnailSize } from '@/common/thumbnailProfiles';
-import { THUMBNAIL_BADGE, MAP_MARKER_SIZES, SETTINGS_TAB, SETTINGS_BASE_WIDTH, SETTINGS_BASE_HEIGHT } from '@/common/constants';
+import { THUMBNAIL_BADGE, MAP_MARKER_SIZES, SETTINGS_TAB, SETTINGS_BASE_WIDTH, SETTINGS_BASE_HEIGHT, SERVER_SETTINGS_TAB } from '@/common/constants';
 import {
   getThumbnailCacheLocation,
   getThumbnailCacheMigrationCount,
@@ -1171,6 +1173,7 @@ import { IconClose, IconRestore } from '@/common/icons';
 import TitleBar from '@/components/TitleBar.vue';
 import SettingsAbout from '@/components/SettingsAbout.vue';
 import SettingsMetadata from '@/components/SettingsMetadata.vue';
+import SettingsServer from '@/components/SettingsServer.vue';
 import MessageBox from '@/components/MessageBox.vue';
 import ModalDialog from '@/components/ModalDialog.vue';
 import BackupDialog from '@/components/BackupDialog.vue';
@@ -1196,6 +1199,7 @@ const settingsTabs = [
   { id: SETTINGS_TAB.IMAGE_SEARCH, label: 'settings.image_search.title' },
   { id: VL_SETTINGS_TAB, label: 'settings.vl.title' },
   { id: VL_TASKS_TAB, label: 'settings.vl.tasks_tab' },
+  ...(isNative ? [] : [{ id: SERVER_SETTINGS_TAB, label: 'settings.server.title' }]),
   { id: SETTINGS_TAB.ADVANCED, label: 'settings.advanced.title' },
   { id: SETTINGS_TAB.SHORTCUTS, label: 'settings.shortcuts.title' },
   { id: SETTINGS_TAB.ABOUT, label: 'settings.about.title' },

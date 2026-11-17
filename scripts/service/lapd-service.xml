@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<!--
+  WinSW service wrapper for lapd (Windows).
+  Install:  put winsw.exe beside this file as lapd-service.exe, then
+            lapd-service.exe install && lapd-service.exe start
+  The account that runs the service must be able to READ the library folders;
+  LocalSystem is discouraged (use a dedicated user or the login user).
+  Adjust the <executable> path and the --data-dir argument to your install.
+-->
+<service>
+  <id>lapd</id>
+  <name>lapd (Lap photo-library server)</name>
+  <description>The standalone Lap photo-library server over the local network.</description>
+  <executable>C:\Lap\lapd.exe</executable>
+  <arguments>--data-dir "C:\Users\Public\lap-data"</arguments>
+  <workingdirectory>C:\Lap</workingdirectory>
+  <onfailure action="restart" delay="3 sec"/>
+  <logmode>rotate</logmode>
+</service>

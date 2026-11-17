@@ -1,0 +1,20 @@
+[Unit]
+Description=lapd — the standalone Lap photo-library server
+Documentation=https://github.com/viccom/lap
+# The server talks to a local photo library and a local network; it needs no
+# network ordering beyond the loopback interface.
+After=network.target
+
+[Service]
+Type=simple
+# Adjust ExecStart to where lapd lives. Portable/installed layouts keep the
+# `models/` and `ffmpeg/` directories beside the binary, so the working
+# directory matters: lapd resolves its resources relative to the executable.
+ExecStart=/opt/lap/lapd --data-dir %h/.local/share/com.julyx10.lap
+Restart=on-failure
+RestartSec=3
+# A user unit (systemctl --user) reads the library under the login user's home.
+# For a system unit, set User= and point --data-dir at that user's data dir.
+
+[Install]
+WantedBy=default.target

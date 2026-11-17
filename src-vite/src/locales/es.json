@@ -1963,6 +1963,17 @@
       "task_save": "Save",
       "run_source_scheduled": "Planned",
       "run_source_manual": "Manual"
+    },
+    "server": {
+      "title": "Servidor",
+      "section_devices": "Dispositivos emparejados",
+      "devices_hint": "Devices that have signed in to this server. Revoke one to cut its access immediately.",
+      "no_devices": "No paired devices.",
+      "revoke": "Revocar",
+      "pair_new": "Emparejar un dispositivo nuevo",
+      "generate_code": "Generar código",
+      "code_hint": "Show this code on the new device's login screen. Valid for {minutes} minutes.",
+      "never": "nunca"
     }
   },
   "vl": {

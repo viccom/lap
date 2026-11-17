@@ -194,6 +194,26 @@ test('http transport: auth endpoints post JSON and return the credential', async
   assert.equal(calls[1].url, '/api/auth/pair');
 });
 
+test('http transport: server_info is fetched and device management posts JSON', async () => {
+  const calls = [];
+  const t = createHttpTransport({
+    fetchImpl: async (url, opts = {}) => {
+      calls.push({ url, method: opts.method });
+      if (url.endsWith('/api/server_info')) {
+        return { ok: true, status: 200, json: async () => ({ platform: 'win32', pathSeparator: '\\' }), text: async () => '' };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ devices: [], ok: true }) };
+    },
+  });
+  const info = await t.serverInfo();
+  assert.equal(info.pathSeparator, '\\');
+  assert.equal(calls[0].url, '/api/server_info');
+  assert.deepEqual(await t.devicesList(), []);
+  assert.equal(calls[1].url, '/api/auth/devices');
+  await t.deviceRevoke(7);
+  assert.equal(calls[2].url, '/api/auth/devices/7');
+  assert.equal(calls[2].method, 'DELETE');
+});
 test('http transport: signedAssetUrl mints via /api/media/sign and caches', async () => {
   const calls = [];
   const t = createHttpTransport({

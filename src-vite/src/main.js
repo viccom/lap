@@ -2,8 +2,9 @@ import { createApp, watch } from 'vue'
 import { i18n, initializeLanguage, resolveSystemLanguage } from '@/common/i18n'
 import { createPinia } from 'pinia'
 import piniaPersistedState from 'pinia-plugin-persistedstate'
-import { emit, listen, transportMode, capabilities } from '@/common/transport'
+import { emit, listen, transportMode, capabilities, serverInfo } from '@/common/transport'
 import { invoke } from '@/common/transport'
+import { setPathSeparator } from '@/common/utils'
 // Desktop startup telemetry is not on lapd's HTTP whitelist (phase 3 keeps the
 // bridge to app commands); the Web client fires these only in the desktop shell.
 const recordStartupStage = (stage) => {
@@ -117,6 +118,11 @@ app.config.globalProperties.$invoke = invoke
 if (transportMode === 'http') {
   const { checkSession } = await import('@/common/auth')
   await checkSession()
+  // Adopt the SERVER's path separator (the library's paths use it, not the
+  // browser's). Non-fatal: a failure keeps the browser-derived default.
+  await serverInfo()
+    .then((info) => setPathSeparator(info?.pathSeparator))
+    .catch(() => {})
 }
 
 // Use the router and i18n

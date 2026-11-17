@@ -165,6 +165,35 @@ export function createHttpTransport({
   const pairingCode = () =>
     authRequest('pairing-code', {});
 
+  // -- Server descriptor (phase 4) ----------------------------------------
+  // `/api/server_info` is the single source of truth for what host this client
+  // is really talking to: its platform and path separator belong to the SERVER,
+  // not the browser. The Web client applies the server's separator to the
+  // shared path helpers once at startup so a phone browsing a Windows `lapd`
+  // splits the library's `D:\...` paths correctly.
+  async function serverInfo() {
+    const res = await fetchImpl(`${baseUrl}/api/server_info`);
+    if (!res.ok) throw new Error(`server_info failed: HTTP ${res.status}`);
+    return res.json();
+  }
+
+  // -- Device management (admin) ------------------------------------------
+  // Both endpoints require an admin-scope token (or a loopback caller).
+  async function devicesList() {
+    const res = await fetchImpl(`${baseUrl}/api/auth/devices`);
+    const text = await res.text();
+    const parsed = text ? JSON.parse(text) : null;
+    if (!res.ok) throw Object.assign(new Error(`devices failed: HTTP ${res.status}`), { status: res.status, body: parsed });
+    return parsed?.devices ?? [];
+  }
+  async function deviceRevoke(id) {
+    const res = await fetchImpl(`${baseUrl}/api/auth/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const text = await res.text();
+    const parsed = text ? JSON.parse(text) : null;
+    if (!res.ok) throw Object.assign(new Error(`revoke failed: HTTP ${res.status}`), { status: res.status, body: parsed });
+    return parsed;
+  }
+
   // -- Signed media URLs (phase 4) ----------------------------------------
   // The signature binds path+query+device; mint in batches of ≤50 and refresh
   // before the 600s TTL. Raw->signed map keeps callers' URLs unchanged.
@@ -247,6 +276,9 @@ export function createHttpTransport({
     pair,
     setup,
     pairingCode,
+    serverInfo,
+    devicesList,
+    deviceRevoke,
     signedAssetUrl,
     capabilities: () => ({ native: false }),
     assetUrl(kind, { libraryId = '', fileId = 0, filePath = '' } = {}) {

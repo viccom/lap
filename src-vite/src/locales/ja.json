@@ -1963,6 +1963,17 @@
       "task_save": "保存",
       "run_source_scheduled": "予定",
       "run_source_manual": "手動"
+    },
+    "server": {
+      "title": "サーバー",
+      "section_devices": "ペアリング済みデバイス",
+      "devices_hint": "Devices that have signed in to this server. Revoke one to cut its access immediately.",
+      "no_devices": "No paired devices.",
+      "revoke": "取り消す",
+      "pair_new": "新しいデバイスをペアリング",
+      "generate_code": "コードを生成",
+      "code_hint": "Show this code on the new device's login screen. Valid for {minutes} minutes.",
+      "never": "なし"
     }
   },
   "vl": {

@@ -1963,6 +1963,17 @@
       "task_save": "儲存",
       "run_source_scheduled": "計畫",
       "run_source_manual": "手動"
+    },
+    "server": {
+      "title": "伺服器",
+      "section_devices": "已配對裝置",
+      "devices_hint": "已登入此伺服器的裝置。撤銷後該裝置立即失去存取權。",
+      "no_devices": "尚無已配對裝置。",
+      "revoke": "撤銷",
+      "pair_new": "配對新裝置",
+      "generate_code": "產生配對碼",
+      "code_hint": "在新裝置的登入畫面輸入此配對碼。{minutes} 分鐘內有效。",
+      "never": "從未"
     }
   },
   "vl": {

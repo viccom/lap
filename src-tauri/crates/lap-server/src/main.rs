@@ -242,6 +242,12 @@ mod tests {
         assert_eq!(info["name"], "lapd");
         assert_eq!(info["version"], env!("CARGO_PKG_VERSION"));
         assert_eq!(info["platform"], std::env::consts::OS);
+        // The Web client adopts this separator for the library's stored paths
+        // (the library uses the SERVER's separator, not the browser's).
+        assert!(
+            info["pathSeparator"] == "\\" || info["pathSeparator"] == "/",
+            "pathSeparator must be the server separator"
+        );
         assert!(info["capabilities"]["auth"].is_boolean());
         assert!(info["capabilities"]["media"].is_boolean());
         assert!(info["capabilities"]["web"].is_boolean());

@@ -1963,6 +1963,17 @@
       "task_save": "Save",
       "run_source_scheduled": "Planned",
       "run_source_manual": "Manual"
+    },
+    "server": {
+      "title": "Server",
+      "section_devices": "Gekoppelde apparaten",
+      "devices_hint": "Devices that have signed in to this server. Revoke one to cut its access immediately.",
+      "no_devices": "No paired devices.",
+      "revoke": "Intrekken",
+      "pair_new": "Nieuw apparaat koppelen",
+      "generate_code": "Code genereren",
+      "code_hint": "Show this code on the new device's login screen. Valid for {minutes} minutes.",
+      "never": "nooit"
     }
   },
   "vl": {

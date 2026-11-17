@@ -40,7 +40,18 @@ export function getOS() {
 export const isMac = getOS() === 'mac';
 export const isWin = getOS() === 'win';
 export const isLinux = getOS() === 'linux';
-export const separator = isWin ? '\\' : '/';
+
+// Path separator used to parse the *photo library's* stored paths. The library
+// records paths with the server's separator; the Web client must split them
+// with the SERVER's, not the browser's — a phone (iOS/Android) browsing a
+// Windows `lapd` would otherwise split `D:\...` wrongly. The browser-derived
+// value is the default (correct for the desktop shell, where the library is
+// local); the Web client overrides it once from `/api/server_info` at startup.
+// `export let` keeps an ESM live binding, so importers see the update.
+export let separator = isWin ? '\\' : '/';
+export function setPathSeparator(sep: unknown) {
+  if (sep === '\\' || sep === '/') separator = sep;
+}
 
 // scale values for window size and font size
 export const SCALE_VALUES = [0.8, 0.9, 1, 1.1, 1.2];

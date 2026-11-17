@@ -103,6 +103,12 @@ export const SETTINGS_TAB = {
 
 export type SettingsTab = (typeof SETTINGS_TAB)[keyof typeof SETTINGS_TAB];
 
+// The device-management ("server") tab: the next free id after the VL tabs
+// (VL_SETTINGS_TAB=10, VL_TASKS_TAB=11). Web-only in practice — the backend
+// endpoints require an admin token — but the tab is defined unconditionally so
+// the persisted tabIndex space stays stable across builds.
+export const SERVER_SETTINGS_TAB = 12;
+
 // UI limits, dimensions and interaction timing
 export const SELECTED_THUMBNAIL_LIMIT = 15;
 // Grid thumbnail IPC batching. The backend `get_file_thumbs` command takes an

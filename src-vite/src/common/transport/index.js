@@ -47,6 +47,11 @@ export const pair = impl.pair ?? noopAuth;
 export const setup = impl.setup ?? noopAuth;
 export const pairingCode = impl.pairingCode ?? noopAuth;
 export const signedAssetUrl = impl.signedAssetUrl ?? (async (url) => url);
+// Server descriptor + device management are HTTP-only concerns (phase 4); the
+// desktop transport has no equivalent.
+export const serverInfo = impl.serverInfo ?? noopAuth;
+export const devicesList = impl.devicesList ?? noopAuth;
+export const deviceRevoke = impl.deviceRevoke ?? noopAuth;
 
 /// Desktop-only (C-class) entry points are gated on this (§3.3).
 export function capabilities() {

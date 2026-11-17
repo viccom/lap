@@ -1963,6 +1963,17 @@
       "task_save": "保存",
       "run_source_scheduled": "计划",
       "run_source_manual": "手动"
+    },
+    "server": {
+      "title": "服务器",
+      "section_devices": "已配对设备",
+      "devices_hint": "已登录到此服务器的设备。吊销后该设备立即失去访问权。",
+      "no_devices": "暂无已配对设备。",
+      "revoke": "吊销",
+      "pair_new": "配对新设备",
+      "generate_code": "生成配对码",
+      "code_hint": "在新设备的登录界面输入此配对码。{minutes} 分钟内有效。",
+      "never": "从未"
     }
   },
   "vl": {
