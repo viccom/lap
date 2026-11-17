@@ -4,10 +4,11 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 const source = readFileSync(new URL('../src/common/utils.ts', import.meta.url), 'utf8')
   .split('export function getClipboardItemPaths')[1].split('/// get full path')[0];
-const functionSource = ('function getClipboardItemPaths' + source).replace('export async function', 'async function');
+const functionSource = ('function getClipboardItemPaths' + source).replace(/export /g, '');
+const nativeCaps = () => ({ native: true });
 test('copy paths keeps offline and Windows paths intact, deduplicates and skips missing paths',async()=>{
  const calls=[];
- const copy=new Function('invoke',ts.transpile(functionSource,{target:ts.ScriptTarget.ES2022})+';return copyFilePaths;')(async(...args)=>calls.push(args));
+ const copy=new Function('invoke','capabilities',ts.transpile(functionSource,{target:ts.ScriptTarget.ES2022})+';return copyFilePaths;')(async(...args)=>calls.push(args),nativeCaps);
  assert.equal(await copy([{file_path:'/offline/My photo.raw'},{file_path:'C:\\Photos\\a.jpg'},{file_path:'/offline/My photo.raw'},null,{}]),2);
  assert.deepEqual(calls,[['copy_file_paths',{filePaths:['/offline/My photo.raw','C:\\Photos\\a.jpg']}]]);
  assert.equal(await copy([]),0);
@@ -16,7 +17,7 @@ test('copy paths keeps offline and Windows paths intact, deduplicates and skips 
 
 test('shortcuts copy both RAW pair paths, Live Photos stay image-only, and info copies its current file', async () => {
   const calls = [];
-  const copy = new Function('invoke', ts.transpile(functionSource, {target: ts.ScriptTarget.ES2022}) + ';return copyFilePaths;')(async (...args) => calls.push(args));
+  const copy = new Function('invoke', 'capabilities', ts.transpile(functionSource, {target: ts.ScriptTarget.ES2022}) + ';return copyFilePaths;')(async (...args) => calls.push(args), nativeCaps);
   const raw = {file_path:'/a.raw', media_subtype:'raw_jpeg_pair', live_photo_video_path:'/a.jpg'};
   const live = {file_path:'/b.heic', media_subtype:'live_photo', live_photo_video_path:'/b.mov'};
   assert.equal(await copy([raw, live, {file_path: '/a.jpg'}], 'both'), 3);
@@ -29,7 +30,7 @@ test('shortcuts copy both RAW pair paths, Live Photos stay image-only, and info 
 
 test('RAW clipboard policies select both, RAW or JPEG without affecting ordinary files', async () => {
   const calls = [];
-  const copy = new Function('invoke', ts.transpile(functionSource, {target: ts.ScriptTarget.ES2022}) + ';return copyFilePaths;')(async (...args) => calls.push(args));
+  const copy = new Function('invoke', 'capabilities', ts.transpile(functionSource, {target: ts.ScriptTarget.ES2022}) + ';return copyFilePaths;')(async (...args) => calls.push(args), nativeCaps);
   const raw = {file_path:'/a.raw',media_subtype:'raw_jpeg_pair',live_photo_video_path:'/a.jpg'};
   for (const [mode, expected] of [['both',['/a.raw','/a.jpg']],['raw',['/a.raw']],['jpeg',['/a.jpg']]]) {
     assert.equal(await copy([raw], mode), expected.length);
@@ -39,6 +40,21 @@ test('RAW clipboard policies select both, RAW or JPEG without affecting ordinary
   assert.equal(await copy([{file_path:'/standalone.raw'}], 'jpeg'), 1);
 });
 
+test('the Web client copies the paths as text instead of calling the missing command', async () => {
+  const installed = [];
+  const clipboard = { writeText: async (text) => installed.push(text) };
+  const webCaps = () => ({ native: false });
+  // copyFilePaths routes the Web client through its navigator.clipboard helper;
+  // the Node test has no navigator, so provide a minimal one.
+  const copy = new Function('invoke', 'capabilities', 'navigator',
+    ts.transpile(functionSource, {target: ts.ScriptTarget.ES2022}) + ';return copyFilePaths;')(
+      async () => { throw new Error('the Web client must not invoke copy_file_paths'); },
+      webCaps,
+      { clipboard },
+    );
+  assert.equal(await copy([{file_path:'/server/a.jpg'},{file_path:'/server/b.jpg'}]), 2);
+  assert.deepEqual(installed, ['/server/a.jpg\n/server/b.jpg']);
+});
 test('clipboard copy reaches policy validation even when the RAW primary is unavailable', () => {
   const source = readFileSync(new URL('../src/common/availability.ts', import.meta.url), 'utf8');
   const functions = source.slice(source.indexOf('const originalActions ='))

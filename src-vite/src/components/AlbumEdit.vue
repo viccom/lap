@@ -33,14 +33,14 @@
               class="w-full bg-transparent border-none p-0 text-[12px] text-base-content/70 focus:border-none focus:ring-0 focus:outline-none"
             />
             <IconExclamation v-if="!isNewAlbum && album?.is_accessible === false" class="size-4 shrink-0 text-warning/70" :aria-label="t('offline.original_unavailable')" />
-            <button v-if="selectedFolder === ''"
+            <button v-if="isNative && selectedFolder === ''"
               class="btn btn-primary btn-sm rounded-box"
               @click="clickSelectFolder"
             >
               <IconNewFolder class="w-4 h-4" />
               {{ $t('album.edit.select_folder') }}
             </button>
-            <TButton v-if="isNewAlbum && selectedFolder !== ''"
+            <TButton v-if="isNative && isNewAlbum && selectedFolder !== ''"
               :icon="IconNewFolder"
               :selected="true"
               @click="clickSelectFolder"
@@ -278,6 +278,7 @@ import { useI18n } from 'vue-i18n';
 import { countFolder, getAlbum, getAllAlbums, listAlbumSubfolders, listenIndexProgress, listenIndexFinished } from '@/common/api';
 import { useToast } from '@/common/toast';
 import { formatFileSize, formatTimestamp, openFolderDialog, getFolderName, isWithinRootPath } from '@/common/utils';
+import { capabilities } from '@/common/transport';
 import { useUIStore } from '@/stores/uiStore';
 import { useLibraryStore } from '@/stores/libraryStore';
 import { getAlbumScanState } from '@/common/scanStatus';
@@ -304,6 +305,9 @@ const uiStore = useUIStore();
 const libStore = useLibraryStore();
 const { t } = useI18n();
 const toast = useToast();
+// Choosing an album folder needs the native picker (a server-side path); the
+// Web client hides the folder-selection controls (§3.9).
+const isNative = capabilities().native;
 const isNewAlbum = computed(() => props.albumId <= 0);
 const album = ref<any>(null);
 const createdAt = computed(() => formatTimestamp(Number(album.value?.created_at || 0), 'date_time'));

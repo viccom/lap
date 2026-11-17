@@ -331,7 +331,7 @@ import { capabilities } from '@/common/transport';
 
 const { t } = useI18n();
 const toast = useToast();
-const showDesktopTitleBar = isWin || isLinux;
+const showDesktopTitleBar = capabilities().native && (isWin || isLinux);
 
 // ----- gateway and index status -----
 

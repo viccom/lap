@@ -78,8 +78,11 @@
       </div>
     </div>
 
-    <!-- updates -->
-    <div class="w-full rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+    <!-- updates (desktop shell only: the Web client is updated by refreshing
+         the page when lapd serves a new build; there is nothing to check or
+         install, so the whole section is hidden rather than showing a dead
+         button that claims "up to date"). -->
+    <div v-if="isNative" class="w-full rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
       <div class="flex items-center gap-2 text-base-content/30">
         <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.about.section_updates') }}</span>
       </div>
@@ -118,8 +121,11 @@ import { useI18n } from 'vue-i18n';
 import { getPackageInfo, getBuildTime } from '@/common/api';
 import { useAppUpdater } from '@/common/updater';
 import { config } from '@/common/config';
+import { capabilities } from '@/common/transport';
 import { IconGithub, IconLink, IconLock, IconFocus } from '@/common/icons';
 import iconLogo from '@/assets/images/icon.png';
+
+const isNative = capabilities().native;
 
 const packageInfo = ref<any>({
   name: '',

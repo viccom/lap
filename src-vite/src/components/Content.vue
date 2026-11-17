@@ -846,6 +846,7 @@ import PrintImage from '@/components/PrintImage.vue';
 import { defineAsyncComponent, ref, watch, computed, createVNode, onMounted, onBeforeUnmount, nextTick, render, markRaw } from 'vue';
 import { emit as tauriEmit, listen, transportMode } from '@/common/transport';
 import { invoke } from '@/common/transport';
+import { capabilities } from '@/common/transport';
 import { ask, open as openDialog } from '@/common/transport/dialog.js';
 import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel } from '@/common/transport/window.js';
 import { PREVIEW_WINDOW_FOCUS_RESTORED } from '@/common/previewWindow';
@@ -1370,6 +1371,7 @@ const selectionMenuItems = useFileMenuItems(
     selectionHasCloudOnly,
     selectionInCollection: computed(() => currentQuerySource.value === 'collection'),
   },
+  capabilities().native,
 );
 
 const moreActionMenuRef = ref<InstanceType<typeof ContextMenu> | null>(null);
@@ -4727,6 +4729,10 @@ async function clickSetAlbumCover() {
 }
 
 async function clickSetDesktopWallpaper() {
+  // Setting the desktop wallpaper is a native-shell capability; the Web client
+  // has no desktop to set. Never report success for a no-op (the menu entry is
+  // hidden on Web too — see fileMenu.ts).
+  if (!capabilities().native) return;
   const file = fileList.value[selectedItemIndex.value];
   if (!file?.file_path || !await requireOriginalFiles([file])) return;
   const companionPath = file.media_subtype === 'raw_jpeg_pair'
@@ -9568,6 +9574,10 @@ async function clickCopyFilePaths() {
 }
 
 const clickCopyImages = async (fallbackFile?: any) => {
+  // Copying the actual files needs the desktop shell's OS file clipboard; a
+  // browser cannot put files there. The menu entry is hidden on Web; skip the
+  // action rather than falling through to a false "copy failed" toast.
+  if (!capabilities().native) return;
   if (isProcessing.value) return;
   isProcessing.value = true;
 

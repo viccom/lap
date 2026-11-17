@@ -12,6 +12,7 @@
           <div class="text-xs text-base-content/30 break-all">{{ filePath }}</div>
         </div>
         <TButton
+          v-if="isNative"
           :icon="IconExternal"
           buttonSize="small"
           :tooltip="isMac ? $t('menu.file.reveal_in_finder') : $t('menu.file.reveal_in_file_explorer')"
@@ -48,9 +49,13 @@ import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useUIStore } from '@/stores/uiStore';
 import { revealPath } from '@/common/api';
 import { isMac } from '@/common/utils';
+import { capabilities } from '@/common/transport';
 import { IconExternal } from '@/common/icons';
 import ModalDialog from '@/components/ModalDialog.vue';
 import TButton from '@/components/TButton.vue';
+
+// Revealing a file in the OS file manager needs the desktop shell.
+const isNative = capabilities().native;
 
 const props = defineProps({
   title: {

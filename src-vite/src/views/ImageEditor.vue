@@ -557,7 +557,7 @@ import { isWin, isLinux, SCALE_VALUES, getFolderPath, getFileExtension, shortenF
 import { editImage, checkFileExists, getFileInfo } from '@/common/api';
 import { getMaxInscribedRect, clampCenterInRotatedRect, maxResizeT } from '@/common/geometry';
 import { getCurrentWebviewWindow, closeOrBack } from '@/common/transport/window.js';
-import { emit as tauriEmit, listen, transportMode } from '@/common/transport';
+import { emit as tauriEmit, listen, transportMode, capabilities } from '@/common/transport';
 
 watch(() => config.imageEditor, (preferences) => {
   void tauriEmit('image-editor-config-changed', JSON.parse(JSON.stringify(preferences)));
@@ -600,7 +600,7 @@ const localeMsg = computed(() => messages.value[locale.value] as any);
 const uiStore = useUIStore();
 const viewerSession = useViewerSessionStore();
 const appWindow = getCurrentWebviewWindow();
-const showDesktopTitleBar = isWin || isLinux;
+const showDesktopTitleBar = capabilities().native && (isWin || isLinux);
 
 function sendToParent(payload: Record<string, any>) {
   // Web client (phase 4, batch 4.9): Content is unmounted under the editor

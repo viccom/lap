@@ -467,7 +467,7 @@ import { isOriginalUnavailable, setFileAccessibility } from '@/common/availabili
 import { getMotionPhotoVideoPath, checkFileAccessibility } from '@/common/api';
 
 import Image from '@/components/Image.vue';
-import { emit as tauriEmit } from '@/common/transport';
+import { emit as tauriEmit, capabilities } from '@/common/transport';
 import TButton from '@/components/TButton.vue';
 import { 
   IconLeft, 
@@ -774,7 +774,7 @@ const filenameMaxWidth = computed(() => {
 });
 const showExtraIcons = computed(() => containerWidth.value > 600);
 // Window control state (Windows + ImageViewer mode)
-const showDesktopWindowControls = isWin || isLinux;
+const showDesktopWindowControls = capabilities().native && (isWin || isLinux);
 // Preview owns its fullscreen session; the standalone viewer delegates to its window.
 const previewFullScreen = ref(false);
 const isFullScreen = computed(() => props.isFullScreen || previewFullScreen.value);
@@ -1482,7 +1482,9 @@ const singleFileMenuItems = computed(() => {
     localeMsg,
     isMac,
     t,
-    (action) => emit('item-action', { action, index: props.fileIndex })
+    (action) => emit('item-action', { action, index: props.fileIndex }),
+    undefined,
+    capabilities().native,
   ).value;
 });
 </script>

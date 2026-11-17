@@ -408,8 +408,44 @@ export async function copyFilePaths(
     for (const path of itemPaths) paths.add(path);
   }
   if (!paths.size) return 0;
+  // The Web client has no `copy_file_paths` command (the paths name files on
+  // the *server*). Copying the text is the browser equivalent, so the paths
+  // still reach the user instead of surfacing as a copy failure.
+  if (!capabilities().native) {
+    await copyTextToClipboard([...paths].join('\n'));
+    return paths.size;
+  }
   await invoke('copy_file_paths', { filePaths: [...paths] });
   return paths.size;
+}
+
+/// Copy text to the clipboard from the Web client.
+///
+/// The Web client usually runs over plain http on a LAN, which is NOT a secure
+/// context: `navigator.clipboard` is undefined there. Fall back to the
+/// `execCommand('copy')` path (a temporary off-screen textarea) so copying a
+/// path still works in that case.
+export async function copyTextToClipboard(text: string): Promise<void> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // fall through to the legacy path
+  }
+  const area = document.createElement('textarea');
+  area.value = text;
+  area.setAttribute('readonly', '');
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.appendChild(area);
+  try {
+    area.select();
+    document.execCommand('copy');
+  } finally {
+    document.body.removeChild(area);
+  }
 }
 
 /// get full path

@@ -227,7 +227,13 @@ import {
 } from '@/common/icons';
 
 // used for cross-component communication (Content.vue listens for this event)
-import { emit as tauriEmit } from '@/common/transport';
+import { emit as tauriEmit, capabilities } from '@/common/transport';
+
+// Reveal-in-file-manager, importing files into a folder and pasting the OS
+// clipboard into a folder are all desktop-shell capabilities; a browser has no
+// server-side file manager or file clipboard, so these entries are hidden on
+// the Web client (§3.9).
+const isNative = capabilities().native;
 
 const NEW_FOLDER_CONTEXT = 'album-folder-new-folder-context';
 
@@ -443,6 +449,7 @@ const getMenuItemsForFolder = async (folder: any) => {
     {
       label: `${t('import_files.title')}…`,
       icon: IconDownload,
+      hidden: !isNative,
       disabled: unavailable,
       action: () => {
         void tauriEmit('import-files-to-folder', {
@@ -455,6 +462,7 @@ const getMenuItemsForFolder = async (folder: any) => {
       label: t('menu.file.paste'),
       icon: IconClipboard,
       shortcut: getShortcutLabel('file.paste', DEFAULT_PLATFORM),
+      hidden: !isNative,
       disabled: unavailable || !canPaste,
       action: () => {
         void tauriEmit('paste-clipboard-to-folder', {
@@ -477,6 +485,7 @@ const getMenuItemsForFolder = async (folder: any) => {
         },
         {
           label: t('menu.file.move_to_folder'),
+          hidden: !isNative,
           disabled: unavailable || isRoot,
           action: () => {
             void clickMoveToFolder();
@@ -484,6 +493,7 @@ const getMenuItemsForFolder = async (folder: any) => {
         },
         {
           label: t('menu.file.copy_to_folder'),
+          hidden: !isNative,
           disabled: unavailable || isRoot,
           action: () => {
             void clickCopyToFolder();
@@ -493,6 +503,7 @@ const getMenuItemsForFolder = async (folder: any) => {
     },
     {
       label: isMac ? localeMsg.value.menu.file.reveal_in_finder : localeMsg.value.menu.file.reveal_in_file_explorer,
+      hidden: !isNative,
       disabled: unavailable,
       action: () => {
         revealPath(folder.path);

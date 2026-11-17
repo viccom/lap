@@ -12,7 +12,7 @@
         {{ $t('album.album_list') }}<template v-if="albums.length > 0"> ({{ albums.length.toLocaleString() }})</template>
       </span>
       <TButton
-        v-if="albums.length > 0"
+        v-if="albums.length > 0 && isNative"
         :icon="IconAdd"
         :buttonSize="'small'"
         :tooltip="$t('menu.album.add')"
@@ -299,7 +299,7 @@ import { externalDragKind, updateExternalDrag, resetExternalDrag, finishExternal
 import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { VueDraggable, type DraggableEvent } from 'vue-draggable-plus'
-import { listen, emit as tauriEmit, transportMode } from '@/common/transport';
+import { listen, emit as tauriEmit, transportMode, capabilities } from '@/common/transport';
 import { config, libConfig } from '@/common/config';
 import { useUIStore } from '@/stores/uiStore';
 import {
@@ -362,6 +362,9 @@ const props = withDefaults(defineProps<{
 const { t, locale, messages } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
 const uiStore = useUIStore();
+// Adding an album and importing a folder both need the native folder picker to
+// choose a server-side path; the Web client hides those entries (§3.9).
+const isNative = capabilities().native;
 
 const getAlbumDisplayCount = (album: Album) => {
   return Number(libConfig.album.counts?.[String(album.id)] || 0);
@@ -872,6 +875,8 @@ const getMoreMenuItems = async (album: any) => {
     {
       label: t('menu.album.import_folder'),
       icon: IconDownload,
+      // Importing a folder needs the native picker to choose a server path.
+      hidden: !isNative,
       disabled: !isAccessible,
       action: () => { importAlbum.value = album; }
     },

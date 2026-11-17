@@ -437,6 +437,23 @@ src-vite/                      一套前端，两种传输
 - **验证**：新增 5 个 Rust 单测（lap-server 4 + lap-core 1）；`cargo test --workspace` **652/0/10 exit=0**（基线 647 + 5）。前端 `tests/*.test.mjs` **460/0**、`tests/` 全目录 **486/0**（+1 例 `embedStatusPresentation`；守卫非空转已证：把分支恒假 → 测试变红，恢复 → 全绿）。两种构建 exit=0。**部署式复现实测**：修复前 500 → 修复后 200。
 - **诚实边界**：未编译/运行 **release** 便携版（改的是 lapd，不影响 Lap.exe）；`cargo fmt --check` 在本仓库从来不是绿门（无 `rustfmt.toml`、数百处既有漂移，见 t_face/t_cmds/t_ai），本批新增片段与相邻风格一致，未借机重排。`get_file_thumbs` 批量随可见行数扩展（首屏 IPC 条数）仍留性能批次，未处理。
 
+**批次 4.10c（能力差异 UI 收口：按各宿主实际能力隐藏/降级，不追求两端一致）· 已完成**
+
+- **触发**：用户明确「桌面版和浏览器版的行为并不能完全一致，请根据实际情况调整修改」——不再补 Web 等价物，而是按 §3.9 的处置表**隐藏**做不到的入口、**降级**能做到的。
+- **缺陷（审计确认，均为「Web 下点了没用/谎报/文案错」）**：
+  - **假成功**：`Content.vue` 的 `clickSetDesktopWallpaper` 无条件 `toast.success`，而 `setDesktopWallpaper` 在 Web 返回 `null` 不抛错 → 浏览器弹「已设为壁纸」零效果。
+  - **错误失败文案**：复制路径（`copy_file_paths` 未桥接 → 403）显示「复制失败」而非「不支持」；复制图片、用外部应用打开同理。
+  - **门控不一致**：`MediaViewer.vue` `showDesktopWindowControls`、`VlLab/ImageEditor/Montage.vue` 的 `showDesktopTitleBar` 只判 `isWin||isLinux` 漏 `capabilities().native` → Web 下渲染最小化/最大化（静默无效、最大化图标状态错）。
+  - **入口未隐藏**：设壁纸/在文件管理器显示/外部应用打开/复制图片/移动到文件夹/新增相册/导入文件夹/备份/恢复/更改缓存与库目录/更新器按钮——Web 下点了静默无反应。
+- **收口（桌面路径一律不变，只在 Web 分支隐藏/降级）**：
+  - `fileMenu.ts`：`useFileMenuItems` 加**带默认值 `native=true` 的尾参**（桌面与既有测试零改动）；`externalAppMenu`（外部应用）、`copy`（复制文件）、`reveal`、`move-to-folder`/`copy-to-folder`、`set-desktop-wallpaper` 在 `native=false` 时 `hidden`。三个调用方（Content/Thumbnail/MediaViewer）传 `capabilities().native`。**注意**：两处 ` ...externalAppMenu(...), hidden: ... }` 的展开会覆盖 `hidden`，须与 `!native` 合并。
+  - `Content.vue`：`clickSetDesktopWallpaper`/`clickCopyImages` 首行 `if (!capabilities().native) return`（不谎报成功、不报假失败）。
+  - **降级（有浏览器等价物的，不隐藏而做等价）**：`utils.ts:copyFilePaths` 在 Web 走新增 `copyTextToClipboard`（`navigator.clipboard`，非安全上下文回落 `execCommand('copy')`），把服务端路径作为**文本**复制给用户，而非报「复制失败」。
+  - `Settings.vue`/`SettingsAbout.vue`/`AlbumList.vue`/`AlbumFolder.vue`/`AlbumEdit.vue`/`IndexRecoveryDialog.vue`/`Montage.vue`：新增 `isNative = capabilities().native`，隐藏原生选择器驱动的控件（更新器整块、缓存/库目录更改与恢复、备份/恢复、新增相册、导入文件夹、路径粘贴、re算文件夹、移动/复制到文件夹、选择相册文件夹、在文件管理器显示、拼图浏览文件夹）。
+  - `MediaViewer.vue`/`VlLab.vue`/`ImageEditor.vue`/`Montage.vue`：标题栏/窗口控件补 `capabilities().native` 门控。
+- **验证**：前端 `tests/*.test.mjs` **461/0**（+1 守卫「Web 隐藏 native-only 入口」——**非空转已证**：删 `reveal` 的 `hidden` → 变红，恢复 → 绿；`/tests/` 全目录 **488/0**）；两种构建 exit=0。桌面行为零改动（`native` 默认 `true`）。
+- **诚实边界**：本机无法在浏览器逐一目视确认每个隐藏项（仅有源码级守卫 + 构建通过）；F: 盘旧库不可达；`get_file_thumbs` 批量扩展仍未动（性能批次）。
+
 ### 阶段 5（可选）· 桌面客户端模式 / 商店壳
 
 - 桌面「连接服务器」模式；Capacitor 薄壳（仅在需要商店分发/系统级上传时）。

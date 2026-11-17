@@ -885,7 +885,7 @@
                   {{ $t('settings.advanced.thumbnail_cache.unavailable') }}
                 </div>
               </div>
-              <div class="shrink-0 flex items-center gap-2">
+              <div v-if="isNative" class="shrink-0 flex items-center gap-2">
                 <button
                   class="btn btn-sm btn-ghost rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content"
                   :disabled="isChangingThumbnailCache || isChangingDbStorage"
@@ -929,7 +929,7 @@
                   {{ hasCustomDbStorage ? (dbStorageDir || '-') : $t('settings.database.system_default') }}
                 </div>
               </div>
-              <div class="shrink-0 flex items-center gap-2">
+              <div v-if="isNative" class="shrink-0 flex items-center gap-2">
                 <button
                   class="btn btn-sm btn-ghost rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content"
                   :disabled="isChangingDbStorage || isChangingThumbnailCache"
@@ -948,7 +948,7 @@
               </div>
             </div>
 
-            <div class="flex items-center justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+            <div v-if="isNative" class="flex items-center justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
               <div class="flex flex-col gap-0.5 text-sm leading-5">
                 <div>{{ $t('settings.database.backup_title') }}</div>
                 <div class="text-xs text-base-content/30">{{ $t('settings.database.backup_hint') }}</div>
@@ -961,7 +961,7 @@
               </button>
             </div>
 
-            <div class="flex items-center justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+            <div v-if="isNative" class="flex items-center justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
               <div class="flex flex-col gap-0.5 text-sm leading-5">
                 <div>{{ $t('settings.database.restore_title') }}</div>
                 <div class="text-xs text-base-content/30">{{ $t('settings.database.restore_hint') }}</div>
@@ -1182,6 +1182,10 @@ import VlTemplateManager from '@/components/VlTemplateManager.vue';
 const { locale, messages, t } = useI18n();
 const localeMsg = computed(() => messages.value[config.settings.language] as any);
 const toast = useToast();
+// Desktop-shell only: choosing a server-side directory (thumbnail cache / db
+// storage) needs the native folder picker; a browser has none, so those
+// controls are hidden on the Web client (§3.9).
+const isNative = capabilities().native;
 const shortcutPlatform: ShortcutPlatform = isMac ? 'mac' : (isLinux ? 'linux' : 'windows');
 const settingsTabs = [
   { id: SETTINGS_TAB.GENERAL, label: 'settings.general.title' },

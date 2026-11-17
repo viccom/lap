@@ -56,7 +56,14 @@ export const useFileMenuItems = (
     selectionHasCloudOnly?: Ref<boolean>;
     selectionInCollection?: Ref<boolean>;
     selectionFirstFavorite?: Ref<boolean>;
-  }
+  },
+  // Desktop-shell capabilities (reveal in file manager, open with an external
+  // app, move/copy to an OS folder, set the desktop wallpaper, copy the actual
+  // files to the OS clipboard). These have no browser equivalent, so the Web
+  // client (`native = false`) hides the entries instead of showing a menu that
+  // does nothing. Defaults to `true` so the desktop path and the menu tests are
+  // unchanged.
+  native: boolean = true,
 ) => {
   const requiresAvailableFile = (action: string) => action === 'copy' || requiresOriginalAction(action);
   const actionUnavailable = (action: string, target: any) => {
@@ -85,6 +92,8 @@ export const useFileMenuItems = (
     return {
       label: menuLabel(OPEN_IN_APP_LABELS.generic),
       icon: markRaw(IconExternal),
+      // Opening with a local app needs the desktop shell; a browser has none.
+      hidden: !native,
       children: [
         ...apps.map((app: any) => ({
           label: app.name || app.path,
@@ -212,8 +221,10 @@ export const useFileMenuItems = (
       && libConfig.activePane !== 'collection'
       && isImage
       && albumId > 0;
-    const canSetDesktopWallpaper = f.file_type === 1
-      || (f.file_type === 3 && f.media_subtype === 'raw_jpeg_pair' && f.live_photo_video_path);
+    // Setting the desktop wallpaper is a native-shell action only.
+    const canSetDesktopWallpaper = native
+      && (f.file_type === 1
+        || (f.file_type === 3 && f.media_subtype === 'raw_jpeg_pair' && f.live_photo_video_path));
     const unavailable = isOriginalUnavailable(f);
     const items: any[] = [
       {
@@ -222,7 +233,7 @@ export const useFileMenuItems = (
         shortcut: shortcut('file.openNewWindow'),
         action: createAction('open')
       },
-      { ...externalAppMenu(isVideo ? 'video' : 'image'), hidden: !isImage && !isVideo },
+      { ...externalAppMenu(isVideo ? 'video' : 'image'), hidden: !native || (!isImage && !isVideo) },
       {
         label: localeMsg.value.menu.file.edit_image,
         icon: markRaw(IconImageEdit),
@@ -350,9 +361,12 @@ export const useFileMenuItems = (
         action: createAction('rename')
       },
       {
+        // Copies the actual image/video files onto the OS clipboard; a browser
+        // cannot place files there, so the entry is desktop-only.
         label: localeMsg.value.menu.file.copy,
         icon: markRaw(IconCopy),
         shortcut: shortcut('file.copy'),
+        hidden: !native,
         action: createAction('copy')
       },
 
@@ -366,12 +380,15 @@ export const useFileMenuItems = (
             action: createAction('move-within-library')
           },
           {
+            // Picking an OS folder target needs the desktop shell's picker.
             label: translate('menu.file.move_to_folder'),
             shortcut: shortcut('file.moveToFolder'),
+            hidden: !native,
             action: createAction('move-to-folder')
           },
           {
             label: translate('menu.file.copy_to_folder'),
+            hidden: !native,
             action: createAction('copy-to-folder')
           },
         ]
@@ -379,6 +396,7 @@ export const useFileMenuItems = (
       {
         label: isMac ? localeMsg.value.menu.file.reveal_in_finder : localeMsg.value.menu.file.reveal_in_file_explorer,
         shortcut: shortcut('file.reveal'),
+        hidden: !native,
         action: createAction('reveal')
       },
       { label: "-", action: null },

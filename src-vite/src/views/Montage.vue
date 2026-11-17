@@ -252,7 +252,7 @@
         <div>{{ $t('msgbox.montage.folder') }}</div>
         <div class="flex items-center gap-1">
           <input v-model="saveFolder" type="text" class="px-2 py-1 flex-1 min-w-0 input" @input="saveError = ''" />
-          <TButton :icon="IconFolder" :tooltip="$t('msgbox.montage.browse')" @click="browseFolder" />
+          <TButton v-if="isNative" :icon="IconFolder" :tooltip="$t('msgbox.montage.browse')" @click="browseFolder" />
         </div>
         <div>{{ $t('msgbox.montage.file_name') }}</div>
         <div class="flex items-center">
@@ -312,7 +312,9 @@ const { t, locale, messages } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
 const viewerSession = useViewerSessionStore();
 const appWindow = getCurrentWebviewWindow();
-const showDesktopTitleBar = isWin || isLinux;
+const showDesktopTitleBar = capabilities().native && (isWin || isLinux);
+// Browsing for a save folder needs the native picker; a browser types the path.
+const isNative = capabilities().native;
 
 const files = ref<any[]>([]); // montage order
 const { mode, captionField, pageKey, landscape, background, spacing,

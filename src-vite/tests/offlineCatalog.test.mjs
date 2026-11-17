@@ -102,6 +102,27 @@ test('clipboard menu blocks offline storage and leaves individual RAW pair check
   }
 });
 
+test('the Web client hides native-only entries instead of showing dead menu items', () => {
+  const file = ref({ id: 42, album_id: 1, album_accessible: true, file_type: 1, file_path: '/photos/a.jpg' });
+  // native = false is the Web client (7th arg).
+  const menu = useFileMenuItems(file, locale, true, key => key, () => {}, undefined, false);
+  const names = allItems(menu.value).map(item => item.action?.actionName).filter(Boolean);
+  for (const name of ['reveal', 'copy', 'set-desktop-wallpaper']) {
+    const item = action(menu.value, name);
+    assert.ok(item, name + ' still exists as a node');
+    assert.equal(item.hidden, true, name + ' must be hidden on the Web');
+  }
+  // Open-with (external app) is a native-only submenu: hidden on the Web.
+  // The external-app parent submenu is hidden on Web; its child entries
+  // (manage-external-apps) are unreachable behind it.
+  const openWithParent = menu.value.find(item => (item.children || []).some(c => c.action?.actionName === 'manage-external-apps'));
+  assert.equal(openWithParent?.hidden, true, 'the external-app submenu must be hidden on the Web');
+  // The desktop build keeps every entry visible (native = true).
+  const desktop = useFileMenuItems(file, locale, true, key => key, () => {});
+  for (const name of ['reveal', 'copy', 'set-desktop-wallpaper']) {
+    assert.notEqual(action(desktop.value, name)?.hidden, true, name + ' stays on the desktop');
+  }
+});
 test('mixed availability blocks the entire selection rather than silently skipping offline files', () => {
   const unavailable = ref(true);
   const storageUnavailable = ref(true);

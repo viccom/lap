@@ -525,6 +525,7 @@ export async function openFileWithApp(filePath, appPath) {
 
 // open one or more files with a specific external app
 export async function openFilesWithApp(filePaths, appPath) {
+  if (!capabilities().native) return false;
   try {
     await invoke('open_files_with_app', { filePaths, appPath });
     return true;
@@ -571,6 +572,8 @@ export async function setAlbumCover(albumId, fileId) {
 // select a folder to an album
 // add a folder to db
 export async function selectFolder(albumId, folderPath) {
+  // Adding a server-side folder needs the native picker that produces the path.
+  if (!capabilities().native) return null;
   try {
     const selectedFolder = await invoke('select_folder', { albumId, folderPath });
     if(selectedFolder) {

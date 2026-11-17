@@ -247,7 +247,7 @@ import ContextMenu from '@/components/ContextMenu.vue';
 import { isOriginalUnavailable } from '@/common/availability';
 import { isCloudOnlyFile } from '@/common/api';
 import { useFileMenuItems } from '@/common/fileMenu';
-import { transportMode, signedAssetUrl } from '@/common/transport';
+import { transportMode, signedAssetUrl, capabilities } from '@/common/transport';
 
 import { 
   IconMore,
@@ -675,8 +675,9 @@ const menuItems = useFileMenuItems(
   isMac,
   t,
   (action) => emit('action', action),
+  undefined,
+  capabilities().native,
 );
-
 const getGridLabelText = (file: any, option: number) => {
   switch (option) {
     case 0: return '';
