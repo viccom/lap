@@ -102,3 +102,43 @@
 
 > 注：GitHub release notes 覆盖窗口大于本 delta（部分条目如 #487/#499 已含于 v0.3.3 基线）；
 > 以本附录 32 提交为同步的精确依据。
+
+---
+
+## 执行结果（2026-11-18 完成）
+
+**状态：合并已落地 `develop-sync-v4`，全部门禁通过。**
+
+### 冲突实况（与预测对照）
+
+- `git merge-tree` 干跑实得 **39 个冲突文件**（非纯文本冲突；语义冲突需人工）：
+  16 locale + 13 Rust + 7 前端 + 1 测试 + Cargo.lock + tauri.conf.json + package.json。
+- **rename 检测利好**：14 个上游改动的挪移文件里，git 自动映射 7 个到 `crates/lappp-core/`
+  （含 t_common/t_similar/metadata/{files,merge,schema,apple_sidecar}）；仅 t_cmds.rs 因 fork
+  重写为薄壳相似度不足、需手工移植。
+- 双层分工执行：主会话解 t_migration（语义关键）+ t_image/t_tags/t_video/t_protocol/main.rs +
+  t_affinity 搬迁；子代理并行解 t_utils(22)/t_sqlite(12)/t_dedup(10)/xmp(13)/前端(13)/t_cmds 双文件。
+
+### 验证证据
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| Rust 编译 | `cargo check --workspace --all-targets` | exit 0 |
+| Rust 测试 | `cargo test --workspace` | **681 passed / 0 failed / 12 ignored**（独立复核一致） |
+| 前端测试 | `npm run test:*`（13 脚本） | 全绿（transport 35/35 抽验） |
+| 三产物 | `scripts/build-windows.ps1` | exit 0（166MB/153MB/16MB） |
+| **迁移演练** | 隔离 v28 副本 + `--data-dir` | **28→31 成功**；atags.source 建列、索引建成、VL/FTS/embed 表齐全、187 标签零丢失 |
+| 真机冒烟 | 新 exe 跑默认库 | 启动链完整、窗口 visible=True、AI 模型加载、1019MB 响应正常 |
+
+### 与评估的偏差（实际更顺）
+
+- 迁移撞号如预测：实测确认 pre-sync 库缺 `atags.source`（运行时代码依赖它），v31 补偿确属**必要**而非保险。
+- 21 个 Rust 测试失败全部为**测试未适配**（迁移编号/命令契约/fixture 缺表/测试隔离锁），无一功能 bug。
+- 新增工作量：修复 `gen-lapd-bridge.py` 阶段7 遗留命名 bug（`lap_core`→`lappp_core`、`lap-server`→`lappp-server`）+ 补 `HashMap<String,String>` 类型映射，否则 server bridge 无法重生成。
+
+### 已知遗留（非本次引入）
+
+- **上游 3 个孤儿测试文件**（`rawDisplay`/`copyFilePaths`/`offlineCatalog`）未接入任何 `test:*` 脚本；
+  在**纯上游 v0.4.0 基线**上同样失败（offlineCatalog 整文件加载失败）。未纳入本次门禁，待上游修复。
+- `src-tauri/crates/lappp-server/src/t_state.rs` 可能残留 `refresh_album_subfolders` 的 bridge 描述行
+  （该命令上游已删、fork 保留实现供 server 调用）——留待 lappp-server 同步时清理。
