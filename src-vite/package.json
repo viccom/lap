@@ -45,7 +45,8 @@
     "test": "node ../scripts/run-frontend-tests.mjs",
     "test:clip": "node --test tests/copyFilePaths.test.mjs",
     "test:raw": "node --test tests/rawDisplay.test.mjs",
-    "test:offline": "node --test tests/offlineCatalog.test.mjs"
+    "test:offline": "node --test tests/offlineCatalog.test.mjs",
+    "test:crossrefs": "node ../scripts/check-cross-refs.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",

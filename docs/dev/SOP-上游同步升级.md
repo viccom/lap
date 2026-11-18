@@ -61,7 +61,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 
 | # | 门禁 | 命令 / 方法 | 状态 |
 |---|---|---|---|
-| 1 | 跨文件契约对账 | §3.1 | **部分具备**（shortcuts 已有回归测试钉住 fileMenu↔registry）；全仓对账脚本待建 |
+| 1 | 跨文件契约对账 | **`npm run test:crossrefs`**（`scripts/check-cross-refs.mjs`：invoke 命令↔generate_handler、i18n 字面量/动态前缀↔en.json、shortcut id↔SHORTCUTS 三类闭包，任一悬空即红） | **已具备**（含在聚合门禁内；快捷键另有 test:shortcuts 双保险） |
 | 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`**（基线制：不许新增，存量见 `src-vite/typecheck-baseline.json`，清零后 `--update` 收缩） | **已具备（基线制）**；快捷键契约另有微型类型检查跑在 `test:shortcuts`；全绿为最终目标 |
 | 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（34 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本上 | **已具备**（本地聚合 + CI `frontend-gate` job） |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
@@ -192,6 +192,14 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    另修 appearance/locale 两域漏 `--experimental-vm-modules` 旗标。
    教训沉淀：**从上游同步测试 ≠ 拿来就能绿**——上游自己的前端测试不在
    CI 里，取回后必须在本地全量跑一遍再合入。
-4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
+4. ~~`scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化~~ **已落地
+   （2026-11-19）**：`npm run test:crossrefs` 进聚合（35 域）。三类闭包
+   全绿：262 注册命令 ↔ 241 invoke 引用、1676 en.json 键 ↔ 全部字面量与
+   动态前缀、62 shortcut id ↔ 47 引用（现存零悬空——本次是建防线，非还债）。
+   实现要点：invoke 匹配须容忍泛型 `invoke<T>('cmd')`；i18n 的
+   `t('prefix.'+x)` / ``t(`prefix_${x}`)`` 按**前缀命中任一真实键**判定，
+   不是节点判定（首版把 `settings.raw.source_*`/`album.edit.tab_*` 误报，
+   实际键全在）；shortcut 字面量字符类要点号在后（`[a-zA-Z][\w.]*`）。
+   咬合验证：注入假命令/假键/假动作 id 三类均红并点名 file:line。
 5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。
 6. `docs/dev/launch-portable-check.ps1` 里硬编码的 `Lap.exe` 更新为 `lappp.exe`。
