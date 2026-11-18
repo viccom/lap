@@ -25,8 +25,8 @@ export const createEmptyLibraryCounts = () => ({
 
 export const useLibraryStore = defineStore('libraryStore', {
   state: () => ({
-    // Current library ID (for saving)
-    _libraryId: null,
+    // Current library ID (for saving). null until a library is opened.
+    _libraryId: /** @type {string | null} */ (null),
     _initialized: false,
 
 
@@ -65,7 +65,7 @@ export const useLibraryStore = defineStore('libraryStore', {
 
     /** @type {Array<{ id: string, name: string, description: string, source: 'rules', query: { version: number, match: 'all' | 'any', rules: Array<{ id: string, field: string, operator: string, value: any }> }, group: { type: number }, sort: { type: number, order: number }, coverFileId: number | null, count: number | null, createdAt: number, updatedAt: number }>} */
     smartAlbums: [],          // custom smart albums
-    dedupPreferredFolderIds: [],
+    dedupPreferredFolderIds: /** @type {number[]} */ ([]),
 
     /** @type {{ selectedId: number | null, activateTick: number, counts: Record<string, number> }} */
     collection: {

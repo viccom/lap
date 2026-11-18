@@ -53,6 +53,7 @@ export async function setVlConfig(
 /// check to run before a whole-library understanding pass.
 /// `error` is present when the check could not run (gateway unreachable, …);
 /// `ok` is false in that case as well.
+/** @returns {Promise<{ ok: boolean, answer: string, error?: string } | undefined>} */
 export async function checkVlVision(invoker = invoke) {
   try {
     const answer = await invoker('check_vl_vision');
@@ -81,6 +82,7 @@ export async function listVlModels(invoker = invoke) {
 }
 
 /// Every persisted run across the configured libraries, newest first.
+/** @returns {Promise<any[]>} */
 export async function listVlRuns(invoker = invoke) {
   try {
     const runs = await invoker('list_vl_runs');
@@ -103,6 +105,7 @@ export async function listVlRunCalls(runId, invoker = invoke) {
 // templates
 
 /// Every template version, newest version of a name first.
+/** @returns {Promise<any[]>} */
 export async function listVlTemplates(invoker = invoke) {
   try {
     const templates = await invoker('list_vl_templates');
@@ -213,6 +216,7 @@ export async function queueVlTask(fileIds, templateId, force, time, date, invoke
 }
 
 /// The queued tasks of every library.
+/** @returns {Promise<any[]>} */
 export async function listVlTasks(invoker = invoke) {
   try {
     const tasks = await invoker('list_vl_tasks', {});
@@ -247,6 +251,7 @@ export async function deleteVlTask(id, invoker = invoke) {
 }
 
 /// The annotations of one file, newest first.
+/** @param {number | string} fileId @returns {Promise<any[]>} */
 export async function getVlAnnotations(fileId, invoker = invoke) {
   try {
     const annotations = await invoker('get_vl_annotations', { fileId: Number(fileId) });

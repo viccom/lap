@@ -348,7 +348,7 @@ const showTrashFolderMsgbox = ref(false);
 const showTrashFailedFolderMsgbox = ref(false);
 const showMoveTo = ref(false);
 const deletePermanently = ref(false);
-const pendingFolderDelete = ref<{ path: string; name: string; libraryId: string; identity: string } | null>(null);
+const pendingFolderDelete = ref<{ path: string; name: string; libraryId: string | null; identity: string } | null>(null);
 const isDeletingFolder = ref(false);
 const folderTrashFailure = ref<{ error: string; mayHavePartiallyCompleted?: boolean } | null>(null);
 const folderTrashFailureMessage = computed(() => {

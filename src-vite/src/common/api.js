@@ -510,6 +510,10 @@ export async function openExternalUrl(url) {
   }
 }
 
+/**
+ * @param {string} filePath
+ * @param {string | null} [companionPath]
+ */
 export async function setDesktopWallpaper(filePath, companionPath = null) {
   if (!capabilities().native) return null;
   return invoke('set_desktop_wallpaper', { filePath, companionPath });
@@ -1216,6 +1220,14 @@ export async function withFileTransferBatch(action) {
 }
 
 // move a file
+/**
+ * @param {number} fileId
+ * @param {string} filePath
+ * @param {number} newFolderId
+ * @param {string} newFolderPath
+ * @param {string} [conflictPolicy]
+ * @param {number | null} [batchId]
+ */
 export async function moveFile(fileId, filePath, newFolderId, newFolderPath, conflictPolicy = 'keep_both', batchId = null) {
   try {
     const result = await invoke('move_file', { fileId, filePath, newFolderId, newFolderPath, conflictPolicy, batchId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
@@ -1238,6 +1250,12 @@ export async function moveFileOutsideLibrary(fileId, filePath, newFolderPath, co
 }
 
 // copy a file
+/**
+ * @param {string} filePath
+ * @param {string} newFolderPath
+ * @param {string} [conflictPolicy]
+ * @param {number | null} [batchId]
+ */
 export async function copyFile(filePath, newFolderPath, conflictPolicy = 'keep_both', batchId = null) {
   try {
     const result = await invoke('copy_file', { filePath, newFolderPath, conflictPolicy, batchId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
@@ -1279,6 +1297,11 @@ export async function deleteDbFile(fileId) {
   }
 }
 
+/**
+ * @param {{ fileId: number, filePath: string }[]} files
+ * @param {boolean} [permanently]
+ * @param {{ libraryId: string | null, scope: string, companions: ({ fileId: number, filePath: string } | null)[] } | null} [selection]
+ */
 export async function batchDeleteFiles(files, permanently = false, selection = null) {
   try {
     return await invoke('batch_delete_files', { files, permanently, groupRawPairs: Boolean(config.settings.groupRawJpegPairs), selection });
@@ -1655,6 +1678,10 @@ export async function getTagSubtreeInfo(tagId) {
   return invoke('get_tag_subtree_info', { tagId });
 }
 
+/**
+ * @param {number} tagId
+ * @param {number | null} [parentId]
+ */
 export async function moveTag(tagId, parentId = null) {
   return invoke('move_tag', { tagId, parentId });
 }
@@ -1696,6 +1723,10 @@ export async function getTagName(tagId) {
 }
 
 // create a new tag
+/**
+ * @param {string} name
+ * @param {number | null} [parentId]
+ */
 export async function createTag(name, parentId = null) {
   try {
     const result = await invoke('create_tag', { name, parentId });
@@ -1971,6 +2002,10 @@ export async function searchSimilarImages(params) {
 // indexing
 
 // index album
+/**
+ * @param {number} albumId
+ * @param {string | null} [skipFilePath]
+ */
 export async function indexAlbum(albumId, skipFilePath = null) {
   try {
     await invoke('index_album', {
@@ -2021,6 +2056,12 @@ export async function listenIndexProgress(callback) {
 // deduplication
 
 // start deduplication scan
+/**
+ * @param {Record<string, any> | null} [params]
+ * @param {number | null} [collectionId]
+ * @param {number[] | null} [fileIds]
+ * @param {Record<string, any> | null} [keepRules]
+ */
 export async function dedupStartScan(params = null, collectionId = null, fileIds = null, keepRules = null) {
   return await invoke('dedup_start_scan', { params, collectionId, fileIds, keepRules, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
 }
@@ -2078,6 +2119,9 @@ export async function dedupGetGroupItems(groupId) {
 }
 
 // Delete explicitly selected duplicates or every removable duplicate.
+/**
+ * @param {{ groupIds?: number[] | null, fileIds?: number[] | null, similarGroupId?: number | null, deleteAll?: boolean, permanently?: boolean, preview?: boolean, planToken?: string | null | undefined }} [request]
+ */
 export async function dedupDelete({
   groupIds = null,
   fileIds = null,
@@ -2117,6 +2161,11 @@ export async function similarCancelScan() {
   return await invoke('similar_cancel_scan');
 }
 
+/**
+ * @param {Record<string, any> | null} [params]
+ * @param {number | null} [collectionId]
+ * @param {number[] | null} [fileIds]
+ */
 export async function similarGetEligibleCount(params = null, collectionId = null, fileIds = null) {
   return await invoke('similar_get_eligible_count', { params, collectionId, fileIds, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
 }

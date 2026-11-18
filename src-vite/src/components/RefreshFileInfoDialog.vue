@@ -33,7 +33,7 @@ import { useUIStore } from '@/stores/uiStore';
 import ModalDialog from '@/components/ModalDialog.vue';
 
 type FileRefreshResult = { file: any; size_delta: number; skipped: boolean; warning?: string | null; error?: string | null };
-const props = defineProps<{ fileIds: number[]; libraryId: string; finishRefresh: (results: FileRefreshResult[]) => Promise<void> }>();
+const props = defineProps<{ fileIds: number[]; libraryId: string | null; finishRefresh: (results: FileRefreshResult[]) => Promise<void> }>();
 const emit = defineEmits(['close']);
 const uiStore = useUIStore();
 const selectionIds = [...new Set(props.fileIds)];

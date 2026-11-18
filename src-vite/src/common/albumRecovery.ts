@@ -7,7 +7,7 @@ type AlbumAccess = { id: number; path: string; is_accessible?: boolean };
 
 // Startup, explicit selection and focus recovery must update the same state.
 export async function applyAlbumAccess(
-  album: AlbumAccess, available: boolean, libraryId: string,
+  album: AlbumAccess, available: boolean, libraryId: string | null,
   { previousAvailable = album.is_accessible, selectionChanged = false } = {},
 ) {
   if (libraryId !== libConfig._libraryId) return;
@@ -23,7 +23,7 @@ export async function applyAlbumAccess(
 }
 
 // A slow disconnected share must not accumulate probes on repeated focus events.
-const pending = new Map<string, Promise<void>>();
+const pending = new Map<string | null, Promise<void>>();
 export function recheckOfflineAlbums(): Promise<void> {
   const libraryId = libConfig._libraryId;
   const existing = pending.get(libraryId);

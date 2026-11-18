@@ -1271,7 +1271,7 @@ function removeDeletedFilesFromImageViewerSession(fileIds: number[]) {
   return files.length;
 }
 
-const fileRefreshSelection = ref<{ ids: number[]; libraryId: string; requestId: number; groupSizes: Map<string, number> } | null>(null);
+const fileRefreshSelection = ref<{ ids: number[]; libraryId: string | null; requestId: number; groupSizes: Map<string, number> } | null>(null);
 function startSelectedFileRefresh() {
   if (fileRefreshSelection.value || selectedFileIds.size === 0) return;
   fileRefreshSelection.value = {
@@ -2369,7 +2369,7 @@ type FileDeleteItem = {
   companion?: { id: number; file_path: string };
 };
 const fileDeletePlan = shallowRef<{
-  libraryId: string;
+  libraryId: string | null;
   requestId: number;
   files: FileDeleteItem[];
   trashUnavailable?: boolean;
@@ -2420,7 +2420,7 @@ const deletePreviewFiles = computed(() => fileDeletePlan.value
   ? fileDeletePlan.value.files.slice(0, fileDeletePreviewLimit) : dedupDeleteSamples.value);
 const deletePreviewItemCount = computed(() => fileDeletePlan.value?.files.length ?? dedupDeletePreview.value?.itemCount ?? 0);
 
-let dedupDeletePreviewContext: { libraryId: string; scanKey: string } | null = null;
+let dedupDeletePreviewContext: { libraryId: string | null; scanKey: string } | null = null;
 let dedupDeletePreviewRequest = 0;
 const dedupPaneRef = ref<InstanceType<typeof DedupPane> | null>(null);
 const dedupStatuses = ref<Record<number, 'keep' | 'dup'>>({});
@@ -4858,7 +4858,7 @@ async function requireCurrentOriginals() {
   return !!files?.length && await requireOriginalFiles(files);
 }
 
-const batchRenameSelection = ref<{ files: any[]; libraryId: string } | null>(null);
+const batchRenameSelection = ref<{ files: any[]; libraryId: string | null } | null>(null);
 let batchRenameOpening = false;
 async function openBatchRename() {
   if (batchRenameSelection.value || batchRenameOpening || selectedCount.value === 0) return;
@@ -8820,7 +8820,7 @@ async function getAiSearchFileList(searchText: string, mode: string, requestId: 
     const semanticMatches = (Array.isArray(semanticResult?.files) ? semanticResult.files : [])
       .filter((file: any) => passesAiSearchFilters(file, filters));
     // A file found by both legs shows once, in the precise group.
-    const merged = dedupeGroups({ ftsFiles: preciseMatches, semanticFiles: semanticMatches });
+    const merged = dedupeGroups({ ftsFiles: preciseMatches, semanticFiles: semanticMatches } as any);
     // Cloud rerank (fallback-only, off by default): the text model keeps the
     // semantic hits whose stored description actually answers the query. A
     // failure never hides the local ranking — the catch keeps it as-is.

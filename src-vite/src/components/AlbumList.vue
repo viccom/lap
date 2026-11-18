@@ -1272,7 +1272,7 @@ const clickEditAlbum = async (folderPathParam: string, newName: string, newDescr
   filters: { fileTypes: number; smallImageFilter: number; excludedFolders: string[] }, filtersChanged: boolean) => {
   if (albumEditBusy.value) return;
   albumEditBusy.value = true;
-  let interruptedScan: { id: number; libraryId: string; position: number; status: number; paused: boolean } | null = null;
+  let interruptedScan: { id: number; libraryId: string | null; position: number; status: number; paused: boolean } | null = null;
   try {
     if (isNew) {
       await createAndIndexAlbum(folderPathParam, newName, newDescription, filters);

@@ -29,7 +29,7 @@
             <div class="mx-1 mb-1 min-h-8 transform-gpu overflow-hidden rounded-box">
               <VueDraggable
                 v-if="folderPathsReady && preferredFolderIds.length"
-                :key="libConfig._libraryId"
+                :key="libConfig._libraryId ?? 'library'"
                 v-model="preferredFolderIds"
                 tag="ul"
                 class="max-h-64 overflow-x-hidden overflow-y-auto"

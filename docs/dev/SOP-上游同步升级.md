@@ -210,6 +210,17 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    `import.meta.env` 引入 `/// vite/client` 导致全局类型污染（一次
    +162 错），改用 3 行手写 `global-env.d.ts` 只声明用到的 `env.DEV`
    ——**引第三方类型前先 A/B**。
+   **第 6 批已落地（2026-11-19）：108 → 59**——TS2322/TS2345 大头。最大根因
+   是 **api.js 的默认 null 参数**（`= null` 形参推断为 null 字面量，调用面
+   全炸）：给 13 个 API 函数补 JSDoc 参数/返回类型（dedupDelete 的解构
+   参数用 `@param {{…}}` 整体标注），一次消掉调用面 ~20 处；vlApi 的
+   list/get 函数补 `@returns {Promise<any[]>}`（any[]|undefined 家族全消）。
+   第二根因：**libraryStore `_libraryId: null` 字面量**——JSDoc 拓宽为
+   `string | null` 后，7 个消费方类型（delete plan、batchRename、
+   Refresh/BatchRename 对话框 props、albumRecovery 的 Map 键与参数）
+   需要跟进拓宽，属诚实建模（切库瞬间就是 null）。踩坑：JSDoc `@param`
+   **不能标注匿名解构参数**（dedupeGroups 实测参数类型反而劣化），
+   解构参数要么命名、要么调用点 cast。
    教训沉淀：**从上游同步测试 ≠ 拿来就能绿**——上游自己的前端测试不在
    CI 里，取回后必须在本地全量跑一遍再合入。
 4. ~~`scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化~~ **已落地

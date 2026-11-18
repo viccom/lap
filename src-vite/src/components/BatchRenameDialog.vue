@@ -58,7 +58,7 @@ import ModalDialog from '@/components/ModalDialog.vue';
 import { batchRenameFiles, previewBatchRename } from '@/common/api';
 import { useUIStore } from '@/stores/uiStore';
 
-const props = defineProps<{ files: any[]; libraryId: string }>();
+const props = defineProps<{ files: any[]; libraryId: string | null }>();
 const emit = defineEmits(['cancel', 'done']);
 const { t } = useI18n();
 const uiStore = useUIStore();

@@ -1264,7 +1264,7 @@ async function runVisionCheck() {
   checkingVision.value = true;
   visionCheckResult.value = null;
   try {
-    visionCheckResult.value = await checkVlVision();
+    visionCheckResult.value = (await checkVlVision()) ?? null;
   } catch (error) {
     visionCheckResult.value = { ok: false, answer: '', error: String((error as Error)?.message ?? error) };
   } finally {

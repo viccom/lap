@@ -106,6 +106,9 @@ export function buildLabRunArgs(fileIds, templateId, force = false) {
  * - failed: a new call arrived but produced no annotation
  * - notRun: no new evidence at all — the run was cancelled or never arrived
  */
+/**
+ * @param {{ force?: boolean, baselineAnnotationId?: number, baselineCallId?: number, annotations?: any[], calls?: any[] }} [fileState]
+ */
 export function deriveFileOutcome({
   force = false,
   baselineAnnotationId = 0,
