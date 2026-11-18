@@ -5,7 +5,7 @@
 
 ## 命名约定（阶段 7 · 2026-11-18）
 
-- **产品名/产物**：`lappp`。三个 Windows 二进制由 [scripts/build-windows.ps1](scripts/build-windows.ps1) 产出到 `build/windows/`：`lappp.exe`（厚版/内嵌）、`lappp-client.exe`（薄版/连远端）、`lappp-server.exe`（服务端）。
+- **产品名/产物**：`lappp`。三个 Windows 二进制由 [scripts/build-windows.ps1](scripts/build-windows.ps1) 产出：`lappp.exe`（厚版/内嵌）、`lappp-client.exe`（薄版/连远端）、`lappp-server.exe`（服务端）。**默认 `-BuildProfile release` → `build/windows/`**（产品发布用）；`-BuildProfile debug` → `build/windows/debug/`（仅调试/测试，两者数据目录不同、产物不互相覆盖）。
 - **crate**：`lappp`（桌面包/根）、`lappp-core`（内核）、`lappp-server`（服务端）；Rust 路径 `lappp_core::`。
 - **刻意不改（零风险/数据兼容）**：数据目录标识符 `com.julyx10.lap`（= 真实图库所在目录，改则数据失联）；内部协议名 `lapd.lock`、`lapd_token` cookie、`lap-shell-v1` SW 缓存名。
 - **上游 URL 未换**：`julyx10/lap`、`lap-binaries`、updater endpoint 仍指上游——**改名后不应启用自动更新**。
