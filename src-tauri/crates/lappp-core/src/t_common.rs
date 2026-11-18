@@ -188,6 +188,20 @@ pub fn display_dimensions(
     }
 }
 
+// Application identity.
+//
+// The core crate is shared by the desktop shell and the headless server, so
+// `env!("CARGO_PKG_NAME")` here would resolve to "lappp-core" — an internal
+// crate name, not the product. Anything user-visible (Welcome heading, About
+// page, update dialogs) reads these constants instead.
+pub const APP_NAME: &str = "lappp";
+pub const APP_DESCRIPTION: &str = "An offline-first photo manager for large local libraries.";
+pub const APP_REPOSITORY: &str = "https://github.com/viccom/lappp";
+pub const APP_HOMEPAGE: &str = "https://github.com/viccom/lappp";
+pub const APP_LICENSE: &str = "GPL-3.0-or-later";
+/// Upstream authorship is kept for attribution; the fork adds no separate list.
+pub const APP_AUTHORS: &[&str] = &["julyx10 <tiangle@gmail.com>"];
+
 // Image understanding (vision-language) gateway
 pub const VL_GATEWAY_URL_ENV: &str = "LAP_VL_GATEWAY_URL";
 pub const VL_API_KEY_ENV: &str = "LAP_VL_API_KEY";

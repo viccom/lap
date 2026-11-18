@@ -341,18 +341,21 @@ pub struct PackageInfo {
 
 impl PackageInfo {
     pub fn new(commit_hash: &str) -> Self {
+        // Application identity, not crate metadata: this type is built inside
+        // `lappp-core`, where `CARGO_PKG_NAME` would leak the internal crate
+        // name into the Welcome heading and the About page.
         Self {
-            name: env!("CARGO_PKG_NAME").to_string(),
+            name: crate::t_common::APP_NAME.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             commit_hash: (!commit_hash.is_empty()).then(|| commit_hash.to_string()),
-            description: env!("CARGO_PKG_DESCRIPTION").to_string(),
-            authors: env!("CARGO_PKG_AUTHORS")
-                .split(':')
+            description: crate::t_common::APP_DESCRIPTION.to_string(),
+            authors: crate::t_common::APP_AUTHORS
+                .iter()
                 .map(|s| s.to_string())
                 .collect(),
-            repository: option_env!("CARGO_PKG_REPOSITORY").map(|s| s.to_string()),
-            license: option_env!("CARGO_PKG_LICENSE").map(|s| s.to_string()),
-            homepage: option_env!("CARGO_PKG_HOMEPAGE").map(|s| s.to_string()),
+            repository: Some(crate::t_common::APP_REPOSITORY.to_string()),
+            license: Some(crate::t_common::APP_LICENSE.to_string()),
+            homepage: Some(crate::t_common::APP_HOMEPAGE.to_string()),
         }
     }
 }
@@ -5770,4 +5773,36 @@ fn finder_path_validation_rejects_unsafe_names_and_accepts_safe_names() {
     assert!(finder_trash_path(&safe).is_some());
     assert!(finder_trash_path(&unsafe_name).is_none());
     let _ = std::fs::remove_dir_all(root);
+}
+
+#[cfg(test)]
+mod package_info_tests {
+    use super::*;
+
+    /// The About/Welcome UI shows `PackageInfo.name` as the product name.
+    ///
+    /// This module is compiled inside `lappp-core`, so `env!("CARGO_PKG_NAME")`
+    /// resolves to the crate name (`lappp-core`) rather than the application's
+    /// name (`lappp`) — the UI then advertises an internal crate. The product
+    /// identity must come from explicit application constants instead.
+    #[test]
+    fn package_info_reports_the_application_not_the_core_crate() {
+        let info = PackageInfo::new("");
+        assert_eq!(info.name, "lappp");
+    }
+
+    /// The About page renders these fields directly; empty values turn the
+    /// GitHub link into a dead `<a href>` and leave license/description blank.
+    #[test]
+    fn package_info_carries_real_about_page_metadata() {
+        let info = PackageInfo::new("abc1234");
+        assert!(!info.description.trim().is_empty(), "description must not be blank");
+        assert_eq!(info.license.as_deref(), Some("GPL-3.0-or-later"));
+        let repository = info.repository.as_deref().unwrap_or_default();
+        assert!(
+            repository.contains("viccom/lappp"),
+            "repository must point at this fork, got {repository:?}"
+        );
+        assert!(info.authors.iter().all(|author| !author.trim().is_empty()));
+    }
 }
