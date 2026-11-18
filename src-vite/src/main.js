@@ -125,10 +125,14 @@ if (transportMode === 'http') {
     .catch(() => {})
   // Install the app-shell service worker so the PWA opens offline. Web only:
   // the desktop shell has no service worker and its assets come from the bundle.
+  // `__TAURI_INTERNALS__` guards the mixed case of an http-flavored bundle run
+  // inside the desktop webview: registering there poisons the tauri.localhost
+  // origin for every later desktop build (network-first navigation falls back
+  // to a stale/error shell and the app never boots).
   // Register eagerly when the document has already finished loading: the awaits
   // above (checkSession / serverInfo) can outlast the `load` event, so waiting
   // for it would attach the listener too late and never register.
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator && !window.__TAURI_INTERNALS__) {
     const registerSw = () => navigator.serviceWorker.register('/sw.js').catch(() => {})
     if (document.readyState === 'complete') {
       registerSw()
@@ -136,6 +140,16 @@ if (transportMode === 'http') {
       window.addEventListener('load', registerSw)
     }
   }
+} else if ('serviceWorker' in navigator && window.caches) {
+  // Self-heal the poisoned-origin case above: unregister any service worker an
+  // http-flavored bundle left on this desktop origin and drop its shell cache.
+  navigator.serviceWorker.getRegistrations()
+    .then((registrations) => Promise.all(registrations.map((r) => r.unregister())))
+    .then((removed) => {
+      if (!removed.some(Boolean)) return undefined
+      return caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))))
+    })
+    .catch(() => {})
 }
 
 // Use the router and i18n
