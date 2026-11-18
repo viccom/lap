@@ -2008,7 +2008,13 @@
       "task_edit_time": "改时间",
       "task_save": "保存",
       "run_source_scheduled": "计划",
-      "run_source_manual": "手动"
+      "run_source_manual": "手动",
+      "vision_check": "检测视觉能力",
+      "vision_check_hint": "发送一张左红右蓝的测试图，确认所选模型真的能看图（部分网关会把纯文本模型标成支持视觉）。",
+      "vision_check_ok": "视觉正常：{answer}",
+      "vision_check_mismatch": "未能确认视觉能力（回答：{answer}）。建议换用 zhipu/glm-4.6 之类的视觉模型。",
+      "vision_check_failed": "检测失败：{error}",
+      "vision_check_no_answer": "（空回答）"
     },
     "server": {
       "title": "服务器",

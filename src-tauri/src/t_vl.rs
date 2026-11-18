@@ -88,6 +88,13 @@ pub fn get_vl_annotations(file_id: i64) -> Result<Vec<VlAnnotation>, String>
 
 
 #[tauri::command]
+pub async fn check_vl_vision() -> Result<VlVisionCheck, String>
+{
+    lappp_core::t_vl::check_vl_vision().await
+}
+
+
+#[tauri::command]
 pub fn get_vl_calls(file_id: i64) -> Result<Vec<VlCall>, String>
 {
     lappp_core::t_vl::get_vl_calls(file_id)

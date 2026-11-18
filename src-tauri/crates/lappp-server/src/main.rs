@@ -301,7 +301,7 @@ mod tests {
                 registered.push(name);
             }
         }
-        assert_eq!(registered.len(), 256, "registration count drifted");
+        assert_eq!(registered.len(), 257, "registration count drifted");
 
         let bridged: std::collections::HashSet<_> = bridge_gen::COMMANDS.iter().copied().collect();
         let skip: std::collections::HashSet<_> = SKIP.iter().copied().collect();

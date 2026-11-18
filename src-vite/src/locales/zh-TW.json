@@ -2008,7 +2008,13 @@
       "task_edit_time": "改時間",
       "task_save": "儲存",
       "run_source_scheduled": "計畫",
-      "run_source_manual": "手動"
+      "run_source_manual": "手動",
+      "vision_check": "檢測視覺能力",
+      "vision_check_hint": "傳送一張左紅右藍的測試圖，確認所選模型真的能看圖（部分閘道會把純文字模型標成支援視覺）。",
+      "vision_check_ok": "視覺正常：{answer}",
+      "vision_check_mismatch": "未能確認視覺能力（回答：{answer}）。建議改用 zhipu/glm-4.6 之類的視覺模型。",
+      "vision_check_failed": "檢測失敗：{error}",
+      "vision_check_no_answer": "（空回答）"
     },
     "server": {
       "title": "伺服器",

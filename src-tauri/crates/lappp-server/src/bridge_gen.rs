@@ -2,7 +2,7 @@
 //!
 //! Regenerate after adding commands: `python -I docs/dev/gen-lapd-bridge.py`.
 //! Whitelist = class A commands with a network exposure level, in main.rs
-//! registration order: 233 bridged / 256 registered
+//! registration order: 234 bridged / 257 registered
 //! (23 skipped: B desktop-glue, C native-only, A 不暴露).
 use crate::bridge::{
     arg, arg_opt, ok, ok_res, spawn_sync, spawn_sync_plain, BridgeError,
@@ -242,6 +242,7 @@ pub const COMMANDS: &[&str] = &[
     "cancel_vl_run",
     "rerank_search_with_llm",
     "list_vl_models",
+    "check_vl_vision",
     "list_vl_runs",
     "list_vl_run_calls",
     "retry_vl_run",
@@ -481,6 +482,7 @@ pub const EXPOSURES: &[(&str, &str)] = &[
     ("cancel_vl_run", "write"),
     ("rerank_search_with_llm", "write"),
     ("list_vl_models", "read"),
+    ("check_vl_vision", "read"),
     ("list_vl_runs", "read"),
     ("list_vl_run_calls", "read"),
     ("retry_vl_run", "write"),
@@ -1746,6 +1748,10 @@ ok_res(lappp_core::t_vl::rerank_search_with_llm(query, file_ids).await)
         // t_vl::list_vl_models [read]
         "list_vl_models" => {
 ok_res(lappp_core::t_vl::list_vl_models().await)
+        }
+        // t_vl::check_vl_vision [read]
+        "check_vl_vision" => {
+ok_res(lappp_core::t_vl::check_vl_vision().await)
         }
         // t_vl::list_vl_runs [read]
         "list_vl_runs" => {

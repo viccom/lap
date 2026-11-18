@@ -1980,7 +1980,13 @@
       "task_edit_time": "Reschedule",
       "task_save": "Save",
       "run_source_scheduled": "Planned",
-      "run_source_manual": "Manual"
+      "run_source_manual": "Manual",
+      "vision_check": "Check vision",
+      "vision_check_hint": "Sends a red/blue probe image to confirm the selected model really sees pixels (some gateways label text-only models as vision-capable).",
+      "vision_check_ok": "Vision works: {answer}",
+      "vision_check_mismatch": "Could not confirm vision (answer: {answer}). Consider a vision model such as zhipu/glm-4.6.",
+      "vision_check_failed": "Check failed: {error}",
+      "vision_check_no_answer": "(empty answer)"
     },
     "server": {
       "title": "서버",

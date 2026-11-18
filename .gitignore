@@ -16,3 +16,7 @@ release-downloads.sh
 
 # local build outputs (scripts/build-windows.ps1)
 build/
+
+# Python bytecode from docs/dev helper scripts
+__pycache__/
+*.pyc

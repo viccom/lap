@@ -571,6 +571,7 @@ async fn run_embedded() {
             t_vl::cancel_vl_run,
             t_vl::rerank_search_with_llm,
             t_vl::list_vl_models,
+            t_vl::check_vl_vision,
             t_vl::list_vl_runs,
             t_vl::list_vl_run_calls,
             t_vl::retry_vl_run,

@@ -510,6 +510,22 @@
                 class="input input-sm w-full"
               />
             </div>
+            <div class="flex items-center justify-between gap-3 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <div class="min-w-0 flex-1 flex flex-col gap-0.5 text-xs leading-5 text-base-content/30">
+                <div>{{ $t('settings.vl.vision_check_hint') }}</div>
+                <div v-if="visionCheckResult" class="text-[11px]">
+                  {{ visionCheckResultText }}
+                </div>
+              </div>
+              <button
+                class="btn btn-sm btn-ghost rounded-box bg-base-100 border border-base-content/30 text-base-content/70 hover:text-base-content shrink-0"
+                :disabled="checkingVision || savingVlConfig"
+                @click="runVisionCheck"
+              >
+                <span v-if="checkingVision" class="loading loading-spinner loading-xs"></span>
+                <span v-else>{{ $t('settings.vl.vision_check') }}</span>
+              </button>
+            </div>
             <div class="flex justify-end">
               <button class="t-button-primary" :disabled="savingVlConfig" @click="saveVlConfig">
                 {{ savingVlConfig ? $t('settings.vl.saving') : $t('settings.vl.save') }}
@@ -1162,7 +1178,7 @@ import {
 } from '@/common/api';
 import { formatFileSize, isLinux, isMac, SCALE_VALUES } from '@/common/utils';
 import { VL_SETTINGS_TAB, VL_TASKS_TAB, resolveApiKeyInput, modelLabel, normalizeProtocol, partitionModels, normalizeMaxConcurrency, runStateLabelKey, formatDuration, callSucceeded, taskStateLabelKey, taskStateChipClass, rerankModelOptions } from '@/common/vlLogic';
-import { getVlConfig, setVlConfig, listVlModels, listVlRuns, listVlRunCalls, cancelVlRun, retryVlRun, deleteVlRun, clearVlRuns, listVlTasks, updateVlTaskTime, deleteVlTask } from '@/common/vlApi';
+import { getVlConfig, setVlConfig, listVlModels, listVlRuns, listVlRunCalls, cancelVlRun, retryVlRun, deleteVlRun, clearVlRuns, listVlTasks, updateVlTaskTime, deleteVlTask, checkVlVision } from '@/common/vlApi';
 import { useAppearance } from '@/composables/useAppearance';
 import { getShortcutLabels, ShortcutActionId, ShortcutPlatform } from '@/common/shortcuts';
 import { useToast } from '@/common/toast';
@@ -1225,6 +1241,36 @@ const vlRerankModelsExpanded = ref(false);
 const vlApiKey = ref('');
 const vlApiKeyClearPending = ref(false);
 const savingVlConfig = ref(false);
+
+// Gateway vision self-check: a red|blue probe image the model cannot describe
+// without actually seeing pixels (gateways may mislabel text-only models as
+// vision-capable, which silently produces metadata-derived captions).
+const checkingVision = ref(false);
+const visionCheckResult = ref(null);
+
+const visionCheckResultText = computed(() => {
+  const result = visionCheckResult.value;
+  if (!result) return '';
+  const vl = localeMsg.value.settings.vl;
+  if (result.error) return vl.vision_check_failed.replace('{error}', result.error);
+  if (result.ok) {
+    return vl.vision_check_ok.replace('{answer}', result.answer || vl.vision_check_no_answer);
+  }
+  return vl.vision_check_mismatch.replace('{answer}', result.answer || vl.vision_check_no_answer);
+});
+
+async function runVisionCheck() {
+  if (checkingVision.value) return;
+  checkingVision.value = true;
+  visionCheckResult.value = null;
+  try {
+    visionCheckResult.value = await checkVlVision();
+  } catch (error) {
+    visionCheckResult.value = { ok: false, answer: '', error: String(error?.message ?? error) };
+  } finally {
+    checkingVision.value = false;
+  }
+}
 
 // the lab playground window (image understanding + exact search)
 const openingLab = ref(false);

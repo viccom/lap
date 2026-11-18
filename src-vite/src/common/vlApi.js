@@ -45,6 +45,27 @@ export async function setVlConfig(
   }
 }
 
+/// Ask the configured model to describe a two-colour probe image.
+///
+/// Gateways may advertise `vision: "supported"` while serving a text-only
+/// backend; such a model "describes" photos from EXIF alone. The probe cannot
+/// be answered without seeing the pixels, so this is the honest capability
+/// check to run before a whole-library understanding pass.
+/// `error` is present when the check could not run (gateway unreachable, …);
+/// `ok` is false in that case as well.
+export async function checkVlVision(invoker = invoke) {
+  try {
+    const answer = await invoker('check_vl_vision');
+    return {
+      ok: Boolean(answer?.ok),
+      answer: String(answer?.answer ?? ''),
+      error: answer?.error ? String(answer.error) : '',
+    };
+  } catch (error) {
+    fail('check the gateway vision capability', error);
+  }
+}
+
 /// The models the gateway offers. `authRequired` marks a 401 answer: the
 /// list is unusable but the chat surface may still work.
 export async function listVlModels(invoker = invoke) {

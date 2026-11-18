@@ -3030,6 +3030,96 @@ pub async fn list_vl_models() -> Result<VlModelList, String> {
 }
 
 // ----------------------------------------------------------------------------
+// Vision capability self-check
+// ----------------------------------------------------------------------------
+
+/// Outcome of the gateway vision self-check.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VlVisionCheck {
+    /// True only when the model named both halves of the probe image.
+    pub ok: bool,
+    /// The model's answer, trimmed, for display next to the verdict.
+    pub answer: String,
+    /// Why the check could not be performed at all (gateway unreachable, …).
+    pub error: Option<String>,
+}
+
+/// Does the answer name both probe colours?
+///
+/// The probe is split red|blue; requiring both words makes a lucky guess by a
+/// text-only model unlikely while still accepting the many phrasings real
+/// models produce ("左红右蓝", "The left half is red and the right half is blue").
+fn answer_names_red_and_blue(answer: &str) -> bool {
+    let lower = answer.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect();
+    let has_red = answer.contains('红') || words.iter().any(|word| *word == "red");
+    let has_blue = answer.contains('蓝') || words.iter().any(|word| *word == "blue");
+    has_red && has_blue
+}
+
+/// Ask the configured model to describe a two-colour probe image.
+///
+/// Gateways may claim `vision: "supported"` in `/v1/models` while serving a
+/// text-only backend; such a model "describes" pictures from metadata alone.
+/// A solid red|blue probe cannot be answered without seeing the pixels, so
+/// this is the cheapest honest capability check before a whole-library run.
+pub async fn check_vl_vision() -> Result<VlVisionCheck, String> {
+    let config = resolve_gateway_config()?;
+
+    // 256x128: left half red, right half blue (PNG, no external asset needed).
+    let mut image = image::RgbImage::new(256, 128);
+    for (x, _y, pixel) in image.enumerate_pixels_mut() {
+        *pixel = if x < 128 {
+            image::Rgb([200, 30, 30])
+        } else {
+            image::Rgb([30, 60, 200])
+        };
+    }
+    let mut png: Vec<u8> = Vec::new();
+    image::DynamicImage::ImageRgb8(image)
+        .write_to(
+            &mut std::io::Cursor::new(&mut png),
+            image::ImageFormat::Png,
+        )
+        .map_err(|error| error.to_string())?;
+
+    let request = VlRequest {
+        image_base64: base64::engine::general_purpose::STANDARD.encode(&png),
+        media_type: "image/png".to_string(),
+        prompt: "这张图片的左半边和右半边分别是什么颜色？只回答两个颜色词。".to_string(),
+        system: None,
+    };
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(
+            crate::t_common::VL_REQUEST_TIMEOUT_SECS,
+        ))
+        .build()
+        .map_err(|error| error.to_string())?;
+
+    match call_gateway(&client, &config, &request).await {
+        Ok(outcome) => {
+            let answer = outcome.response.text.trim().to_string();
+            Ok(VlVisionCheck {
+                ok: answer_names_red_and_blue(&answer),
+                answer,
+                error: None,
+            })
+        }
+        // A gateway failure is a result of the check, not an error of the
+        // command: the settings page shows it as "could not verify".
+        Err(error) => Ok(VlVisionCheck {
+            ok: false,
+            answer: String::new(),
+            error: Some(error.message),
+        }),
+    }
+}
+
+// ----------------------------------------------------------------------------
 // Run history
 // ----------------------------------------------------------------------------
 
@@ -5725,7 +5815,7 @@ mod tests {
     // ----- command registration -----
 
     /// The commands this module contributes to the Tauri handler.
-    const VL_COMMANDS: [&str; 17] = [
+    const VL_COMMANDS: [&str; 18] = [
         "get_vl_config",
         "set_vl_config",
         "list_vl_templates",
@@ -5739,6 +5829,7 @@ mod tests {
         "list_vl_runs",
         "list_vl_run_calls",
         "list_vl_models",
+        "check_vl_vision",
         "rerank_search_with_llm",
         "retry_vl_run",
         "delete_vl_run",
@@ -6917,5 +7008,37 @@ mod run_lifecycle_tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(remaining, vec!["q".to_string(), "r".to_string()]);
+    }
+}
+
+#[cfg(test)]
+mod vision_check_tests {
+    use super::answer_names_red_and_blue;
+
+    #[test]
+    fn accepts_chinese_and_english_answers_that_name_both_colours() {
+        for answer in [
+            "左红右蓝",
+            "红色和蓝色",
+            "The left half is red and the right half is blue.",
+            "RED / BLUE",
+            "左侧是红色，右侧是蓝色。",
+        ] {
+            assert!(answer_names_red_and_blue(answer), "should pass: {answer}");
+        }
+    }
+
+    #[test]
+    fn rejects_answers_that_never_saw_the_pixels() {
+        for answer in [
+            "我无法看到这张图片。",
+            "我是纯文本处理模型，无法解析图像内容。",
+            "I cannot read the image.",
+            "红色",      // only half of the probe
+            "blue",
+            "hundred",   // must not match on a substring of an unrelated word
+        ] {
+            assert!(!answer_names_red_and_blue(answer), "should fail: {answer}");
+        }
     }
 }
