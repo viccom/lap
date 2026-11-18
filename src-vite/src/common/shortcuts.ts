@@ -11,69 +11,16 @@ export type ShortcutContext =
   | 'tag-dialog'
   | 'map';
 
-export type ShortcutActionId =
-  | 'app.sidebar.toggle'
-  | 'app.scale.increase'
-  | 'app.scale.decrease'
-  | 'app.scale.reset'
-  | 'app.preferences'
-  | 'app.search'
-  | 'file.openNewWindow'
-  | 'file.openExternalApp'
-  | 'file.editImage'
-  | 'file.copy'
-  | 'file.copyPath'
-  | 'file.paste'
-  | 'file.selectAll'
-  | 'file.selectNone'
-  | 'file.invertSelection'
-  | 'file.rename'
-  | 'file.moveTo'
-  | 'file.trash'
-  | 'file.deletePermanently'
-  | 'file.reveal'
-  | 'file.searchSimilar'
-  | 'meta.favorite'
-  | 'meta.rating.clear'
-  | 'meta.rating.one'
-  | 'meta.rating.two'
-  | 'meta.rating.three'
-  | 'meta.rating.four'
-  | 'meta.rating.five'
-  | 'meta.culling.pick'
-  | 'meta.culling.reject'
-  | 'meta.culling.unreviewed'
-  | 'meta.tag'
-  | 'meta.collection'
-  | 'meta.edit'
-  | 'meta.rotate'
-  | 'meta.rotateCounterclockwise'
-  | 'meta.info'
-  | 'view.quickPreview'
-  | 'view.togglePlayback'
-  | 'view.close'
-  | 'view.next'
-  | 'view.previous'
-  | 'view.first'
-  | 'view.last'
-  | 'view.pageUp'
-  | 'view.pageDown'
-  | 'view.zoomIn'
-  | 'view.zoomOut'
-  | 'view.zoomInDirectional'
-  | 'view.zoomOutDirectional'
-  | 'view.zoomFit'
-  | 'view.cycleRawPreview'
-  | 'view.toggleAfAreas'
-  | 'view.toggleFullscreen'
-  | 'view.cycleBackground'
-  | 'view.backgroundTheme'
-  | 'view.backgroundBlack'
-  | 'view.backgroundDarkGray'
-  | 'view.backgroundMediumGray'
-  | 'view.backgroundLightGray'
-  | 'view.backgroundWhite'
-  | 'view.togglePane';
+/**
+ * Single source of truth: the legal action ids ARE the `id`s of the SHORTCUTS
+ * registry below. Register an entry and the id becomes referenceable; delete
+ * one and every remaining reference fails to compile. The v0.4.0 sync kept a
+ * dangling `shortcut('file.moveToFolder')` after upstream deleted the action —
+ * nothing type-checked the file, and the render-time throw blanked the grid
+ * and the media viewer (docs/dev/SOP-上游同步升级.md §3.1;
+ * tests/shortcutActionIdType.test.mjs pins the contract).
+ */
+export type ShortcutActionId = (typeof SHORTCUTS)[number]['id'];
 
 export type ShortcutModifier = 'ctrl' | 'meta' | 'alt' | 'shift' | 'cmdOrCtrl';
 
@@ -104,6 +51,10 @@ export interface ShortcutEventLike {
   shiftKey?: boolean;
 }
 
+// No `satisfies …ShortcutActionId` here on purpose: ShortcutActionId derives
+// from SHORTCUTS below, and typing these actionIds against it would make the
+// type graph circular (TS2456). Every actionId here IS registered by the
+// spread into SHORTCUTS — that is the invariant the derived type enforces.
 export const VIEW_BACKGROUND_SHORTCUTS = [
   { actionId: 'view.backgroundTheme', value: 0 },
   { actionId: 'view.backgroundBlack', value: 1 },
@@ -111,7 +62,7 @@ export const VIEW_BACKGROUND_SHORTCUTS = [
   { actionId: 'view.backgroundMediumGray', value: 3 },
   { actionId: 'view.backgroundLightGray', value: 4 },
   { actionId: 'view.backgroundWhite', value: 5 },
-] as const satisfies ReadonlyArray<{ actionId: ShortcutActionId; value: number }>;
+] as const;
 
 export const DEFAULT_PLATFORM: ShortcutPlatform = (() => {
   if (typeof navigator === 'undefined') return 'windows';
@@ -121,7 +72,11 @@ export const DEFAULT_PLATFORM: ShortcutPlatform = (() => {
   return 'windows';
 })();
 
-export const SHORTCUTS: readonly ShortcutDefinition[] = [
+// No `: readonly ShortcutDefinition[]` annotation on purpose: the `as const`
+// literal types are what ShortcutActionId derives from. Assignability to
+// ShortcutDefinition is enforced by tests/shortcutActionIdType.test.mjs
+// (shortcuts.ts must type-check cleanly).
+export const SHORTCUTS = [
   {
     id: 'app.sidebar.toggle',
     contexts: ['global'],
@@ -506,7 +461,10 @@ export function getShortcut(actionId: ShortcutActionId): ShortcutDefinition {
 }
 
 export function getShortcutsByContext(context: ShortcutContext): readonly ShortcutDefinition[] {
-  return SHORTCUTS.filter((shortcut) => shortcut.contexts.includes(context));
+  // `as const` entries keep per-entry literal context tuples; entries with
+  // `contexts: []` would make `.includes()`'s parameter collapse to `never`
+  // on the union, so widen back to the declared element type at this boundary.
+  return SHORTCUTS.filter((shortcut) => (shortcut.contexts as readonly ShortcutContext[]).includes(context));
 }
 
 export function getShortcutLabels(

@@ -62,7 +62,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 | # | 门禁 | 命令 / 方法 | 状态 |
 |---|---|---|---|
 | 1 | 跨文件契约对账 | §3.1 | **部分具备**（shortcuts 已有回归测试钉住 fileMenu↔registry）；全仓对账脚本待建 |
-| 2 | 类型检查 | `npx vue-tsc --noEmit`（src-vite/） | **待建**（当前构建链 0 类型检查；本次事故若有即秒红） |
+| 2 | 类型检查 | `npx vue-tsc --noEmit`（src-vite/） | **待建**（全量）；快捷键契约已有微型类型检查跑在 `test:shortcuts` 内（`tests/shortcutActionIdType.test.mjs`，用 TS API 编译 shortcuts.ts + 探针断言） |
 | 3 | 前端全量测试 | 各域 `npm run test:*` | **部分具备**：14 域已接入，26 个孤儿测试文件待接入，聚合脚本待建 |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
@@ -130,8 +130,12 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 
 ## 7. 待建资产清单（按优先级）
 
-1. `ShortcutActionId` 改为从 `SHORTCUTS` 派生（`typeof SHORTCUTS)[number]['id']`；
-   注意 `...VIEW_BACKGROUND_SHORTCUTS.map(...)` 段落需 `as const`/`satisfies` 保住字面量。
+1. ~~`ShortcutActionId` 改为从 `SHORTCUTS` 派生~~ **已落地（2026-11-18）**：
+   `type ShortcutActionId = (typeof SHORTCUTS)[number]['id']`，SHORTCUTS 去掉
+   宽化注解、VIEW_BACKGROUND 的 `satisfies` 移除（否则 TS2456 循环）。
+   契约由 `tests/shortcutActionIdType.test.mjs` 钉死（shortcuts.ts 0 诊断、
+   探针 @ts-expect-error 拒收未注册 id、类型↔注册表双向相等、防塌缩成
+   string），已接入 `npm run test:shortcuts`。
 2. `vue-tsc --noEmit`：加 devDep + `npm run typecheck`，进 §3 门禁与 CI（先跑一遍量化存量错误，分批清零）。
 3. 26 个孤儿测试接入 `test:*` + `npm run test` 聚合脚本；CI（pr-build.yml 目前只编译）加测试步骤。
 4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
