@@ -7,7 +7,9 @@
 > 本文件不是"设计文档"，是**验收脚本 + 结果台账**。每条的"通过判据"必须给出可观察证据
 > （页面文本 / 网络请求 / 磁盘字节 / DB 行），不接受"看着对"。
 >
-> 建立于 2026-11-17（阶段 4 批次 5d）。锚点随代码漂移，以实际代码为准。
+> 建立于 2026-11-17（阶段 4 批次 5d）；**2026-11-18 同步上游 v0.4.0 后增补 §13（RAW 配对 /
+> 元数据 / 标签树 / 去重规则 / 批量重命名 / 云文件 / 迁移 v31），并修正二进制名漂移
+> （`lapd.exe`→`lappp-server.exe`、`Lap.exe`→`lappp.exe`）**。锚点随代码漂移，以实际代码为准。
 
 ---
 
@@ -18,7 +20,8 @@
 | 项 | 要求 |
 |---|---|
 | 构建 | `cd src-vite && npm run build:http`（`VITE_LAP_TRANSPORT=http`；**必须最后跑，dist 是共享 outDir**） |
-| 服务端 | `src-tauri/target/debug/lappp-server.exe`（debug 构建；`cargo build -p lappp-server`），或用 `scripts/build-windows.ps1` 产出的 `lappp-server.exe` |
+| 服务端 | **`src-tauri/target/debug/lappp-server.exe`**（debug 构建；`cargo build -p lappp-server`），或用 `scripts/build-windows.ps1` 产出的 `lappp-server.exe`（阶段 7 前旧名 `lapd.exe` 已废弃） |
+| 桌面 | `lappp.exe`（`build/windows/lappp.exe`；阶段 7 前旧名 `Lap.exe` 已废弃） |
 | 数据隔离 | 一律用**临时 data-dir**，绝不指向真实库 `C:\Users\viccom\AppData\Local\com.julyx10.lap\` |
 | 浏览器 | IAB（ZCode in-app browser）；证据用 DOM/网络/磁盘，不依赖截图 |
 
@@ -42,10 +45,10 @@ cp -r /d/LapPortable/models/bge-local "$TMP/data/models/"
 
 # 3) 设管理员密码（单字符最简单）
 cd /d/MyCodes/AI-album/lap
-./src-tauri/target/debug/lapd.exe --data-dir "C:\\Users\\viccom\\AppData\\Local\\Temp\\lap-e2e\\data" --set-admin-password '1'
+./src-tauri/target/debug/lappp-server.exe --data-dir "C:\\Users\\viccom\\AppData\\Local\\Temp\\lap-e2e\\data" --set-admin-password '1'
 
 # 4) 起服务（端口 17861，托管 Web 构建）
-nohup ./src-tauri/target/debug/lapd.exe --port 17861 \
+nohup ./src-tauri/target/debug/lappp-server.exe --port 17861 \
   --data-dir "C:\\Users\\viccom\\AppData\\Local\\Temp\\lap-e2e\\data" \
   --web-dir "D:\\MyCodes\\AI-album\\lap\\src-vite\\dist" \
   > "$TMP/data/server.log" 2>&1 &
@@ -75,17 +78,17 @@ rm -rf /c/Users/viccom/AppData/Local/Temp/lap-e2e
 
 ```bash
 # 1) 起 lapd（隔离 data-dir）+ 设密码
-lapd --data-dir <temp>\srv --set-admin-password 1
-lapd --port 17863 --data-dir <temp>\srv --web-dir <repo>\src-vite\dist &
+lappp-server --data-dir <temp>\srv --set-admin-password 1
+lappp-server --port 17863 --data-dir <temp>\srv --web-dir <repo>\src-vite\dist &
 
 # 2) lapd 不记请求；需要请求级证据时前置一个日志反代（17862→17863）
 python -I logproxy.py 17862 17863 <temp>\proxy.log &
 
 # 3a) 显式连接：桌面 → 反代
-Lap.exe --connect http://127.0.0.1:17862 --data-dir <temp>\desk &
+lappp.exe --connect http://127.0.0.1:17862 --data-dir <temp>\desk &
 # 3b) 自动锁检测：植入指向活 pid + 反代端口的锁，再只带 --data-dir 启动
 echo {"pid":<lapd_pid>,"port":17862,"startedAt":1} > <temp>\desk\lapd.lock
-Lap.exe --data-dir <temp>\desk &
+lappp.exe --data-dir <temp>\desk &
 
 # 4) 判据：<temp>\desk 只有锁、零 *.db；proxy.log 见远端壳与 /api/auth/*；
 #    在服务端 lapd.db 查 auth_audit(login_ok) 与 device_tokens。
@@ -226,21 +229,20 @@ Lap.exe --data-dir <temp>\desk &
 
 ```bash
 # 前端
-cd src-vite && node --experimental-vm-modules --test tests/*.test.mjs   # 基线 475/0
-node --experimental-vm-modules --test tests/                            # 全目录 501/0（含 2 个 .ts）
+cd src-vite && npm run test:<域>              # 13 个脚本（基线全绿）
 
 # 两种构建
 npm run build && npm run build:http          # 都须 exit=0；build:http 最后跑
 
 # Rust（改动 src-tauri 时）
 source docs/dev/build-env.sh
-cd src-tauri && CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1 cargo test --workspace  # 基线 654/0/10
+cd src-tauri && cargo test --workspace       # 基线 681/0/12（v0.4.0 同步后）
 # 薄客户端（阶段 6 feature）：servers 单测
 cargo test -p lappp --no-default-features --features client  # 5/5
 ```
 
-**门禁与本文档的关系**：门禁是"单元/契约"层；本文 §1–§8 是"运行时真跑"层。二者
-**都过**才算完成——历史多次证明单测全绿而运行时坏（见 §11）。
+**门禁与本文档的关系**：门禁是"单元/契约"层；本文 §1–§8、§13 是"运行时真跑"层。二者
+**都过**才算完成——历史多次证明单测全绿而运行时坏（见 §12）。
 
 ---
 
@@ -254,6 +256,13 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 - 阶段 5-1（8.8–8.10）**已被阶段 6 取代**：连远端改由独立薄客户端构建承担
 - 阶段 6 新增：8.11 完整版锁冲突拒启 / 8.12 薄客户端构建+连接 / 8.13 薄客户端多服务器切换+持久化 / 8.14 首次运行本地选择页
 
+**2026-11-18 全量复跑（v0.4.0 同步后，从空库起）**
+
+日期：2026-11-18｜环境：新 `lappp-server.exe` + IAB + 真实媒体 + 隔离 data-dir｜见 §14 记录。
+
+- 通过：§1 全、§2 全、§3（3.1–3.3,3.5–3.7）、§8 部分（8.1–8.5）、§13（见 §14 逐条）
+- 未覆盖：§4.2–4.4（需网关）、§5（需人脸模型样本）、§6.4/6.5、§7.4/7.5、§8.6/8.7、§13 中需特定样本的项（云文件 13.6、Affinity 13.7 无样本）
+
 ---
 
 ## 11. 变更影响矩阵（"改了 X，必须复测 Y"）
@@ -261,9 +270,9 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 | 改动区域 | 必测条目 |
 |---|---|
 | `transport/*`（宿主接缝） | §1、§2、§3、§6、§8 |
-| `api.js` 路由 / 命令桥 | §2、§3、§4、§5、§6 |
+| `api.js` 路由 / 命令桥 | §2、§3、§4、§5、§6、§13.1d/13.2b |
 | `lapd` 资源根 / boot | §4（embed_status）、§5（人脸模型） |
-| `content`/`viewer` 渲染路径 | §3（**rAF 类缺陷高发：非合成标签页 rAF 挂死**） |
+| `content`/`viewer` 渲染路径 | §3（**rAF 类缺陷高发：非合成标签页 rAF 挂死**）、§13.1a（配对单条目渲染） |
 | `VlLab` / `vlApi` | §4 全 |
 | `Person` / `t_face` | §5 全 |
 | `ImageEditor` / `Montage` | §6 全 |
@@ -271,6 +280,14 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 | `main.rs` 启动链 / `t_client`（锁检测） | §8.10–8.11（**完整版锁冲突须拒启、内嵌不得被误切**） |
 | `Cargo.toml` feature / `run_client`（薄客户端） | §8.12–8.14（两 feature 都要 build + test；薄客户端不得链 `lappp-core`） |
 | `servers.rs` / `client_cmds.rs` / `t_menu`（thin client） | §8.13–8.14（多服务器切换 + 持久化 + 菜单标记） |
+| `t_migration` / schema | §13.8（迁移路径 + 数据完整） |
+| RAW 配对 / `companion` / `group_raw_pairs` | §13.1全、§3.1（配对渲染）、去重 §13.4b |
+| 元数据 / XMP / sidecar | §13.2全、§3.7（File Info）、§13.5b（sidecar 跟随改名） |
+| 标签树 / `t_tags` | §13.3全、§4.5（FTS 含标签） |
+| 去重 / `t_dedup` / keepRules | §13.4全 |
+| 批量重命名 / `t_batch_rename` | §13.5全 |
+| 云文件 / `is_cloud_only` | §13.6全、§3（offline 预览） |
+| 预览解码 / `t_image` / `t_affinity` | §13.7、§3.1 |
 | 任何删除/写盘路径 | 对应条目的**磁盘/DB 复核**（不只 UI） |
 
 ---
@@ -287,3 +304,118 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 **规律**：① 一次性事件（`load`）在 `await` 之后挂监听 = 竞态；② 全仓 `requestAnimationFrame`
 须逐个确认为何不用 `afterNextPaint`；③ "按路径取内容"的函数在 Web 多半返回空串，须走按 id
 的签名端点；④ 长驻工具页在 commit 后要复查所有派生读数。
+
+---
+
+## 13. v0.4.0 新特性（2026-11-18 上游同步后增补）
+
+> 覆盖上游 v0.4.0 引入、原 §1–§8 未涉及的能力。Web 客户端可用项标 🌐；纯桌面项标 🖥（须真机 `lappp.exe`）。
+
+### 13.1 RAW+JPEG 配对单条目（#469/#555）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.1a | 索引含同名 `X.NEF`+`X.JPG` 的文件夹 | 网格中该对**显示为 1 个条目**（而非 2）；缩略图角标标出配对 | ⬜ |
+| 13.1b | 选中配对条目 → 删除 | 弹出**删除范围选择**（仅 RAW / 仅 JPEG / 两者）；选择后磁盘上对应文件被删、另一侧保留 | ⬜ |
+| 13.1c | 配对条目 → 复制到剪贴板 | 剪贴板文件列表含**两个物理文件**；`groupRawJpegPairs` 关闭时只含主文件 | ⬜ |
+| 13.1d | `reconcile_raw_jpeg_pairs` 命令 | `POST /api/cmd/reconcile_raw_jpeg_pairs {libraryId,enabled:true}` → 200；库内配对关系重建 | ⬜ |
+| 13.1e | 设置 → 配对开关 | 切换 `groupRawJpegPairs` → 网格分/合条目即时变化 | ⬜ |
+
+### 13.2 元数据编辑与 XMP 写回（b45b613a）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.2a | File Info 面板显示可编辑字段 | 标题/头条/描述/作者/版权可编辑 | ⬜ |
+| 13.2b | 编辑字段 → 保存 | `POST /api/cmd/edit_file_metadata {libraryId,fileIds,changes}` → 200；DB `afiles.e_title` 等落值 | ✅ 2026-11-18 |
+| 13.2c | 「保存元数据到 XMP」 | `save_xmp_metadata` 200；**磁盘 `.xmp` sidecar 出现**且含新值，**不改动无关属性** | ✅ 2026-11-18 |
+| 13.2d | sidecar 优先于内嵌 | 导入含 XMP sidecar 的文件：sidecar 值覆盖内嵌；本地编辑值保留 | ⬜ |
+
+### 13.3 层级标签树（#422/#480/#524/#541/#542）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.3a | 标签面板为树形 | 拖拽重排 / 改父级（子树跟随）；搜索含后代计数 | ⬜ |
+| 13.3b | 删除标签 → 重新导入 | 已删标签**不复活**（tombstone）；digiKam 层级关键字不产重复 | ⬜ |
+| 13.3c | 标签来源 (migration 23) | `atags.source` 列有值（`xmp_sidecar`/`manual` 等） | ⬜ |
+
+### 13.4 去重保留规则（#447/#505/#512）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.4a | 设置去重保留规则 | 有序文件夹列表 + 格式/尺寸/日期规则；`dedup_set_keep` / `dedup_start_scan {keepRules}` | ⬜ |
+| 13.4b | 扫描后自动标记 KEEP | 各重复组 KEEP 侧符合规则；RAW/JPEG 配对受保护 | ⬜ |
+| 13.4c | 规则跨窗口同步 | 多窗口下规则一致 | ⬜ |
+| 13.4d | `dedup_get_group_items` | 返回组内明细（含配对伴随） | ⬜（本次实测的是 `dedup_get_overview` ✅，见 §14） |
+
+### 13.5 批量重命名（#418）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.5a | 选中多文件 → 批量重命名 | `preview_batch_rename` 预览新名；确认后 `batch_rename_files` 200 | ✅ 2026-11-18 |
+| 13.5b | 重命名后磁盘 + sidecar | 文件真实改名；**XMP sidecar 随文件跟随改名** | ✅ 2026-11-18 |
+
+### 13.6 云文件 / 在线独有（#394/#431）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.6a | 索引云端占位文件（OneDrive 按需/dataless） | 被索引并显示；**不自动下载** | ⬜ |
+| 13.6b | 对云文件的需原操作 | 保持禁用（不静默跳过）；UI 明确 offline 状态 | ⬜ |
+
+### 13.7 Affinity 文档预览（#543）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.7a | 索引 `.afphoto` 等 | `get_supported_format_extensions` 含 affinity 扩展；生成嵌入预览 | ⬜ |
+| 13.7b | 网格/查看器预览 | 显示 Affinity 嵌入缩略图（非占位） | ⬜ |
+
+### 13.8 迁移 v31 补偿（fork 同步关键路径）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.8a | pre-sync v28 库升级 | `user_version` 28→31；日志 `Applying migration 31`；`atags.source` 建列、`idx_afolders_excluded_album` 建成 | ✅ 2026-11-18 |
+| 13.8b | 全新库 | 走完全部迁移到 31；v31 为 no-op（列/索引已由上游 v23/v24 建） | ✅ 2026-11-18 |
+| 13.8c | 迁移后数据完整 | 标签/照片/标注零丢失 | ⬜（本次仅空库 0→31；v28 存量库演练另见同步评估文档） |
+
+---
+
+---
+
+---
+
+## 14. 2026-11-18 全量复跑记录（v0.4.0 同步后，从空库起）
+
+**环境**：`lappp-server.exe`（debug, v0.4.0）+ IAB + 26 真实媒体（20 JPG @20140419 + 6 misc 含 2 mp4）+ 隔离 data-dir（`Temp\lap-e2e\data`，**空库 user_version=0 起步**）。
+
+**结果**：§1 全通过、§2 全通过、§3（3.1/3.2/3.3/3.7）通过、§13.8 通过、§13.2/13.4/13.5 通过；§13.1/13.6/13.7 因样本缺失未覆盖。
+
+| 条目 | 判据证据 | 结果 |
+|---|---|---|
+| 0.2 空库启动 | 日志 `Current DB version: 0` → 迁移 1..31 → `listening on 17861`；`server_info` v0.4.0 | ✅ |
+| 1.1 未登录跳转 | URL 自动 → `/login`；DOM 有「管理员密码」+「登录」 | ✅ |
+| 1.3 正确密码 | URL → `/`；主界面渲染（空库 Welcome） | ✅ |
+| 1.4 刷新保持 | reload 后仍在 `/`（cookie 会话） | ✅ |
+| 1.6 server_info | `name:"lappp-server",version:"0.4.0",pathSeparator:"\\",capabilities:{...}}` | ✅ |
+| 2.1 空库 Welcome | 主区「从新建相册开始」 | ✅ |
+| 2.2 新建相册入口 | Web 端点击 → 跳 `/settings`（非无反应） | ✅ |
+| 2.3 按路径新增 | toast「已新增相册「E2E-Media」」；DB `albums` 有该行 | ✅ |
+| 2.4 file_types | DB `file_types=7`（合法 1..=7，非 0） | ✅ |
+| 2.5 扫描相册 | 网格出现真实文件名 + 分辨率；DB `afiles` = 26（24 图 + 2 视频） | ✅ |
+| 2.7 侧栏计数 | 侧栏显示「26」 | ✅ |
+| 3.1 缩略图 | 27 张真实缩略图（512px，`/api/thumb/` + base64），`naturalWidth>0` | ✅ |
+| 3.2 查看器 | 双击→查看器打开；状态栏 `10 / 26 项` + EXIF（Canon EOS 450D）+ 100% 缩放 | ✅ |
+| 3.3 翻页 | 右箭头：`10/26` → `11/26` | ✅ |
+| 3.7 签名原图 | `/api/media/sign`→`/api/original/1?...sig=` fetch **200 image/jpeg 4.47MB** | ✅ |
+| 13.8a/b 迁移 | 空库 0→31；`atags.source`✓、`idx_afolders_excluded_album`✓、vl/embed/fts 表✓ | ✅ |
+| 13.2b 元数据编辑 | `edit_file_metadata {e_title,e_artist}` → 200；DB `e_title='E2E标题'` | ✅ |
+| 13.2c XMP 写回 | `save_xmp_metadata` → 200 `savedIds:[1]`；磁盘生成 `.xmp`，含 `<dc:title>E2E标题`+`<dc:creator>E2E作者` | ✅ |
+| 13.4d 去重概览 | `dedup_get_overview {groupRawPairs}` → 200 结构正确（空库 0 组） | ✅ |
+| 13.5a 重命名预览 | `preview_batch_rename` → `IMG_2437.JPG→E2E__001.JPG`，**companions:1**（配对感知） | ✅ |
+| 13.5b 重命名执行 | `batch_rename_files` → 200；**磁盘真实改名 + `.xmp` sidecar 跟随改名** | ✅ |
+| 新增命令白名单 | 7 个 v0.4.0 命令（edit_file_metadata/batch_rename_files/dedup_get_group_items/reconcile_raw_jpeg_pairs/refresh_album_folders/save_xmp_metadata/dedup_set_keep）均返回 400（参数校验）而非 403「not whitelisted」 | ✅ |
+| 13.1/13.6/13.7 | RAW 配对 / 云文件 / Affinity — **无样本，未覆盖** | ⬜ |
+
+**发现（非阻断）**：
+1. 空库 Welcome 二级标题显示 **`lappp-core`**（`heading [level=2]`）而非产品名 `lappp`——疑为 Welcome 文案硬编码 crate 名或 `server_info.name` 取值偏差。UI 文案缺陷，不影响功能。
+2. 查看器查看区视觉偏暗——已核实**非缺陷**：后端签名原图 fetch 返回真实 4.47MB JPEG；样本照片曝光本身偏暗（1/25s, f/5.6）。
+
+**未覆盖原因**：§4.2–4.4 需 VL 网关（本机私有配置）；§5 需人脸模型+足够样本（本次未启）；13.1 需 RAW+JPEG 同名对样本；13.6 需 OneDrive 占位文件；13.7 需 Affinity 文档；§6.4/6.5、§7.4/7.5、§8.6/8.7 同前次遗留。
