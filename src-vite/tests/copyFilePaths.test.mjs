@@ -57,8 +57,11 @@ test('the Web client copies the paths as text instead of calling the missing com
 });
 test('clipboard copy reaches policy validation even when the RAW primary is unavailable', () => {
   const source = readFileSync(new URL('../src/common/availability.ts', import.meta.url), 'utf8');
+  // Strip EVERY line-start `export ` in the tail chunk: the file grew more
+  // exported helpers after `const originalActions =`, and de-exporting only
+  // requiresOriginalAction left the others for new Function to choke on.
   const functions = source.slice(source.indexOf('const originalActions ='))
-    .replace('export function requiresOriginalAction', 'function requiresOriginalAction');
+    .replace(/^export /gm, '');
   const requiresOriginal = new Function(ts.transpile(functions, {target: ts.ScriptTarget.ES2022})
     + ';return requiresOriginalAction;')();
   assert.equal(requiresOriginal('copy'), false);

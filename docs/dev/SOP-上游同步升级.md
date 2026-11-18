@@ -63,7 +63,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 |---|---|---|---|
 | 1 | 跨文件契约对账 | §3.1 | **部分具备**（shortcuts 已有回归测试钉住 fileMenu↔registry）；全仓对账脚本待建 |
 | 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`**（基线制：不许新增，存量见 `src-vite/typecheck-baseline.json`，清零后 `--update` 收缩） | **已具备（基线制）**；快捷键契约另有微型类型检查跑在 `test:shortcuts`；全绿为最终目标 |
-| 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（31 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本或显式隔离区 | **已具备**（本地聚合 + CI `frontend-gate` job）；6 个陈旧脚手架文件在 `test:quarantine` 显式隔离待修 |
+| 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（34 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本上 | **已具备**（本地聚合 + CI `frontend-gate` job） |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
 | 6 | 三件套构建 | `scripts/build-windows.ps1`（默认 release；`-BuildProfile debug` 出 `build/windows/debug/`） | 已具备 |
@@ -175,10 +175,23 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    某脚本或隔离区"（放入未登记文件实测红）；CI（pr-build.yml）新增独立
    `frontend-gate` job = `typecheck:gate` + `npm run test`
    （**独立并行不加 needs**——`needs` 会让 workflow_dispatch 按平台跳过时
-   连锁跳过构建 job）。**隔离区 `test:quarantine`（6 文件 30 失败，全部
-   陈旧脚手架类：`Unexpected token 'export'`/`resolveCheck is not a function`
-   等源码抓取锚点失效，非产品 bug）待修**：afAreaShortcut、animatedHoverPreview、
-   copyFilePaths、folderDeletion、offlineCatalog、rawDisplay。
+   连锁跳过构建 job）。
+   **隔离区已清空并删除（同日续）**：6 文件 67 测试全部修复转入正域
+   （现 **34 域 / `npm run test` 34/34 绿**）。修复定性（无一为 fork 产品
+   bug，但实锤两类上游债）：
+   ① **CRLF 坑**：上游 offlineCatalog 的 import 剥离正则只锚 `\n`，
+   Windows 检出带 `\r` → import 残留 → 整文件加载失败（上游 CI 全 LF
+   从不暴露；即便取上游新测试也要补 `\r?`）；
+   ② **上游自破测试**：上游 a2cf51ec 更新过 offlineCatalog，但取其测试
+   在 upstream 干净树对照跑仍 **24/6 红**——上游不跑前端测试；folderDeletion/
+   afAreaShortcut 等断言停留在已删除的旧流程（`comment`/`rotate` 菜单项、
+   A→Alt+A 绑定、warmup 云检、失败对话框不再有 retry），逐项按现行契约重写
+   并注明依据提交号；
+   ③ 其余为锚点漂移（`export` 剥离单发 replace 漏第二处、fixture 缺 fork
+   新增的 transportMode/signMediaUrl 桩）。
+   另修 appearance/locale 两域漏 `--experimental-vm-modules` 旗标。
+   教训沉淀：**从上游同步测试 ≠ 拿来就能绿**——上游自己的前端测试不在
+   CI 里，取回后必须在本地全量跑一遍再合入。
 4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
 5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。
 6. `docs/dev/launch-portable-check.ps1` 里硬编码的 `Lap.exe` 更新为 `lappp.exe`。

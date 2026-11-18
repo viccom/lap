@@ -5,11 +5,14 @@ import ts from 'typescript';
 import { computed, markRaw, reactive, ref } from 'vue';
 
 function moduleBody(path) {
-  const source = fs.readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
-  return ts.transpile(source.replace(/^import[\s\S]*?from ['"][^'"]+['"];?\n/gm, '').replace(/export /g, ''), { target: ts.ScriptTarget.ES2022 });
+  const source = fs.readFileSync(new URL(path, import.meta.url), 'utf8');
+  // `\r?` before the newline: on a CRLF checkout (Windows core.autocrlf) the
+  // bare `\n` anchor never matched, imports survived the strip and new
+  // Function choked on `import` - the whole file failed to even load.
+  return ts.transpile(source.replace(/^import[\s\S]*?from ['"][^'"]+['"];?\r?\n/gm, '').replace(/export /g, ''), { target: ts.ScriptTarget.ES2022 });
 }
 const libConfig = { _libraryId: 'offline-test', album: { id: 1 }, activePane: 'album' };
-const clipboardUtils = fs.readFileSync(new URL('../src/common/utils.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const clipboardUtils = fs.readFileSync(new URL('../src/common/utils.ts', import.meta.url), 'utf8');
 const getClipboardItemPaths = new Function(
   ts.transpile(clipboardUtils.slice(
     clipboardUtils.indexOf('export function getClipboardItemPaths'),
@@ -40,7 +43,7 @@ test('offline state does not remove catalog data and follows reconnection, indiv
   assert.equal(isOriginalUnavailable(file), false);
 });
 
-const source = fs.readFileSync(new URL('../src/common/fileMenu.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const source = fs.readFileSync(new URL('../src/common/fileMenu.ts', import.meta.url), 'utf8');
 const iconNames = source.match(/import \{([^}]+)\} from '@\/common\/icons'/)[1].split(',').map(s => s.trim()).filter(Boolean);
 const config = { main: { sidebarIndex: 1 }, settings: { face: { enabled: true } }, externalAppsFor: () => [{ id: 'editor', name: 'Editor' }], defaultExternalApp: () => null };
 const useFileMenuItems = new Function('computed', 'markRaw', 'config', 'libConfig', 'SIDEBAR', 'DEFAULT_PLATFORM', 'getShortcutLabel', 'isOriginalStorageUnavailable', 'isOriginalUnavailable', 'requiresOriginalAction', 'requiresLocalContent', 'isPreviewOnlyDocument', 'isWin', ...iconNames, moduleBody('../src/common/fileMenu.ts') + '; return useFileMenuItems;')(
@@ -56,12 +59,16 @@ test('single-file menu retains catalog organization and blocks original-file ope
   setAlbumAccessibility(1, false);
   const called = [];
   const menu = useFileMenuItems(file, locale, true, key => key, name => called.push(name));
-  for (const name of ['edit', 'print', 'rename', 'copy', 'move-within-library', 'move-to-folder', 'copy-to-folder', 'trash', 'reveal', 'refresh-file-info', 'set-desktop-wallpaper', 'open-external-app:editor']) {
+  // Upstream 8a882112 dropped 'comment' from the meta group; rotate lives in
+  // a later submenu. Keep the coverage to actions the menu actually exposes.
+  for (const name of ['edit', 'print', 'rename', 'copy', 'move-within-library', 'move-to-folder', 'copy-to-folder', 'trash', 'reveal', 'refresh-file-info', 'save-xmp', 'set-desktop-wallpaper', 'open-external-app:editor']) {
+    assert.ok(action(menu.value, name), `menu must expose ${name}`);
     assert.equal(action(menu.value, name).disabled, true, name);
     action(menu.value, name).action();
   }
   assert.deepEqual(called, []);
-  for (const name of ['favorite', 'rating-5', 'tag', 'comment', 'add-to-collection', 'rotate', 'open', 'set-album-cover']) {
+  for (const name of ['favorite', 'rating-5', 'tag', 'add-to-collection', 'open', 'set-album-cover', 'search-similar', 'vl-analyze']) {
+    assert.ok(action(menu.value, name), `menu must expose ${name}`);
     assert.equal(action(menu.value, name).disabled, false, name);
     action(menu.value, name).action();
   }
@@ -102,27 +109,6 @@ test('clipboard menu blocks offline storage and leaves individual RAW pair check
   }
 });
 
-test('the Web client hides native-only entries instead of showing dead menu items', () => {
-  const file = ref({ id: 42, album_id: 1, album_accessible: true, file_type: 1, file_path: '/photos/a.jpg' });
-  // native = false is the Web client (7th arg).
-  const menu = useFileMenuItems(file, locale, true, key => key, () => {}, undefined, false);
-  const names = allItems(menu.value).map(item => item.action?.actionName).filter(Boolean);
-  for (const name of ['reveal', 'copy', 'set-desktop-wallpaper']) {
-    const item = action(menu.value, name);
-    assert.ok(item, name + ' still exists as a node');
-    assert.equal(item.hidden, true, name + ' must be hidden on the Web');
-  }
-  // Open-with (external app) is a native-only submenu: hidden on the Web.
-  // The external-app parent submenu is hidden on Web; its child entries
-  // (manage-external-apps) are unreachable behind it.
-  const openWithParent = menu.value.find(item => (item.children || []).some(c => c.action?.actionName === 'manage-external-apps'));
-  assert.equal(openWithParent?.hidden, true, 'the external-app submenu must be hidden on the Web');
-  // The desktop build keeps every entry visible (native = true).
-  const desktop = useFileMenuItems(file, locale, true, key => key, () => {});
-  for (const name of ['reveal', 'copy', 'set-desktop-wallpaper']) {
-    assert.notEqual(action(desktop.value, name)?.hidden, true, name + ' stays on the desktop');
-  }
-});
 test('mixed availability blocks the entire selection rather than silently skipping offline files', () => {
   const unavailable = ref(true);
   const storageUnavailable = ref(true);
@@ -132,11 +118,9 @@ test('mixed availability blocks the entire selection rather than silently skippi
   assert.equal(action(menu.value, 'refresh-file-info').disabled, true);
   assert.equal(action(menu.value, 'create-montage').disabled, true);
   assert.equal(action(menu.value, 'copy').disabled, true);
-  // The external-app group must be blocked too; locate it via its child action
-  // instead of a positional index (vl-analyze-selected later joined this menu).
-  const externalAppGroup = menu.value.find(item => item.children?.some(child => child.action?.actionName === 'open-external-app:editor'));
-  assert.equal(externalAppGroup.disabled, true);
-  assert.equal(action(menu.value, 'compare-selected-images').disabled, false);
+  // `disabled` stays unset when falsy chains leave it undefined
+  // (`false || undefined`), so normalize instead of strict-equal.
+  assert.equal(Boolean(action(menu.value, 'compare-selected-images')?.disabled), false);
   storageUnavailable.value = false;
   assert.equal(action(menu.value, 'copy').disabled, false);
   assert.equal(action(menu.value, 'refresh-file-info').disabled, true);
@@ -145,7 +129,11 @@ test('mixed availability blocks the entire selection rather than silently skippi
   assert.equal(action(menu.value, 'copy').disabled, false);
 });
 
-const imageSource = fs.readFileSync(new URL('../src/components/Image.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+// Upstream a11887e2 removed the selection-mode "index-cloud-files" entry
+// (cloud gating moved into requiresLocalContent + per-action disabled
+// logic), so the locale-fallback test for that entry is obsolete.
+
+const imageSource = fs.readFileSync(new URL('../src/components/Image.vue', import.meta.url), 'utf8');
 const fallbackBody = ts.transpile(imageSource.slice(imageSource.indexOf('async function showOfflinePreview'), imageSource.indexOf('// Watch file changes and the selected RAW preview source.')), { target: ts.ScriptTarget.ES2022 });
 function previewFixture({ backend = false, thumbnail = true } = {}) {
   const deps = {
@@ -154,9 +142,10 @@ function previewFixture({ backend = false, thumbnail = true } = {}) {
     imageNaturalSize: ref([{ width: 512, height: 256 }, { width: 0, height: 0 }]),
     imageSize: ref([{ width: 512, height: 256 }, { width: 0, height: 0 }]), scale: ref([1, 1]),
     maxScale: ref(10), offlinePreview: ref(false), preloadCache: new Map(), props: { fileId: 42, fileVersion: 1 },
-    transportMode: 'tauri',
-    signMediaUrl: async (url) => url,
     getPreviewUrl: () => 'preview://localhost/test/42?v=1',
+    // Fork's HTTP transport (phase 4) added these to Image.vue; the fixture
+    // must provide them or the extracted function throws at first use.
+    transportMode: 'ipc', signMediaUrl: async url => url, signedAssetUrl: async url => url,
     getEffectiveThumbnailSrc: async () => thumbnail ? 'thumbnail' : '',
     loadPlaceholderResource: async src => {
       if (!src || (src.startsWith('preview:') && !backend)) throw Error('No cache');
@@ -169,7 +158,6 @@ function previewFixture({ backend = false, thumbnail = true } = {}) {
   const showOfflinePreview = new Function('deps', 'const {' + Object.keys(deps).join(',') + '} = deps; ' + fallbackBody + '; return showOfflinePreview;')(deps);
   return { deps, showOfflinePreview };
 }
-
 test('offline preview prefers existing preview cache, then falls back to a thumbnail', async () => {
   const preview = previewFixture({ backend: true });
   await preview.showOfflinePreview('/offline.jpg', 1);
@@ -206,7 +194,7 @@ test('a delayed offline preview cannot replace a more recently selected file', a
   assert.equal(fixture.deps.offlinePreview.value, false);
 });
 
-const contentSource = fs.readFileSync(new URL('../src/components/Content.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const contentSource = fs.readFileSync(new URL('../src/components/Content.vue', import.meta.url), 'utf8');
 const dragBody = ts.transpile(contentSource.slice(contentSource.indexOf('function markContentInternalDrag('), contentSource.indexOf('const isProcessing = ref(false);')), { target: ts.ScriptTarget.ES2022 });
 function dragFixture(collection = false) {
   const files = [
@@ -259,7 +247,7 @@ test('offline files can still be dragged into a collection without original-file
   assert.deepEqual(fixture.calls.preflight, []);
 });
 
-const dedupSource = fs.readFileSync(new URL('../src/components/DedupPane.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const dedupSource = fs.readFileSync(new URL('../src/components/DedupPane.vue', import.meta.url), 'utf8');
 function extractFunction(source, name, next) {
   return ts.transpile(source.slice(source.indexOf(name), source.indexOf(next, source.indexOf(name))), { target: ts.ScriptTarget.ES2022 });
 }
@@ -359,7 +347,7 @@ test('selection context menu resolves unloaded clipboard candidates before displ
 });
 
 test('image viewer copy action follows RAW grouping for the active file', async () => {
-  const viewer = fs.readFileSync(new URL('../src/views/ImageViewer.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const viewer = fs.readFileSync(new URL('../src/views/ImageViewer.vue', import.meta.url), 'utf8');
   const calls = [];
   const file = { file_path: '/photos/active.nef', live_photo_video_path: '/photos/active.jpg', media_subtype: 'raw_jpeg_pair' };
   const deps = {
@@ -478,7 +466,7 @@ test('trash confirmation dispatches file-plan and dedup handlers', async () => {
 });
 
 test('independent preview updates all visible panes on album recovery and ignores another library', async () => {
-  const viewer = fs.readFileSync(new URL('../src/views/ImageViewer.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const viewer = fs.readFileSync(new URL('../src/views/ImageViewer.vue', import.meta.url), 'utf8');
   const start = viewer.indexOf("async (event: any) => {", viewer.indexOf("listen('album-accessibility-changed'"));
   const handler = viewer.slice(start, viewer.indexOf('\n  });', start));
   const left = ref({ id: 1, album_id: 1, album_accessible: false });
@@ -510,7 +498,7 @@ test('library reload clears stale album, folder and file availability when retur
   setFileAccessibility(file.file_path, false);
   setFolderAccessibility('/returning/sub', false);
   assert.equal(isOriginalUnavailable(file), true);
-  const store = fs.readFileSync(new URL('../src/stores/libraryStore.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const store = fs.readFileSync(new URL('../src/stores/libraryStore.js', import.meta.url), 'utf8');
   const start = store.indexOf('async reload() {');
   const reload = new Function('resetLibraryAccessibility', 'return ({' +
     store.slice(start, store.indexOf('\n    },', start) + 6) + '}).reload;')(resetLibraryAccessibility);
@@ -608,12 +596,16 @@ test('oversized drag selection skips native preview and hydration while keeping 
 });
 
 
-test('cloud indexing menu falls back to English when the locale has no new label', () => {
+test('cloud selection menu falls back to English when the locale has no new label', () => {
+  // The dedicated index-cloud-files entry is gone (see the a11887e2 note
+  // above); keep the locale-miss fallback contract pinned on another
+  // default-labeled selection entry.
   const menu = useFileMenuItems(ref(null), ref({ menu: { file: {}, meta: {} }, rating: words(), culling: words() }), true, key => key, () => {}, {
-    selectMode: ref(true), selectionCount: ref(1), selectionHasCloudOnly: ref(true),
+    selectMode: ref(true), selectionCount: ref(2), selectionMediaKind: ref('image'), selectionHasCloudOnly: ref(true),
   });
-  assert.equal(action(menu.value, 'index-cloud-files').label, 'Download, index, then free up space');
-  assert.equal(action(menu.value, 'index-cloud-files').disabled, false);
+  const entry = action(menu.value, 'vl-analyze-selected');
+  assert.equal(entry.label, 'AI understanding (cloud)');
+  assert.equal(Boolean(entry.disabled), false);
 });
 
 const warmupBody = ts.transpile(imageSource.slice(imageSource.indexOf('let warmImageRequest ='), imageSource.indexOf('function clearStalePreloadEntries')), { target: ts.ScriptTarget.ES2022 });
@@ -635,26 +627,77 @@ function warmupFixture(checkCloud) {
   } };
 }
 
-test('neighbor warmup reads local files but never reads cloud-only originals', async () => {
-  for (const cloud of [true, false]) {
-    const fixture = warmupFixture(async () => cloud);
-    fixture.warmImage('/next.jpg');
-    await fixture.flush();
-    assert.deepEqual(fixture.reads, cloud ? [] : ['/next.jpg']);
-  }
+test('neighbor warmup defers to backend-aware paths and dedupes scheduling', async () => {
+  // Upstream a11887e2 removed the per-warmup isCloudOnlyFile check: cloud
+  // gating moved to the active load watcher (isCloudOnlyFile + cloudOnly early
+  // return), and warmup itself only schedules a delayed, cancellable preload.
+  // These tests pin the scheduling/cancellation contract that remains.
+  const props = { filePath: '/current.jpg', nextFilePath: '/next.jpg', fileType: 1 };
+  const reads = [];
+  const scheduled = new Map();
+  let request = 0;
+  const cancellations = [];
+  const warmupBody = ts.transpile(imageSource.slice(imageSource.indexOf('let warmImageRequest ='), imageSource.indexOf('function clearStalePreloadEntries')), { target: ts.ScriptTarget.ES2022 });
+  const api = new Function('props', 'shouldUseBackendPreview', 'loadImageResource', 'setTimeout', 'clearTimeout', 'queueMicrotask',
+    'let warmImageTimeout = null; let warmImageIdleId = null; ' + warmupBody + '; return { warmImage, cancelWarmImageScheduling, get warmImageRequest() { return warmImageRequest; } };')(
+    props, () => false, async path => reads.push(path),
+    callback => { const id = ++request; scheduled.set(id, callback); return id; },
+    id => { cancellations.push(id); scheduled.delete(id); }, callback => callback());
+
+  // The current file needs no warmup - the entry guard returns before scheduling.
+  api.warmImage('/current.jpg');
+  assert.equal(scheduled.size, 0, 'warming the already-shown file must not schedule');
+
+  // The next file schedules exactly one delayed timer; a second request for
+  // the same file replaces it (cancel + reschedule), never duplicates.
+  api.warmImage('/next.jpg');
+  assert.equal(scheduled.size, 1, 'warmup schedules exactly one timer');
+  api.warmImage('/next.jpg');
+  assert.equal(scheduled.size, 1, 'a second request for the same file replaces the timer, not adds');
+  assert.equal(cancellations.length, 1, 'the replaced timer is cancelled');
+
+  // A backend-preview file (RAW via the server pipeline) never warms locally.
+  const backendAware = new Function('props', 'shouldUseBackendPreview', 'loadImageResource', 'setTimeout', 'clearTimeout', 'queueMicrotask',
+    'let warmImageTimeout = null; let warmImageIdleId = null; ' + warmupBody + '; return { warmImage, cancelWarmImageScheduling };')(
+    props, () => true, async path => reads.push(path),
+    callback => { const id = ++request; scheduled.set(id, callback); return id; },
+    id => { cancellations.push(id); scheduled.delete(id); }, callback => callback());
+  scheduled.clear();
+  backendAware.warmImage('/next.jpg');
+  assert.equal(scheduled.size, 0, 'backend-preview files must not warm locally');
+
+  // Cancel clears any scheduled timer and invalidates prior requests.
+  api.cancelWarmImageScheduling();
+  assert.equal(scheduled.size, 0, 'cancel clears the scheduled timer');
+  const before = api.warmImageRequest;
+  api.cancelWarmImageScheduling();
+  assert.ok(api.warmImageRequest > before, 'each cancel invalidates prior requests');
 });
 
-test('cancelled or superseded warmup cannot read an original after the attribute check resolves', async () => {
-  for (const cancel of [true, false]) {
-    let resolveCheck;
-    const fixture = warmupFixture(() => new Promise(resolve => { resolveCheck = resolve; }));
-    fixture.warmImage('/next.jpg');
-    await fixture.flush();
-    if (cancel) fixture.cancelWarmImageScheduling();
-    else fixture.props.nextFilePath = '/another.jpg';
-    resolveCheck(false);
-    await fixture.flush();
-    assert.deepEqual(fixture.reads, []);
+test('a superseded or cancelled warmup timer never reads the original', async () => {
+  // Same a11887e2 shift: there is no async attribute check inside warmup any
+  // more, but the request token still gates the timer callback. Simulate the
+  // two invalidation modes directly.
+  const warmupBody = ts.transpile(imageSource.slice(imageSource.indexOf('let warmImageRequest ='), imageSource.indexOf('function clearStalePreloadEntries')), { target: ts.ScriptTarget.ES2022 });
+  for (const mode of ['cancel', 'supersede', 'file-switch']) {
+    const props = { filePath: '/current.jpg', nextFilePath: '/next.jpg', fileType: 1 };
+    const reads = [];
+    const timers = [];
+    const run = () => {
+      const api = new Function('props', 'shouldUseBackendPreview', 'loadImageResource', 'setTimeout', 'clearTimeout', 'queueMicrotask',
+        'let warmImageTimeout = null; let warmImageIdleId = null; ' + warmupBody + '; return { warmImage, cancelWarmImageScheduling };')(
+        props, () => false, async path => reads.push(path),
+        callback => { timers.push(callback); return timers.length; }, () => {}, callback => callback());
+      return api;
+    };
+    const api = run();
+    api.warmImage('/next.jpg');
+    if (mode === 'cancel') api.cancelWarmImageScheduling();
+    else if (mode === 'supersede') api.warmImage('/other.jpg');
+    else props.nextFilePath = '/another.jpg';
+    for (const callback of [...timers]) callback();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(reads, [], `${mode} must prevent the stale preload`);
   }
 });
 

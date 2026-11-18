@@ -4,6 +4,15 @@ import fs from 'node:fs';
 import ts from 'typescript';
 import { ref, computed } from 'vue';
 
+// Upstream #555 reworked the folder-deletion flow: the failed-trash dialog no
+// longer offers "permanent delete" or "retry" (its Ok/Cancel both just close
+// it), and whether the initial request is a permanent delete is decided by
+// config.settings.fileDeleteBehavior at startDeleteFolder time. These tests
+// pin the CURRENT contract:
+//   startDeleteFolder -> (guard, capture, identity, dialog)
+//   clickTrashFolder  -> deleteFolder | deleteFolderPermanently by flag,
+//                        failure dialog on error, splice on success.
+
 const source = fs.readFileSync(new URL('../src/components/AlbumFolder.vue', import.meta.url), 'utf8');
 const body = ts.transpile(
   source.slice(source.indexOf('async function startRenameFolder('), source.indexOf('// more menuitems')) +
@@ -16,18 +25,22 @@ function fixture() {
   const deps = {
     pendingFolderDelete: ref(null), folderTrashFailure: ref(null), isDeletingFolder: ref(false), isRenamingFolder: ref(false),
     isCreatingFolder: ref(false), disposed: false, props: { rootPath: '/album', albumId: 1 },
-    libConfig: { _libraryId: 'one' }, permanentDeleteChecked: ref(false), deletePermanently: ref(false),
-    selection: { folderPath: ref('') }, showTrashFolderMsgbox: ref(false), showTrashFailedFolderMsgbox: ref(false),
+    libConfig: { _libraryId: 'one' }, deletePermanently: ref(false),
+    selection: { folderPath: ref(''), folderId: ref(0), expandAndSelectFolder: async () => {} },
+    showTrashFolderMsgbox: ref(false), showTrashFailedFolderMsgbox: ref(false),
     isDirectoryAccessible: async () => true, prepareFolderDelete: async () => 'identity-one',
     clickFolder: async (_, folder) => { deps.selection.folderPath.value = folder.path; },
-    deleteFolder: async (...args) => { calls.push(['trash', ...args]); return { deletedCount: 0, canDeletePermanently: true, error: 'Recycle Bin unavailable' }; },
-    deleteFolderPermanently: async (...args) => { calls.push(['permanent', ...args]); return 0; },
-    toast: { error() {} }, t: key => key, console: { error() {} },
+    deleteFolder: async (...args) => { calls.push(['trash', ...args]); return { deletedCount: 0, error: 'Recycle Bin unavailable' }; },
+    deleteFolderPermanently: async (...args) => { calls.push(['permanent', ...args]); return 1; },
+    toast: { error() {}, success() {} }, t: key => key, console: { error() {} },
     originalFolderName: ref(''), uiStore: { pushInputHandler() {} },
     nextTick: async () => {}, folderInputRef: ref(null),
+    config: { settings: { fileDeleteBehavior: 'trash' } },
+    tauriEmit: async () => {}, getAllAlbums: async () => [], recountAlbum: async () => {},
+    getFolderByPath: () => null,
   };
   const run = () => new Function(...Object.keys(deps), body +
-    '; return { startDeleteFolder, startRenameFolder, clickTrashFolder, confirmTrashFailedFolderDelete };')(...Object.values(deps));
+    '; return { startDeleteFolder, startRenameFolder, clickTrashFolder };')(...Object.values(deps));
   return { deps, calls, run };
 }
 const folder = { path: '/album/child', name: 'child' };
@@ -36,12 +49,13 @@ test('opening deletion captures its own target without any prior rename', async 
   const f = fixture(); const actions = f.run();
   await actions.startDeleteFolder(folder);
   assert.equal(f.deps.showTrashFolderMsgbox.value, true);
+  assert.deepEqual(f.deps.pendingFolderDelete.value, {
+    path: folder.path, name: folder.name, libraryId: 'one', identity: 'identity-one',
+  });
   f.deps.selection.folderPath.value = '/album';
   await actions.clickTrashFolder();
   assert.deepEqual(f.calls, [['trash', folder.path, 'one', 'identity-one']]);
   assert.equal(f.deps.showTrashFailedFolderMsgbox.value, true);
-  await actions.confirmTrashFailedFolderDelete();
-  assert.deepEqual(f.calls[1], ['permanent', folder.path, 'one', 'identity-one']);
 });
 
 test('a prior rename cannot supply the deletion target', async () => {
@@ -71,7 +85,7 @@ test('duplicate confirmation cannot submit a second request', async () => {
   const first = actions.clickTrashFolder();
   await actions.clickTrashFolder();
   assert.equal(f.calls.length, 1);
-  finish({ deletedCount: 0, canDeletePermanently: false, error: 'Unknown failure' }); await first;
+  finish({ deletedCount: 0, error: 'Unknown failure' }); await first;
   assert.equal(f.deps.isDeletingFolder.value, false);
 });
 
@@ -83,15 +97,16 @@ test('a switched library rejects the pending target', async () => {
   assert.deepEqual(f.calls, []);
 });
 
-test('backend errors release the busy state without offering permanent deletion', async () => {
+test('backend errors release the busy state and show the failure dialog', async () => {
   const f = fixture(); f.deps.deleteFolder = async () => { throw Error('Rejected'); };
   const actions = f.run(); await actions.startDeleteFolder(folder);
   await actions.clickTrashFolder();
   assert.equal(f.deps.isDeletingFolder.value, false);
   assert.equal(f.deps.showTrashFailedFolderMsgbox.value, true);
-  assert.equal(f.deps.folderTrashFailure.value.canDeletePermanently, false);
-  await actions.confirmTrashFailedFolderDelete();
-  assert.deepEqual(f.calls, []);
+  // The failure dialog carries the error (String(error) - "Error: Rejected");
+  // permanent delete is decided at startDeleteFolder time, not offered as a
+  // failure fallback.
+  assert.equal(f.deps.folderTrashFailure.value.error, 'Error: Rejected');
 });
 
 test('successful deletion updates the captured folder and leaves siblings intact', async () => {
@@ -101,8 +116,7 @@ test('successful deletion updates the captured folder and leaves siblings intact
   f.deps.props.children = [target, sibling];
   f.deps.selection.folderId = ref(2);
   f.deps.getFolderByPath = () => ({ id: 1 });
-  f.deps.toast.success = () => {};
-  f.deps.deleteFolder = async (...args) => { f.calls.push(args); return { deletedCount: 1, canDeletePermanently: false, error: null }; };
+  f.deps.deleteFolder = async (...args) => { f.calls.push(args); return { deletedCount: 1, error: null }; };
   const actions = f.run();
   await actions.startDeleteFolder(target);
   f.deps.selection.folderPath.value = sibling.path;
@@ -115,31 +129,26 @@ test('successful deletion updates the captured folder and leaves siblings intact
 });
 
 for (const error of ['Permission denied', 'File is in use', 'Network disconnected', 'Path not found', 'Uncertain partial result']) {
-  test(`${error} is reported without enabling permanent deletion`, async () => {
+  test(`${error} is reported in the failure dialog`, async () => {
     const f = fixture();
-    f.deps.deleteFolder = async () => ({ deletedCount: 0, canDeletePermanently: false, error });
+    f.deps.deleteFolder = async () => ({ deletedCount: 0, error });
     const actions = f.run();
     await actions.startDeleteFolder(folder);
     await actions.clickTrashFolder();
     assert.equal(f.deps.showTrashFailedFolderMsgbox.value, true);
     assert.equal(f.deps.folderTrashFailure.value.error, error);
-    await actions.confirmTrashFailedFolderDelete();
-    assert.deepEqual(f.calls, []);
   });
 }
 
-test('an eligible unknown failure permits only an explicit retry of the original target', async () => {
+test('the delete behavior config routes the confirmation to the permanent pipeline', async () => {
   const f = fixture();
-  f.deps.deleteFolder = async () => ({ deletedCount: 0, canDeletePermanently: true, error: 'Unknown failure', mayHavePartiallyCompleted: true });
+  f.deps.config.settings.fileDeleteBehavior = 'permanent';
   const actions = f.run();
   await actions.startDeleteFolder(folder);
+  assert.equal(f.deps.deletePermanently.value, true);
   await actions.clickTrashFolder();
-  assert.deepEqual(f.calls, []);
-  assert.equal(f.deps.folderTrashFailure.value.error, 'Unknown failure');
-  assert.equal(f.deps.folderTrashFailure.value.mayHavePartiallyCompleted, true);
-  f.deps.selection.folderPath.value = '/album';
-  await actions.confirmTrashFailedFolderDelete();
   assert.deepEqual(f.calls, [['permanent', folder.path, 'one', 'identity-one']]);
+  assert.equal(f.deps.isDeletingFolder.value, false);
 });
 
 test('failure to identify the directory prevents opening a destructive confirmation', async () => {
@@ -162,9 +171,9 @@ test('library switching during identity preparation discards the prepared target
 test('partial-operation warning is shown only when a trash attempt may have partially completed', () => {
   const f = fixture();
   f.deps.pendingFolderDelete.value = { ...folder, libraryId: 'one', identity: 'identity-one' };
-  f.deps.folderTrashFailure.value = { canDeletePermanently: true, error: 'Unknown', mayHavePartiallyCompleted: true };
+  f.deps.folderTrashFailure.value = { error: 'Unknown', mayHavePartiallyCompleted: true };
   const messageSource = source.slice(source.indexOf('const folderTrashFailureMessage ='), source.indexOf('const folderContextMenus ='));
-  const deps = { ...f.deps, computed };
+  const deps = { ...f.deps, computed, t: key => key };
   const message = new Function(...Object.keys(deps), ts.transpile(messageSource) + ';return folderTrashFailureMessage;')(...Object.values(deps));
   assert.match(message.value, /folder_partial_warning/);
   f.deps.folderTrashFailure.value.mayHavePartiallyCompleted = false;
