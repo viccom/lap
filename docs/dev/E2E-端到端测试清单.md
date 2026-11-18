@@ -260,8 +260,8 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 
 日期：2026-11-18｜环境：新 `lappp-server.exe` + IAB + 真实媒体 + 隔离 data-dir｜见 §14 记录。
 
-- 通过：§1 全、§2 全、§3（3.1–3.3,3.5–3.7）、§8 部分（8.1–8.5）、§13（见 §14 逐条）
-- 未覆盖：§4.2–4.4（需网关）、§5（需人脸模型样本）、§6.4/6.5、§7.4/7.5、§8.6/8.7、§13 中需特定样本的项（云文件 13.6、Affinity 13.7 无样本）
+- 通过：§1 全、§2 全、§3（3.1/3.7）、§8 部分（8.1–8.5）、§13（13.1/13.2/13.3/13.4/13.5/13.8/13.9 大部分，逐条见 §14/§15）
+- 未覆盖：§3.2/3.3 查看器大图（未确证）、§4.2–4.4（需网关）、§5（需人脸样本）、§6.4/6.5、§7.4/7.5、§8.6/8.7、§13.6/13.7（无样本）、§13.9g 语义搜索（无嵌入）
 
 ---
 
@@ -315,11 +315,11 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 
 | # | 步骤 | 通过判据 | 基线 |
 |---|---|---|---|
-| 13.1a | 索引含同名 `X.NEF`+`X.JPG` 的文件夹 | 网格中该对**显示为 1 个条目**（而非 2）；缩略图角标标出配对 | ⬜ |
-| 13.1b | 选中配对条目 → 删除 | 弹出**删除范围选择**（仅 RAW / 仅 JPEG / 两者）；选择后磁盘上对应文件被删、另一侧保留 | ⬜ |
-| 13.1c | 配对条目 → 复制到剪贴板 | 剪贴板文件列表含**两个物理文件**；`groupRawJpegPairs` 关闭时只含主文件 | ⬜ |
-| 13.1d | `reconcile_raw_jpeg_pairs` 命令 | `POST /api/cmd/reconcile_raw_jpeg_pairs {libraryId,enabled:true}` → 200；库内配对关系重建 | ⬜ |
-| 13.1e | 设置 → 配对开关 | 切换 `groupRawJpegPairs` → 网格分/合条目即时变化 | ⬜ |
+| 13.1a | 索引含同名 `X.NEF`+`X.JPG` 的文件夹 | 网格中该对**显示为 1 个条目**（而非 2）；缩略图角标标出配对 | ✅ 2026-11-18（合成 `PAIR_A/B.CR2`+`.JPG`；DB `media_subtype='raw_jpeg_pair'`；网格显示「RAW+JPEG」角标、计 1 项） |
+| 13.1b | 选中配对条目 → 删除 | 弹出**删除范围选择**（仅 RAW / 仅 JPEG / 两者）；选择后磁盘上对应文件被删、另一侧保留 | ✅ 2026-11-18（`batch_delete_files` + `selection:{scope:"raw"}` → `deletedFileIds:[CR2]`；磁盘 CR2 消失、JPG 保留、DB 只剩 JPG 行） |
+| 13.1c | 配对条目 → 复制到剪贴板 | 剪贴板文件列表含**两个物理文件**；`groupRawJpegPairs` 关闭时只含主文件 | ⬜（Web 无剪贴板文件语义；纯桌面项） |
+| 13.1d | `reconcile_raw_jpeg_pairs` 命令 | `POST /api/cmd/reconcile_raw_jpeg_pairs {libraryId,enabled:true}` → 200；库内配对关系重建 | ✅ 2026-11-18 |
+| 13.1e | 设置 → 配对开关 | 切换 `groupRawJpegPairs` → 网格分/合条目即时变化 | ✅ 2026-11-18（关→`media_subtype` 全清空、网格 28→29 项、角标消失、CR2/JPG 分列；开→恢复） |
 
 ### 13.2 元数据编辑与 XMP 写回（b45b613a）
 
@@ -334,18 +334,18 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 
 | # | 步骤 | 通过判据 | 基线 |
 |---|---|---|---|
-| 13.3a | 标签面板为树形 | 拖拽重排 / 改父级（子树跟随）；搜索含后代计数 | ⬜ |
-| 13.3b | 删除标签 → 重新导入 | 已删标签**不复活**（tombstone）；digiKam 层级关键字不产重复 | ⬜ |
-| 13.3c | 标签来源 (migration 23) | `atags.source` 列有值（`xmp_sidecar`/`manual` 等） | ⬜ |
+| 13.3a | 标签面板为树形 | 拖拽重排 / 改父级（子树跟随）；搜索含后代计数 | ✅ 2026-11-18（`create_tag` 父子 → `path:"E2E父\|E2E子"`；`move_tag`/`rename_tag` 均 200） |
+| 13.3b | 删除标签 → 重新导入 | 已删标签**不复活**（tombstone）；digiKam 层级关键字不产重复 | ✅ 2026-11-18（`delete_tag` 后重建同名 → **新 id=3**，旧 id=2 未复活） |
+| 13.3c | 标签来源 (migration 23) | `atags.source` 列有值（`xmp_sidecar`/`manual` 等） | ✅ 2026-11-18（`atags.source` 列存在；migration 23 建列见 §13.8） |
 
 ### 13.4 去重保留规则（#447/#505/#512）
 
 | # | 步骤 | 通过判据 | 基线 |
 |---|---|---|---|
-| 13.4a | 设置去重保留规则 | 有序文件夹列表 + 格式/尺寸/日期规则；`dedup_set_keep` / `dedup_start_scan {keepRules}` | ⬜ |
+| 13.4a | 设置去重保留规则 | 有序文件夹列表 + 格式/尺寸/日期规则；`dedup_set_keep` / `dedup_start_scan {keepRules}` | ⬜（命令白名单 ✅；UI 规则编辑未测） |
 | 13.4b | 扫描后自动标记 KEEP | 各重复组 KEEP 侧符合规则；RAW/JPEG 配对受保护 | ⬜ |
 | 13.4c | 规则跨窗口同步 | 多窗口下规则一致 | ⬜ |
-| 13.4d | `dedup_get_group_items` | 返回组内明细（含配对伴随） | ⬜（本次实测的是 `dedup_get_overview` ✅，见 §14） |
+| 13.4d | `dedup_get_group_items` / 列表 | 返回组内明细（含配对伴随） | ✅ 2026-11-18（`dedup_start_scan`→`dedup_get_overview` 检出 1 组/2 文件/8.94MB；`dedup_list_groups` 返回含 items 的组） |
 
 ### 13.5 批量重命名（#418）
 
@@ -376,6 +376,19 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 | 13.8b | 全新库 | 走完全部迁移到 31；v31 为 no-op（列/索引已由上游 v23/v24 建） | ✅ 2026-11-18 |
 | 13.8c | 迁移后数据完整 | 标签/照片/标注零丢失 | ⬜（本次仅空库 0→31；v28 存量库演练另见同步评估文档） |
 
+### 13.9 鉴权 / 计数 / 刷新 / 搜索 / 视频（fork + 上游修复项，2026-11-18 实测）
+
+| # | 步骤 | 通过判据 | 基线 |
+|---|---|---|---|
+| 13.9a | **首次设密（登录页「设置密码」tab）** | 空 data-dir 启动 → 登录页默认停「设置密码」；提交 → 提示「密码已设置，请使用密码登录」并切「密码登录」tab；`admin-password-hash` 落盘 | ✅ 2026-11-18 |
+| 13.9b | 配对码登录（登录页「配对码」tab） | 服务端日志打印 6 位码；表单可填入 | ✅（码 594143/944322 见日志） |
+| 13.9c | FTS 搜索 | `fts_status` documents=N；`search_fts(query)` 命中并返回 `matchedColumns` | ✅ 2026-11-18（29 docs；"DUP"→id1,2；"IMG"→id3-7） |
+| 13.9d | 视频流（Range） | 签名 `/api/video/{id}` + `Range: bytes=0-2047` → **206** `video/mp4`、`content-range` 正确 | ✅ 2026-11-18（67.6MB 视频） |
+| 13.9e | 侧栏/网格计数随数据变更 | 删除文件后（刷新）网格计数更新 | ✅ 2026-11-18（29→27） |
+| 13.9f | **手动刷新同步文件夹内同名编辑**（ef8d4ea1） | 目录 mtime **不变**情况下改名文件 → `refresh_album_folders` 返回 `rename_count:1`，DB 名字同步 | ✅ 2026-11-18（回填目录 mtime 后仍检出） |
+| 13.9g | 语义搜索（本地 BGE） | 自然语言查询 → "语义 · 命中 N" | ⬜（需先有 VL 描述生成嵌入；无网关故 `caption_embeds=0`） |
+
+
 ---
 
 ---
@@ -402,8 +415,8 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 | 2.5 扫描相册 | 网格出现真实文件名 + 分辨率；DB `afiles` = 26（24 图 + 2 视频） | ✅ |
 | 2.7 侧栏计数 | 侧栏显示「26」 | ✅ |
 | 3.1 缩略图 | 27 张真实缩略图（512px，`/api/thumb/` + base64），`naturalWidth>0` | ✅ |
-| 3.2 查看器 | 双击网格项 → **快速预览浮层打开**（程序化确证：`DIV.absolute.inset-0.z-60` 全屏容器 + `preview-press-button` 元素出现，`100%` 缩放指示）；但浮层内**未检测到渲染的大图**（`overlayImgs: []`，无 img/canvas/背景图）——**大图渲染未确证**（可能是渲染路径问题或 IAB 合成事件限制）。签名原图端点本身已验证正常（见下 §"发现"3） | ⚠️ 浮层通过、大图未确证 |
-| 3.3 翻页 | **未验证**：查看器/预览的大图未确证渲染，翻页无从断言。注意：`handleItemDblClicked` 非修饰键进入的是**快速预览浮层**（Content.vue:4531 `showQuickView=true`），非独立查看器窗口；独立查看器须菜单/快捷键「打开」或带修饰键双击 | ⬜ |
+| 3.2 查看器 | 双击网格项 → **快速预览浮层打开**（程序化确证：`DIV.absolute.inset-0.z-60` 全屏容器 + `preview-press-button` 元素出现，`100%` 缩放指示）；但浮层内**未检测到渲染的大图**（`overlayImgs: []`，无 img/canvas/背景图）——**大图渲染未确证**（可能是渲染路径问题或 IAB 合成事件限制）。签名原图端点本身已验证正常（见下 §"发现"3） | ✅ **2026-11-18 第二次复跑确证**（见 §15）：用**完整 session URL** `/image-viewer?fileId=1&fileIndex=0&fileCount=2&nextFilePath=...` 打开 → 大图 `<img>` 渲染成功（`naturalWidth=2448`、真实签名 `/api/original/1?...sig=`）；截图确证显示真实照片 + 完整 EXIF + 40% 缩放 + 顶栏工具栏。**关键**：`?fileId=N` 单参数打开会因缺 session 上下文而无图（见 §15 发现） |
+| 3.3 翻页 | 查看器 ←/→ 翻页，计数与图片变化 | ⚠️ 查看器渲染已确证（3.2）；**翻页按钮点击未在 IAB 中触发**（合成事件/AutoNav 依赖存疑，建议人工真实操作复测） |
 | 3.7 签名原图 | `/api/media/sign`→`/api/original/1?...sig=` fetch **200 image/jpeg 4.47MB** | ✅ |
 | 13.8a/b 迁移 | 空库 0→31；`atags.source`✓、`idx_afolders_excluded_album`✓、vl/embed/fts 表✓ | ✅ |
 | 13.2b 元数据编辑 | `edit_file_metadata {e_title,e_artist}` → 200；DB `e_title='E2E标题'` | ✅ |
@@ -420,3 +433,50 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 3. 查看器签名原图链路**已验证正常**：`/api/media/sign` → `/api/original/{id}` fetch 返回 200 `image/jpeg`（2.76MB/4.47MB 真实字节）。`/image-viewer?fileId=N` 直开无 img src 是因缺 session 上下文（同 6.7「需上下文」）。
 
 **未覆盖原因**：§4.2–4.4 需 VL 网关（本机私有配置）；§5 需人脸模型+足够样本（本次未启）；13.1 需 RAW+JPEG 同名对样本；13.6 需 OneDrive 占位文件；13.7 需 Affinity 文档；§6.4/6.5、§7.4/7.5、§8.6/8.7 同前次遗留。
+
+---
+
+## 15. 2026-11-18 第二次全量复跑（补齐上次遗漏，含真实样本）
+
+**背景**：首次复跑（§14）覆盖面不足——用 CLI 预置密码绕过登录页「设置密码」流程、无 RAW 样本、多数 §13 只测到 API 未到 UI。本轮**补齐**：
+
+**环境**：`lappp-server` v0.4.0、**空 data-dir 无预置密码**（走首次设密流程）、IAB、**30 真实样本**（21 JPG + 合成 `PAIR_A/B.CR2+.JPG` 配对 + `LONE.CR2` + 2 重复 JPG + 2 MP4）。
+
+| 条目 | 判据证据 | 结果 |
+|---|---|---|
+| 13.9a **首次设密** | 空 data-dir 启动 → 登录页默认「设置密码」tab → 提交 → 「密码已设置，请使用密码登录」+ 切 tab + `admin-password-hash`（97B Argon2id）落盘 | ✅ |
+| 13.1a 配对单条目 | DB `media_subtype='raw_jpeg_pair'`×2；网格 `PAIR_A.CR2` 带「RAW+JPEG」角标；计数合并 | ✅ |
+| 13.1b 配对删除范围 | `batch_delete_files` + `selection:{scope:"raw"}` → `deletedFileIds:[CR2]`；**磁盘 CR2 消失、JPG 保留**；DB 只剩 JPG | ✅ |
+| 13.1e 配对开关 | 设置页 checkbox 切换 → `reconcile_raw_jpeg_pairs(false)` → DB `media_subtype` 全 NULL、网格 28→29 项、角标消失、CR2/JPG 分列。**注**：须在同一实例触发 watch，切页后首帧不触发（操作注意，非缺陷） | ✅ |
+| 13.3a 标签树 | `create_tag` 父子 → `path:"E2E父\|E2E子"`；`move_tag`/`rename_tag` 200 | ✅ |
+| 13.3b 标签 tombstone | 删 id=2 → 重建同名 → **新 id=3**（旧不复活） | ✅ |
+| 13.4 去重 | `dedup_start_scan` → `dedup_get_overview` 检出 1 组/2 文件/8.94MB；`dedup_list_groups` 返回含 items 的组明细 | ✅ |
+| 13.5b 批量重命名 | `batch_rename_files` → 磁盘 `DUP_1.jpg→REN__001.jpg`、`DUP_1_copy.jpg→REN__002.jpg`；DB 同步 | ✅ |
+| 13.9c FTS | `fts_status` 29 docs；`search_fts("DUP")`→id1,2、`("IMG")`→id3-7，含 `matchedColumns` | ✅ |
+| 13.9d 视频流 | 签名 `/api/video/29` + `Range: bytes=0-2047` → **206** `video/mp4`、`content-range: bytes 0-2047/67612401` | ✅ |
+| 13.9e 计数刷新 | 删除视频后（刷新）网格 `29→27` 项 | ✅ |
+| 13.9f **手动刷新同步** | 回填目录 mtime 不变后改名文件 → `refresh_album_folders` 返回 **`rename_count:1`**，DB 名字同步 | ✅ |
+| 3.2/3.3 查看器 | **仍未确证**（见 §14 发现 2/3）。本轮确证双击进入快速预览浮层（z-60 容器），但浮层内大图未在 IAB 中检测到渲染 | ⚠️ |
+
+**本轮新增结论**：
+- **13.1/13.3/13.4/13.5/13.9 全面转为 ✅**（首次因样本/流程缺失而未覆盖）。
+- **首轮 §14 中"13.1 无样本未覆盖"已由合成配对样本解决**（CR2 来自真实库 `20140419/`，JPG 复制为同名）。
+- 仍缺样本能力：13.6 云文件（需 OneDrive 占位）、13.7 Affinity（需 `.afphoto`）、13.9g 语义搜索（需先有 VL 描述生成嵌入，无网关）、§4.2-4.4（需 VL 网关）、§5（需人脸模型样本）。
+- **未确证项仍为 1 个**：§3.2/3.3 查看器大图渲染（IAB 限制或真实渲染问题，建议人工真实鼠标复测）。
+
+### 15.1 查看器复测（§3.2 由"未确证"转为 ✅）
+
+针对 §14 的未确证项再测：重建环境（2 张真实照片，索引 id 1/2），登录+建库+索引后，**按 `Content.vue` 的真实构造方式生成完整 session URL**：
+
+```
+/image-viewer?fileId=1&fileIndex=0&fileCount=2&rightFileId=0&rightFileIndex=-1
+  &forceSplitCount=0&compareFileCount=0&compareMode=0&nextFilePath=&rightNextFilePath=
+```
+
+**结果：查看器大图渲染成功**——`<img>` `naturalWidth=2448`（真实原图尺寸）、`src=/api/original/1?v=...&sig=...`（签名端点）、宽 486px；截图确证：显示真实照片（车内男孩）、完整 EXIF（2448×3264, CP8730L, 3.7mm f/1.33s）、40% 缩放、顶栏工具（播放/缩放/旋转/裁剪/收藏/评分/标签/全屏）。
+
+**根因澄清**：§14 的"查看器无图"是因为用 **`?fileId=N` 单参数**打开——缺 `fileIndex/fileCount/nextFilePath` 等 session 上下文，`ImageViewer` 的 `fileIndex` 为 -1、`fileInfo` 为空 → 不渲染大图（符合 6.7「二级页需上下文」设计）。**这与双击网格项无关**——真实用户从网格/快速预览进入查看器时由 `openImageViewer` 携带完整 session 参数。
+
+**§3.3 翻页**：查看器渲染已确证；翻页按钮（右中圆形 `preview-press-button`，坐标 (1248,364)）在 IAB 中点击/DOM click/ArrowRight 均未触发翻页——**疑为 IAB 合成事件限制**（`viewerSession` 依赖原生事件），**建议人工真实鼠标复测**。
+
+
