@@ -187,7 +187,13 @@ pub async fn events_handler(
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
 
-    let replay = bus.since(last_seen);
+    // `since()` returns oldest→newest, but the unfold below consumes the
+    // replay with `pop()` — from the BACK. Reverse first so the replay goes
+    // out oldest first and `last_seen` advances monotonically; otherwise a
+    // reconnecting client receives the newest frames first and, once the
+    // reversed buffer drains, the same events again from the live branch.
+    let mut replay = bus.since(last_seen);
+    replay.reverse();
     let stream = futures::stream::unfold(
         (bus, last_seen, replay, None::<()>),
         |(bus, mut last_seen, mut replay, _)| async move {
@@ -281,11 +287,19 @@ mod tests {
             sink.emit(names::VL_TASKS_CHANGED, serde_json::json!({ "n": n }));
         }
         let all = drain(&bus, 0);
+        // Replay order is oldest→newest: a client reapplying frames in
+        // arrival order must never see the newest event first (regression
+        // guard for the reversed-replay bug pinned over live HTTP in
+        // http_integration.rs).
+        let ids: Vec<u64> = all.iter().map(|(id, _, _)| *id).collect();
+        assert!(ids.windows(2).all(|w| w[0] < w[1]), "replay must be oldest first: {ids:?}");
         let last_id = all.last().unwrap().0;
         // A client that saw everything gets nothing; one two behind gets two.
         assert!(drain(&bus, last_id).is_empty());
         let resumed = drain(&bus, last_id - 2);
         assert_eq!(resumed.len(), 2);
+        let resumed_ids: Vec<u64> = resumed.iter().map(|(id, _, _)| *id).collect();
+        assert!(resumed_ids.windows(2).all(|w| w[0] < w[1]), "resume must be oldest first: {resumed_ids:?}");
     }
 
     #[tokio::test]

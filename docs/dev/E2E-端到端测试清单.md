@@ -271,10 +271,17 @@ npm run build && npm run build:http          # 都须 exit=0；build:http 最后
 
 # Rust（改动 src-tauri 时）
 source docs/dev/build-env.sh
-cd src-tauri && cargo test --workspace       # 基线 681/0/12（v0.4.0 同步后）
+cd src-tauri && cargo test --workspace       # 基线 690/0/12（2026-11-18 HTTP 集成层后）
 # 薄客户端（阶段 6 feature）：servers 单测
 cargo test -p lappp --no-default-features --features client  # 5/5
 ```
+
+**HTTP 集成层（2026-11-18 起）**：`lappp-server/src/http_integration.rs` 经 `build_router`
+对真服务（随机回环端口 + 临时数据目录）发真实 HTTP 请求，自动化钉住本清单此前只能手工验的
+线上契约——鉴权 401/403/409/429/503、未知命令 403、畸形 JSON 400、标签/收藏集/相册全
+CRUD、§3.5 签名媒体链路（导入→签名→出图→防篡改）、§3.4 SSE 连接与 Last-Event-ID 续传、
+写预算 60/min 与读预算隔离。首跑即抓到并修复 SSE 重放**倒序+重复投递**真 BUG（sse.rs
+`events_handler`，对象级单测只断言数量漏掉了顺序）。
 
 **门禁与本文档的关系**：门禁是"单元/契约"层；本文 §1–§8、§13 是"运行时真跑"层。二者
 **都过**才算完成——历史多次证明单测全绿而运行时坏（见 §12）。

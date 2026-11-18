@@ -9,6 +9,8 @@ mod boot;
 mod bridge;
 mod bridge_gen;
 mod flags;
+#[cfg(test)]
+mod http_integration;
 mod lock;
 mod media;
 mod shutdown;
@@ -79,6 +81,53 @@ async fn static_fallback(
     static_files::serve(&web, &uri).await
 }
 
+/// The full route table, assembled once and shared by `serve` and the
+/// real-HTTP integration tests (`http_integration.rs`): one assembly means
+/// the tests exercise the production middleware order verbatim instead of a
+/// parallel copy that can drift.
+fn build_router(
+    auth: std::sync::Arc<auth::AuthService>,
+    bus: std::sync::Arc<sse::EventBus>,
+    shutdown: std::sync::Arc<shutdown::ShutdownState>,
+    web: Option<static_files::WebRoot>,
+) -> axum::Router {
+    // /api/cmd and /api/events sit behind the §3.6 whitelist middleware;
+    // server_info and /api/auth stay open (client discovery + first token).
+    // Media routes authenticate via the §3.5 HMAC signature themselves.
+    let protected = axum::Router::new()
+        .route("/api/cmd/{name}", post(cmd_handler))
+        .route("/api/events", get(sse::events_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            auth.clone(),
+            auth::whitelist_middleware,
+        ))
+        .layer(axum::Extension(shutdown))
+        .with_state(bus);
+    let media_router = axum::Router::new()
+        .route("/api/thumb/{library_id}/{file_id}", get(media::thumb_handler))
+        .route("/api/preview/{library_id}/{file_id}", get(media::preview_handler))
+        .route("/api/original/{file_id}", get(media::original_handler))
+        .route("/api/video/{file_id}", get(media::video_handler))
+        .with_state(auth.clone());
+    let auth_router = axum::Router::new()
+        .route("/api/auth/status", get(auth::auth_status))
+        .route("/api/auth/setup", post(auth::auth_setup))
+        .route("/api/auth/login", post(auth::auth_login))
+        .route("/api/auth/pair", post(auth::auth_pair))
+        .route("/api/auth/pairing-code", post(auth::auth_pairing_code))
+        .route("/api/auth/devices", get(auth::devices_list))
+        .route("/api/auth/devices/{id}", axum::routing::delete(auth::device_revoke))
+        .route("/api/media/sign", post(media::media_sign_handler))
+        .with_state(auth);
+    axum::Router::new()
+        .route("/api/server_info", get(server_info))
+        .merge(protected)
+        .merge(media_router)
+        .merge(auth_router)
+        .fallback(static_fallback)
+        .with_state(web)
+}
+
 async fn serve(flags: flags::Flags) -> Result<(), String> {
     // boot::run installs the SSE sink as the process EventSink before any
     // boot stage can emit, and opens the auth store; the returned handles
@@ -93,34 +142,6 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     // no real SIGTERM) asks for a graceful stop.
     let control_watcher = shutdown::spawn_stdin_control(shutdown.clone());
 
-    // /api/cmd and /api/events sit behind the §3.6 whitelist middleware;
-    // server_info and /api/auth stay open (client discovery + first token).
-    // Media routes authenticate via the §3.5 HMAC signature themselves.
-    let protected = axum::Router::new()
-        .route("/api/cmd/{name}", post(cmd_handler))
-        .route("/api/events", get(sse::events_handler))
-        .layer(axum::middleware::from_fn_with_state(
-            boot.auth.clone(),
-            auth::whitelist_middleware,
-        ))
-        .layer(axum::Extension(shutdown.clone()))
-        .with_state(boot.bus.clone());
-    let media_router = axum::Router::new()
-        .route("/api/thumb/{library_id}/{file_id}", get(media::thumb_handler))
-        .route("/api/preview/{library_id}/{file_id}", get(media::preview_handler))
-        .route("/api/original/{file_id}", get(media::original_handler))
-        .route("/api/video/{file_id}", get(media::video_handler))
-        .with_state(boot.auth.clone());
-    let auth_router = axum::Router::new()
-        .route("/api/auth/status", get(auth::auth_status))
-        .route("/api/auth/setup", post(auth::auth_setup))
-        .route("/api/auth/login", post(auth::auth_login))
-        .route("/api/auth/pair", post(auth::auth_pair))
-        .route("/api/auth/pairing-code", post(auth::auth_pairing_code))
-        .route("/api/auth/devices", get(auth::devices_list))
-        .route("/api/auth/devices/{id}", axum::routing::delete(auth::device_revoke))
-        .route("/api/media/sign", post(media::media_sign_handler))
-        .with_state(boot.auth.clone());
     // Phase 4: serve the same Vue build the desktop shell embeds. `--web-dir`
     // wins; otherwise look for `resources/web` beside the executable. When
     // absent, /api keeps working and the browser simply has no shell (the
@@ -133,13 +154,7 @@ async fn serve(flags: flags::Flags) -> Result<(), String> {
     if let Some(root) = &web {
         println!("lappp-server: serving Web client from {}", root.path().display());
     }
-    let app = axum::Router::new()
-        .route("/api/server_info", get(server_info))
-        .merge(protected)
-        .merge(media_router)
-        .merge(auth_router)
-        .fallback(static_fallback)
-        .with_state(web);
+    let app = build_router(boot.auth.clone(), boot.bus.clone(), shutdown.clone(), web);
     let addr = format!("{}:{}", flags.host, flags.port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await
