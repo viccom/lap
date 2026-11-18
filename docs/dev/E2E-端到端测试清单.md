@@ -386,7 +386,7 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 
 **环境**：`lappp-server.exe`（debug, v0.4.0）+ IAB + 26 真实媒体（20 JPG @20140419 + 6 misc 含 2 mp4）+ 隔离 data-dir（`Temp\lap-e2e\data`，**空库 user_version=0 起步**）。
 
-**结果**：§1 全通过、§2 全通过、§3（3.1/3.2/3.3/3.7）通过、§13.8 通过、§13.2/13.4/13.5 通过；§13.1/13.6/13.7 因样本缺失未覆盖。
+**结果**：§1 全通过、§2 全通过、§3（3.1/3.7）通过、§3.2 快速预览浮层打开（大图渲染未确证）、§3.3 未验证、§13.8 通过、§13.2/13.4/13.5 通过；§13.1/13.6/13.7 因样本缺失未覆盖。
 
 | 条目 | 判据证据 | 结果 |
 |---|---|---|
@@ -402,8 +402,8 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 | 2.5 扫描相册 | 网格出现真实文件名 + 分辨率；DB `afiles` = 26（24 图 + 2 视频） | ✅ |
 | 2.7 侧栏计数 | 侧栏显示「26」 | ✅ |
 | 3.1 缩略图 | 27 张真实缩略图（512px，`/api/thumb/` + base64），`naturalWidth>0` | ✅ |
-| 3.2 查看器 | 双击→查看器打开；状态栏 `10 / 26 项` + EXIF（Canon EOS 450D）+ 100% 缩放 | ✅ |
-| 3.3 翻页 | 右箭头：`10/26` → `11/26` | ✅ |
+| 3.2 查看器 | 双击网格项 → **快速预览浮层打开**（程序化确证：`DIV.absolute.inset-0.z-60` 全屏容器 + `preview-press-button` 元素出现，`100%` 缩放指示）；但浮层内**未检测到渲染的大图**（`overlayImgs: []`，无 img/canvas/背景图）——**大图渲染未确证**（可能是渲染路径问题或 IAB 合成事件限制）。签名原图端点本身已验证正常（见下 §"发现"3） | ⚠️ 浮层通过、大图未确证 |
+| 3.3 翻页 | **未验证**：查看器/预览的大图未确证渲染，翻页无从断言。注意：`handleItemDblClicked` 非修饰键进入的是**快速预览浮层**（Content.vue:4531 `showQuickView=true`），非独立查看器窗口；独立查看器须菜单/快捷键「打开」或带修饰键双击 | ⬜ |
 | 3.7 签名原图 | `/api/media/sign`→`/api/original/1?...sig=` fetch **200 image/jpeg 4.47MB** | ✅ |
 | 13.8a/b 迁移 | 空库 0→31；`atags.source`✓、`idx_afolders_excluded_album`✓、vl/embed/fts 表✓ | ✅ |
 | 13.2b 元数据编辑 | `edit_file_metadata {e_title,e_artist}` → 200；DB `e_title='E2E标题'` | ✅ |
@@ -416,6 +416,7 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 
 **发现（非阻断）**：
 1. 空库 Welcome 二级标题显示 **`lappp-core`**（`heading [level=2]`）而非产品名 `lappp`——疑为 Welcome 文案硬编码 crate 名或 `server_info.name` 取值偏差。UI 文案缺陷，不影响功能。
-2. 查看器查看区视觉偏暗——已核实**非缺陷**：后端签名原图 fetch 返回真实 4.47MB JPEG；样本照片曝光本身偏暗（1/25s, f/5.6）。
+2. **双击网格项 = 快速预览浮层**（非独立查看器窗口）：`handleItemDblClicked` 在无修饰键时设 `showQuickView=true`（Content.vue:4531）。浮层本次**确证打开**（z-60 全屏容器 + preview-press 控件出现），但浮层内大图**未检测到渲染**——**未确证**，可能是渲染问题或 IAB 自动化限制，建议人工（真实鼠标）复测。
+3. 查看器签名原图链路**已验证正常**：`/api/media/sign` → `/api/original/{id}` fetch 返回 200 `image/jpeg`（2.76MB/4.47MB 真实字节）。`/image-viewer?fileId=N` 直开无 img src 是因缺 session 上下文（同 6.7「需上下文」）。
 
 **未覆盖原因**：§4.2–4.4 需 VL 网关（本机私有配置）；§5 需人脸模型+足够样本（本次未启）；13.1 需 RAW+JPEG 同名对样本；13.6 需 OneDrive 占位文件；13.7 需 Affinity 文档；§6.4/6.5、§7.4/7.5、§8.6/8.7 同前次遗留。
