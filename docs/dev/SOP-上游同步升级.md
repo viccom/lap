@@ -160,6 +160,14 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    → 恢复）。修复 = store 顶部一行 side-effect import（零行为变更）。
    剩余 TS2339×70 已换根因：36 个 `on type 'never'` 级联 + ImportMeta/env
    等零星，留后续批次。
+   **第 3 批已落地（2026-11-18）：222 → 189**——never 级联三源：
+   ① `uiStore.countUpdateRequest: null`（null 推断 → 守卫排空 → never，
+   一次放大 27 错）：补 **判别联合** typedef（按 `source` 收窄，消费端
+   switch 自动获得精确载荷）；② Settings.vue `ref(null)` 同型（8 错）：
+   ref 泛型标注；③ `configStore.externalApps` 默认 `apps: []`（JS 里
+   `never[]`，毒化按 kind 索引）：JSDoc cast。教训：**JS store/JS 模块的
+   `null`/`[]` 默认值是 never 级联的头号源头**，新写 state 一律带 JSDoc
+   类型或判别联合。
 3. 26 个孤儿测试接入 `test:*` + `npm run test` 聚合脚本；CI（pr-build.yml 目前只编译）加测试步骤。
 4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
 5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。

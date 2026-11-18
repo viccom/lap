@@ -1,6 +1,15 @@
 
 import { defineStore } from 'pinia';
 
+/**
+ * A count is written only in response to an explicit sidebar item activation;
+ * Content consumes this after its matching query has completed. Without this
+ * typedef the `null` default stays `null` for TS consumers and narrows to
+ * `never` after the null-guard, cascading into ~30 TS2339s. Discriminated on
+ * `source` so the consumer switch narrows to the producer's exact payload.
+ * @typedef {({ source: 'library', item: string, rating?: number, cullingItem?: string | number, smartId?: string | number } | { source: 'album' | 'collection' | 'tag' | 'smart-album', id: number | string } | { source: 'album-folder', path: string } | { source: 'search' | 'ai-search', text: string })} CountUpdateRequest
+ */
+
 export const useUIStore = defineStore('ui', {
   state: () => ({
     activePane: 'content',
@@ -9,7 +18,7 @@ export const useUIStore = defineStore('ui', {
     fileVersions: {},
     // A count is written only in response to an explicit sidebar item activation.
     // Content consumes this after its matching query has completed.
-    countUpdateRequest: null,
+    countUpdateRequest: /** @type {import('./uiStore').CountUpdateRequest | null} */ (null),
     countUpdateTick: 0,
     mapActive: false,
     activeAdjustments: {

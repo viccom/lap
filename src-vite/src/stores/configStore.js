@@ -208,8 +208,10 @@ export const useConfigStore = defineStore('configStore', {
       loopVideo: false,          // loop video (only effective when autoPlayVideo is off)
       // showComment: false,        // show comment
       externalApps: {
-        image: { defaultId: null, apps: [] },
-        video: { defaultId: null, apps: [] },
+        // JSDoc casts: bare `[]`/`null` in a .js state infer as never[]/null,
+        // which poisons every consumer indexing by kind (TS7053/TS2345).
+        image: { defaultId: /** @type {string | null} */ (null), apps: /** @type {{ id: string, name: string, path: string }[]} */ ([]), },
+        video: { defaultId: /** @type {string | null} */ (null), apps: /** @type {{ id: string, name: string, path: string }[]} */ ([]), },
       },
 
       // search settings

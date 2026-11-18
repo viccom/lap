@@ -1246,7 +1246,7 @@ const savingVlConfig = ref(false);
 // without actually seeing pixels (gateways may mislabel text-only models as
 // vision-capable, which silently produces metadata-derived captions).
 const checkingVision = ref(false);
-const visionCheckResult = ref(null);
+const visionCheckResult = ref<{ ok: boolean; answer: string; error?: string } | null>(null);
 
 const visionCheckResultText = computed(() => {
   const result = visionCheckResult.value;
