@@ -34,6 +34,42 @@ env:
   TAURI_CLI_VERSION: '2.12.0'
 
 jobs:
+  # Frontend quality gate: type-check baseline (no NEW errors) plus the full
+  # node --test domain aggregate (docs/dev/SOP-上游同步升级.md §3). Runs as an
+  # independent job: a red gate fails the run even while bundles still build,
+  # and workflow_dispatch platform filters are unaffected by job ordering.
+  frontend-gate:
+    if: |
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'all') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+          # Frontend tests read src/ text only; submodules are Rust-side.
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: src-vite
+
+      - name: Type-check gate (baseline: no new errors)
+        run: pnpm run typecheck:gate
+        working-directory: src-vite
+
+      - name: Frontend domain tests (aggregate)
+        run: pnpm run test
+        working-directory: src-vite
+
   build-macos:
     if: |
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos')) ||

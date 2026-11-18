@@ -63,7 +63,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 |---|---|---|---|
 | 1 | 跨文件契约对账 | §3.1 | **部分具备**（shortcuts 已有回归测试钉住 fileMenu↔registry）；全仓对账脚本待建 |
 | 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`**（基线制：不许新增，存量见 `src-vite/typecheck-baseline.json`，清零后 `--update` 收缩） | **已具备（基线制）**；快捷键契约另有微型类型检查跑在 `test:shortcuts`；全绿为最终目标 |
-| 3 | 前端全量测试 | 各域 `npm run test:*` | **部分具备**：14 域已接入，26 个孤儿测试文件待接入，聚合脚本待建 |
+| 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（31 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本或显式隔离区 | **已具备**（本地聚合 + CI `frontend-gate` job）；6 个陈旧脚手架文件在 `test:quarantine` 显式隔离待修 |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
 | 6 | 三件套构建 | `scripts/build-windows.ps1`（默认 release；`-BuildProfile debug` 出 `build/windows/debug/`） | 已具备 |
@@ -168,7 +168,17 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    `never[]`，毒化按 kind 索引）：JSDoc cast。教训：**JS store/JS 模块的
    `null`/`[]` 默认值是 never 级联的头号源头**，新写 state 一律带 JSDoc
    类型或判别联合。
-3. 26 个孤儿测试接入 `test:*` + `npm run test` 聚合脚本；CI（pr-build.yml 目前只编译）加测试步骤。
+3. ~~26 个孤儿测试接入 `test:*` + `npm run test` 聚合脚本；CI 加测试步骤~~
+   **已落地（2026-11-18）**：20 个绿孤儿接入 16 个新域脚本；聚合 `npm run test`
+   = `scripts/run-frontend-tests.mjs`（跑全部 `test:*`、排除隔离区、汇总，
+   **31/31 绿**）；`tests/orphanGuard.test.mjs` 守卫"任何测试文件必须挂在
+   某脚本或隔离区"（放入未登记文件实测红）；CI（pr-build.yml）新增独立
+   `frontend-gate` job = `typecheck:gate` + `npm run test`
+   （**独立并行不加 needs**——`needs` 会让 workflow_dispatch 按平台跳过时
+   连锁跳过构建 job）。**隔离区 `test:quarantine`（6 文件 30 失败，全部
+   陈旧脚手架类：`Unexpected token 'export'`/`resolveCheck is not a function`
+   等源码抓取锚点失效，非产品 bug）待修**：afAreaShortcut、animatedHoverPreview、
+   copyFilePaths、folderDeletion、offlineCatalog、rawDisplay。
 4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
 5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。
 6. `docs/dev/launch-portable-check.ps1` 里硬编码的 `Lap.exe` 更新为 `lappp.exe`。
