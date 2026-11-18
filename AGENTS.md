@@ -15,7 +15,7 @@
 | 分支/远程 | 用途 |
 |---|---|
 | `main` = upstream | 镜像官方 julyx10/lap 的 main，**不在上面做任何自有提交** |
-| `origin` | github.com/viccom/lap（fork） |
+| `origin` | github.com/viccom/lappp（fork，2026-11-18 由 viccom/lap 改名；旧 URL 自动重定向，勿依赖） |
 | `develop` | **所有自有开发在这里**；功能分支从 develop 切出，PR/merge 回 develop |
 
 **同步上游**（保持"我们的改动全部在 develop 的独立提交里"是低摩擦合并的前提）：
