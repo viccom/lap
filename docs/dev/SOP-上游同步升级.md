@@ -62,7 +62,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 | # | 门禁 | 命令 / 方法 | 状态 |
 |---|---|---|---|
 | 1 | 跨文件契约对账 | §3.1 | **部分具备**（shortcuts 已有回归测试钉住 fileMenu↔registry）；全仓对账脚本待建 |
-| 2 | 类型检查 | `npx vue-tsc --noEmit`（src-vite/） | **待建**（全量）；快捷键契约已有微型类型检查跑在 `test:shortcuts` 内（`tests/shortcutActionIdType.test.mjs`，用 TS API 编译 shortcuts.ts + 探针断言） |
+| 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`**（基线制：不许新增，存量见 `src-vite/typecheck-baseline.json`，清零后 `--update` 收缩） | **已具备（基线制）**；快捷键契约另有微型类型检查跑在 `test:shortcuts`；全绿为最终目标 |
 | 3 | 前端全量测试 | 各域 `npm run test:*` | **部分具备**：14 域已接入，26 个孤儿测试文件待接入，聚合脚本待建 |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
@@ -136,7 +136,16 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    契约由 `tests/shortcutActionIdType.test.mjs` 钉死（shortcuts.ts 0 诊断、
    探针 @ts-expect-error 拒收未注册 id、类型↔注册表双向相等、防塌缩成
    string），已接入 `npm run test:shortcuts`。
-2. `vue-tsc --noEmit`：加 devDep + `npm run typecheck`，进 §3 门禁与 CI（先跑一遍量化存量错误，分批清零）。
+2. ~~`vue-tsc --noEmit`：加 devDep + `npm run typecheck`，进 §3 门禁与 CI~~
+   **已落地（2026-11-18，基线制）**：`vue-tsc 3.3.14` devDep + `npm run typecheck`（全量）+
+   `npm run typecheck:gate`（`scripts/typecheck-gate.mjs`，key=file::code::message，
+   只许减少不许新增；注入新错实测红、还原实测绿）。存量盘点：**311 错 / 42 文件**——
+   TS2339×94（JS Pinia store 对 TS 不可见）、TS2322×54、TS2367×41（**疑似真 bug**，
+   如 Calendar.vue 字面量 '1'==='5' 比较）、TS2345×38、TS7006×37、TS2503×8
+   （NodeJS 命名空间误入前端，应 `ReturnType<typeof setTimeout>`）、零星其余；
+   重灾文件 Content.vue×147、Settings.vue×31、Image.vue×17。
+   清零策略：先修 TS2367/TS2503 疑似真 bug → configStore.js 等补类型（一次消 ~94）→
+   按文件烧余量；每批结束 `--update` 收缩基线。CI 接入归 §7-③。
 3. 26 个孤儿测试接入 `test:*` + `npm run test` 聚合脚本；CI（pr-build.yml 目前只编译）加测试步骤。
 4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
 5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。
