@@ -67,7 +67,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
 | 6 | 三件套构建 | `scripts/build-windows.ps1`（默认 release；`-BuildProfile debug` 出 `build/windows/debug/`） | 已具备 |
-| 7 | 真机功能冒烟（真库） | §3.2 | **待固化脚本**（素材已齐，见下） |
+| 7 | 真机功能冒烟（真库） | **`npm run smoke:desktop`**（`scripts/smoke-desktop.mjs`：嵌入 CDP→断言缩略图>0、滚动下/上后仍>0、真实双击后 viewer 渲染原图、console 错误零容忍→还原 conf 并清洁重建；截图存 `build/smoke/`） | **已具备**（重门禁：重建+弹窗，仅同步/发布时跑，不进 `npm run test` 聚合） |
 
 ### 3.1 跨文件契约对账（本 SOP 的灵魂）
 
@@ -201,5 +201,22 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    不是节点判定（首版把 `settings.raw.source_*`/`album.edit.tab_*` 误报，
    实际键全在）；shortcut 字面量字符类要点号在后（`[a-zA-Z][\w.]*`）。
    咬合验证：注入假命令/假键/假动作 id 三类均红并点名 file:line。
-5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。
+5. ~~`scripts/smoke-desktop.ps1`：§3.2 断言固化~~ **已落地（2026-11-19，
+   实现为 `scripts/smoke-desktop.mjs` + `npm run smoke:desktop`）**。要点：
+   - **CDP 注入只能走 conf**：wry 恒传自有 browser args，此时 WebView2
+   忽略 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 环境变量（实测 60s 无端口；
+   上游 ui-smoke.mjs 头注的方法已失效）。脚本自动：临时把
+   `additionalBrowserArgs` 写进 `tauri.windows.conf.json` → 增量重建 →
+   冒烟 → **try/finally 还原原始字节并再次重建清洁二进制**（SOP"冒烟
+   构建不得带调试端口发布"由构造保证，崩溃也不泄漏；用户未提交的
+   conf 改动按字节原样保留）。
+   - 断言集：缩略图>0（90s 等待）；滚动 4000→0 后仍>0；真实双击
+   （Input clickCount=2）后 `#responsiveDiv` 出现且最大 `img.naturalWidth`
+   > `LAP_SMOKE_MIN_WIDTH`（默认 800，缩略图约 768，越过即证明原图解码）；
+   console 错误**零白名单全量失败**。
+   - 防护：已有 lappp 进程在跑则拒绝启动（不杀用户实例）；数据目录/
+   二进制不存在即退 2；debug/release 数据目录矩阵见 §4。
+   - 验证：真机全绿（32 缩略图、滚动 52/32、viewer 2256px、console 干净）；
+   咬合=阈值拉满实测红且失败路径完成还原+清洁重建；退出码实测 1；
+   泄漏校验=conf 零 diff、重建后二进制 grep 调试端口=0。
 6. `docs/dev/launch-portable-check.ps1` 里硬编码的 `Lap.exe` 更新为 `lappp.exe`。
