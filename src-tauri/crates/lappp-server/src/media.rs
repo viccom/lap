@@ -85,7 +85,16 @@ fn media_bytes_response(data: Vec<u8>, cache_control: &'static str) -> Response 
 }
 
 fn text_response(status: StatusCode, body: &str) -> Response {
-    (status, [(axum::http::header::CONTENT_TYPE, "text/plain")], body.to_string()).into_response()
+    (
+        status,
+        [
+            (axum::http::header::CONTENT_TYPE, "text/plain"),
+            // Transient failures must not be pinned by client caches.
+            (axum::http::header::CACHE_CONTROL, "no-store"),
+        ],
+        body.to_string(),
+    )
+    .into_response()
 }
 
 // -- GET /api/thumb/{library_id}/{file_id} ----------------------------------
@@ -133,7 +142,7 @@ pub async fn thumb_handler(
         }
     }
 
-    let permits = lappp_core::t_sqlite::thumb_background_generation_permits();
+    let permits = lappp_core::t_sqlite::thumb_interactive_generation_permits();
     let Ok(permit) = permits.acquire_owned().await else {
         return text_response(StatusCode::SERVICE_UNAVAILABLE, "thumbnail queue closed");
     };

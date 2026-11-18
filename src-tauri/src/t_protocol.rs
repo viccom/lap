@@ -9,6 +9,10 @@ fn text_response(status: http::StatusCode, body: &str) -> http::Response<Vec<u8>
     http::Response::builder()
         .status(status)
         .header(http::header::CONTENT_TYPE, "text/plain")
+        // Failures are transient (a missing thumb regenerates on the next
+        // request); caching one pins the broken state in the WebView past
+        // the fix.
+        .header(http::header::CACHE_CONTROL, "no-store")
         .header(http::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(http::header::ACCESS_CONTROL_ALLOW_METHODS, "GET, OPTIONS")
         .header(http::header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
@@ -190,7 +194,7 @@ pub fn register_protocols(builder: Builder<Wry>) -> Builder<Wry> {
                     }).await;
                     if let Ok(Ok(Some((data, raw)))) = cached { responder.respond(if raw { raw_image_response(data) } else { image_response(data) }); return; }
                 }
-                let permits = t_sqlite::thumb_background_generation_permits();
+                let permits = t_sqlite::thumb_interactive_generation_permits();
                 let Ok(permit) = permits.acquire_owned().await else {
                     responder.respond(text_response(http::StatusCode::SERVICE_UNAVAILABLE, "thumbnail queue closed")); return;
                 };

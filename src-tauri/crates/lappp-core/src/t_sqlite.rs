@@ -172,6 +172,21 @@ pub fn thumb_background_generation_permits() -> Arc<Semaphore> {
         .clone()
 }
 
+static THUMB_INTERACTIVE_GENERATION_PERMITS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+/// Capacity for thumbnail generations a user is actively waiting on (the
+/// `thumb://` protocol path). Kept separate from the background pool on
+/// purpose: a bulk rebuild saturates the background pool for minutes on
+/// large libraries, and sharing one pool queued every grid/viewer request
+/// behind thousands of tasks — the grid went permanently blank until the
+/// rebuild finished (observed live on a 2.7k-file library, 2026-11-18).
+const MAX_INTERACTIVE_THUMB_GENERATIONS: usize = 4;
+
+pub fn thumb_interactive_generation_permits() -> Arc<Semaphore> {
+    THUMB_INTERACTIVE_GENERATION_PERMITS
+        .get_or_init(|| Arc::new(Semaphore::new(MAX_INTERACTIVE_THUMB_GENERATIONS)))
+        .clone()
+}
+
 pub fn has_active_thumb_background_tasks() -> bool {
     thumb_background_tasks()
         .lock()
@@ -14132,5 +14147,74 @@ mod face_pipeline_fix_tests {
         assert_eq!(snapshot.len(), 2);
         assert_eq!(snapshot.get(&2).map(String::as_str), Some("董开源"));
         assert_eq!(snapshot.get(&3).map(String::as_str), Some("董开源"));
+    }
+}
+
+#[cfg(test)]
+mod thumb_permit_pools_tests {
+    use super::*;
+
+    /// Interactive (protocol) thumbnail generation must draw from its own
+    /// pool: a saturated background pool (bulk rebuild) queued every
+    /// user-facing grid/viewer request behind thousands of tasks and the
+    /// grid stayed blank for the whole rebuild. Pinned so the pools can
+    /// never be merged back into one.
+    #[test]
+    fn interactive_and_background_permit_pools_are_independent() {
+        let background = thumb_background_generation_permits();
+        let interactive = thumb_interactive_generation_permits();
+        // Different pools — consuming one cannot consume the other.
+        assert!(!Arc::ptr_eq(&background, &interactive));
+
+        // Saturate the background pool completely.
+        let _bg = background
+            .try_acquire_many(MAX_BACKGROUND_THUMB_GENERATIONS as u32)
+            .expect("background pool must offer its full capacity");
+        assert_eq!(background.available_permits(), 0);
+        // The interactive pool is untouched and still fully available.
+        assert_eq!(
+            interactive.available_permits(),
+            MAX_INTERACTIVE_THUMB_GENERATIONS
+        );
+
+        // And vice versa: draining the interactive pool leaves background alone.
+        let _it = interactive
+            .try_acquire_many(MAX_INTERACTIVE_THUMB_GENERATIONS as u32)
+            .expect("interactive pool must offer its full capacity");
+        let background_again = thumb_background_generation_permits();
+        assert_eq!(
+            background_again.available_permits(),
+            0,
+            "background pool was saturated above and must stay independent"
+        );
+        assert_ne!(
+            Arc::as_ptr(&background_again) as usize,
+            Arc::as_ptr(&interactive) as usize
+        );
+    }
+
+    /// Both call sites of the interactive pool (desktop `thumb://` protocol
+    /// and the lappp-server media handler) must stay on it — grep-pinned so
+    /// a refactor cannot silently switch them back to the background pool.
+    #[test]
+    fn protocol_handlers_use_the_interactive_pool() {
+        let protocol = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../src/t_protocol.rs"));
+        assert!(
+            protocol.contains("thumb_interactive_generation_permits()"),
+            "desktop thumb:// protocol must use the interactive pool"
+        );
+        assert!(
+            !protocol.contains("thumb_background_generation_permits()"),
+            "desktop thumb:// protocol must not queue behind the background pool"
+        );
+        let media = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../lappp-server/src/media.rs"));
+        assert!(
+            media.contains("thumb_interactive_generation_permits()"),
+            "server thumb handler must use the interactive pool"
+        );
+        assert!(
+            !media.contains("thumb_background_generation_permits()"),
+            "server thumb handler must not queue behind the background pool"
+        );
     }
 }
