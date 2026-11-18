@@ -870,7 +870,7 @@ const isMaximized = ref(false);
 
 const minimizeWindow = () => desktopAppWindow?.minimize();
 const toggleMaximizeWindow = () => {
-  desktopAppWindow?.isMaximized().then((maximized) => {
+  desktopAppWindow?.isMaximized().then((maximized: boolean) => {
     if (maximized) {
       isMaximized.value = false;
       desktopAppWindow?.unmaximize();

@@ -525,7 +525,7 @@ useLibraryChangeRefresh(load);
 onMounted(async () => {
   const stop = await listen<{ source?: string; patchedTagId?: number; library?: string }>(
     "tags-changed",
-    async (event) => {
+    async (event: { payload: any }) => {
       if (event.payload?.source === tagsChangeSource) return;
       await load();
       if (!disposed && config.main.sidebarIndex === SIDEBAR.TAG

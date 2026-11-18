@@ -154,6 +154,6 @@ const clickCancel = () => {
 getDbStorageInfo().then((info) => {
   libraries.value = info;
   // Select all by default
-  selectedIds.value = new Set(info.map(l => l.libraryId));
+  selectedIds.value = new Set(info.map((l: { libraryId: string }) => l.libraryId));
 });
 </script>

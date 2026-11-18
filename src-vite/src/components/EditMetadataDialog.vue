@@ -22,7 +22,7 @@
             <component
               :is="['comments', 'e_artist'].includes(field.key) ? 'textarea' : 'input'"
               :id="'metadata-' + field.key"
-              :ref="el => { if (el) inputs[field.key] = el as HTMLElement; }"
+              :ref="(el: any) => { if (el) inputs[field.key] = el as HTMLElement; }"
               :placeholder="metadataPlaceholder(field.key)"
               :value="values[field.key]"
               :disabled="saving"

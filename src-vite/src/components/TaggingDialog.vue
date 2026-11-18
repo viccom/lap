@@ -650,7 +650,7 @@ onMounted(async () => {
   });
   const stop = await listen<{ source?: string }>(
     "tags-changed",
-    async (event) => {
+    async (event: { payload: any }) => {
       if (event.payload?.source === tagsChangeSource) return;
       await loadAllTags();
       if (!disposed) await loadExistingTagsForFiles(true);

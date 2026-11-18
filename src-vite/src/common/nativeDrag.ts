@@ -6,7 +6,7 @@ export const MAX_NATIVE_DRAG_FILES = 1000;
 let active = false;
 let sharedActive = false;
 // Each WebView has its own module instance; share native drag state app-wide.
-const sharedStateReady = listen<boolean>('native-file-drag-active', event => {
+const sharedStateReady = listen<boolean>('native-file-drag-active', (event: { payload: boolean }) => {
   sharedActive = event.payload;
 });
 // Native completion and DOM drop use separate event queues. Remember the source

@@ -1024,7 +1024,7 @@ onBeforeUnmount(() => {
     el.removeEventListener('pointerleave', handlePinchPointerEnd);
   }
   window.removeEventListener('wheel', handleGlobalPinchWheel, { capture: true });
-  players.value.forEach((p) => {
+  players.value.forEach((p: ReturnType<typeof videojs> | null) => {
     if (p) {
       p.off();
       setTimeout(() => {
@@ -1195,7 +1195,7 @@ defineExpose({
   getViewportState,
   applyViewportState,
   pause: () => {
-    players.value.forEach((p) => p?.pause());
+    players.value.forEach((p: ReturnType<typeof videojs> | null) => p?.pause());
   },
 });
 

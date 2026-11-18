@@ -790,7 +790,7 @@ const searchResultItems = computed(() => {
       ...(hit.score != null && Number.isFinite(hit.score)
         ? [{ column: 'score', labelText: hit.score.toFixed(2) }]
         : []),
-      ...hitBadges(hit).map(badge => ({ ...badge, labelText: badge.labelKey ? t(badge.labelKey) : badge.column })),
+      ...hitBadges(hit).map((badge: { column: string; labelKey?: string }) => ({ ...badge, labelText: badge.labelKey ? t(badge.labelKey) : badge.column })),
     ],
   }));
 });

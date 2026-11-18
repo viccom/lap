@@ -4714,7 +4714,7 @@ async function handleGroupSelectToggled(groupRow: any, selected: boolean) {
     if (!ids || ids.length === 0) return;
 
     selectMode.value = true;
-    const idSet = new Set(ids.map(id => Number(id)).filter(id => Number.isFinite(id) && id > 0));
+    const idSet = new Set(ids.map((id: number | string) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0));
     const loadedById = new Map<number, number>();
     fileList.value.forEach((file, index) => {
       const fileId = Number(file?.id || 0);
@@ -6201,7 +6201,7 @@ watch(
 // Cancel indexing for current album
 async function cancelIndexing() {
   const albumId = libConfig.album.id;
-  const index = normalizedAlbumQueue.value.findIndex(id => id === Number(albumId || 0));
+  const index = normalizedAlbumQueue.value.findIndex((id: number) => id === Number(albumId || 0));
   if (index === -1) return;
 
   showIndexRecoveryMsgbox.value = false;
@@ -6421,7 +6421,7 @@ onMounted( async() => {
   document.addEventListener('dragend', domDragEnd);
   document.addEventListener('drop', domDrop);
 
-  unlistenImageViewer = await listen('message-from-image-viewer', async (event) => {
+  unlistenImageViewer = await listen('message-from-image-viewer', async (event: { payload: any }) => {
     const { message } = event.payload as any;
     switch (message) {
       case 'request-file-at-index':
@@ -6688,7 +6688,7 @@ onMounted( async() => {
   });
 
   // listen for external refresh requests (e.g. from folder context menu)
-  unlistenRefreshContent = await listen<{ libraryId: string; albumId: number; folderPath: string; treeChanged: boolean }>('refresh-content', ({ payload }) => {
+  unlistenRefreshContent = await listen<{ libraryId: string; albumId: number; folderPath: string; treeChanged: boolean }>('refresh-content', ({ payload }: { payload: { libraryId: string; albumId: number; folderPath: string; treeChanged: boolean } }) => {
     if (payload?.folderPath) {
       if (payload.libraryId !== libConfig._libraryId) return;
       const affectedPaths = payload.treeChanged
@@ -7942,7 +7942,7 @@ async function getSelectedItemsForClipboard(showError = true) {
   const libraryId = libConfig._libraryId;
   const hydrated = await getFilesByIds(missingIds);
   if (libraryId !== libConfig._libraryId) return null;
-  const byId = new Map((hydrated || []).map(file => [Number(file.id), file]));
+  const byId = new Map((hydrated || []).map((file: any) => [Number(file.id), file]));
   if (missingIds.some(id => !byId.has(id))) {
     if (showError) toast.error(t('info_panel.selection_load_failed'));
     return null;
@@ -8159,7 +8159,7 @@ async function getMapSearchClusterFileList(fileIds: number[], gpsParams: Record<
     if (requestId !== currentContentRequestId) return;
 
     const orderedIds = new Map(fileIds.map((id, index) => [Number(id), index]));
-    const inCluster = (files || []).sort((a, b) => (orderedIds.get(Number(a.id)) ?? Infinity) - (orderedIds.get(Number(b.id)) ?? Infinity)).filter((file: any) => {
+    const inCluster = (files || []).sort((a: any, b: any) => (orderedIds.get(Number(a.id)) ?? Infinity) - (orderedIds.get(Number(b.id)) ?? Infinity)).filter((file: any) => {
       if (!passesAlbumFilters(file)) return false;
       if (exactMembers) return true;
       if (file.gps_latitude == null || file.gps_longitude == null || file.gps_latitude === '' || file.gps_longitude === '') return false;
@@ -10051,18 +10051,18 @@ const onMoveTo = async () => {
         return { item, movedFile };
       },
     ));
-    const successfulMoves = moves.flatMap(result =>
-      result.status === 'fulfilled' && result.value.movedFile ? [result.value] : [],
-    );
-    const successIds = successfulMoves.map(({ item }) => item.id);
-    successfulMoves.forEach(({ item, movedFile }) => {
+    const successfulMoves = moves.flatMap((result: PromiseSettledResult<any>) =>
+        result.status === 'fulfilled' && result.value.movedFile ? [result.value] : [],
+      );
+      const successIds = successfulMoves.map(({ item }: any) => item.id);
+      successfulMoves.forEach(({ item, movedFile }: any) => {
       affectedFolderPaths.add(getFolderPath(item.file_path));
       console.log('onMoveTo:', movedFile);
       affectedAlbumIds.add(Number(item.album_id || 0));
     });
-    const failedCount = moves.filter(
-      result => result.status === 'rejected' || !result.value.movedFile,
-    ).length;
+      const failedCount = moves.filter(
+        (result: PromiseSettledResult<any>) => result.status === 'rejected' || !result.value.movedFile,
+      ).length;
     if (successIds.length > 0) {
       successCount = successIds.length;
       const successIdSet = new Set(successIds);
@@ -10240,11 +10240,11 @@ const onMoveToFolder = async () => {
       return { file, movedFile };
     },
   ));
-  const successfulMoves = moveResults.flatMap(result =>
-    result.status === 'fulfilled' ? [result.value] : [],
-  );
-  const successIds = successfulMoves.map(({ file }) => file.id);
-  successfulMoves.forEach(({ file }) => {
+  const successfulMoves = moveResults.flatMap((result: PromiseSettledResult<any>) =>
+      result.status === 'fulfilled' ? [result.value] : [],
+    );
+    const successIds = successfulMoves.map(({ file }: any) => file.id);
+    successfulMoves.forEach(({ file }: any) => {
     affectedAlbumIds.add(Number(file.album_id || 0));
   });
   if (libraryDestination && successfulMoves.length > 0) {
@@ -10267,7 +10267,7 @@ const onMoveToFolder = async () => {
     rebuildSelectionAfterListMutation(remainingSelectedIds);
     toast.success(t('msgbox.move_to_folder.success', { source: sourceLabel, dest: getFolderName(destPath) || destPath }));
     await refreshFolderSidebarCounts([
-      ...successfulMoves.map(({ file }) => getFolderPath(file.file_path)),
+      ...successfulMoves.map(({ file }: any) => getFolderPath(file.file_path)),
       ...(libraryDestination ? [destPath] : []),
     ]);
     await refreshAffectedAlbums(Array.from(affectedAlbumIds));
@@ -10279,7 +10279,7 @@ const onMoveToFolder = async () => {
       await updateContent(true);
     }
   }
-  if (moveResults.some(result => result.status === 'rejected')) {
+  if (moveResults.some((result: PromiseSettledResult<any>) => result.status === 'rejected')) {
     toast.error(t('msgbox.move_to_folder.error', { source: sourceLabel, dest: getFolderName(destPath) || destPath }));
   }
 }
@@ -10330,13 +10330,13 @@ const onCopyToFolder = async () => {
       return { file, copiedFile };
     },
   ));
-  const successCount = copyResults.filter(result => result.status === 'fulfilled').length;
-  const indexFailureCount = copyResults.filter(
-    result => result.status === 'rejected' && result.reason instanceof CopyIndexError,
-  ).length;
-  const copyFailureCount = copyResults.filter(
-    result => result.status === 'rejected' && !(result.reason instanceof CopyIndexError),
-  ).length;
+  const successCount = copyResults.filter((result: PromiseSettledResult<any>) => result.status === 'fulfilled').length;
+    const indexFailureCount = copyResults.filter(
+      (result: PromiseSettledResult<any>) => result.status === 'rejected' && result.reason instanceof CopyIndexError,
+    ).length;
+    const copyFailureCount = copyResults.filter(
+      (result: PromiseSettledResult<any>) => result.status === 'rejected' && !(result.reason instanceof CopyIndexError),
+    ).length;
 
   if (successCount > 0) {
     toast.success(t('msgbox.copy_to_folder.success', { source: sourceLabel, dest: destLabel }));

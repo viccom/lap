@@ -2013,7 +2013,7 @@ const slideShowTransitionOptions = computed(() => {
 
 const filmStripViewPreviewPositionOptions = computed(() => {
   const options = localeMsg.value.settings.grid.filmstrip_view.preview_position_options;
-  return options.map((label, i) => ({ label, value: i }));
+  return options.map((label: string, i: number) => ({ label, value: i }));
 });
 
 // Define the similarity options
@@ -2415,7 +2415,7 @@ onMounted(async () => {
   // Destroy the window on close (rather than merely `close()`, which leaves the
   // label registered) so reopening always creates a fresh window. Re-showing a
   // closed transparent window can fail silently on Windows.
-  unlistenCloseRequested = await appWindow.onCloseRequested(async (event) => {
+  unlistenCloseRequested = await appWindow.onCloseRequested(async (event: { preventDefault: () => void }) => {
     event.preventDefault();
     if (isChangingThumbnailCache.value) {
       toast.error(t('settings.advanced.thumbnail_cache.busy'));

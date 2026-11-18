@@ -1860,7 +1860,7 @@ onMounted(async () => {
       similarLoading.value = false;
     }
   });
-  unlistenCullingStatus.value = await listen('culling-status-updated', (event) => {
+  unlistenCullingStatus.value = await listen('culling-status-updated', (event: { payload: any }) => {
     const payload = event.payload as { fileIds?: number[]; cullingFlag?: number } | null;
     if (!payload?.fileIds || payload.cullingFlag === undefined) return;
     const fileIds = new Set(payload.fileIds.map(Number));

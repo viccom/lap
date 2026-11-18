@@ -480,7 +480,7 @@ onMounted(async() => {
   ensureFourPanesLoaded();
 
 
-  unlistenGridView = await listen('message-from-content', (event) => {
+  unlistenGridView = await listen('message-from-content', (event: { payload: any }) => {
     const { message, fileId: targetFileId, changes, rotateDelta = 90 } = event.payload as any;
     console.log('message-from-content:', message, targetFileId);
     switch (message) {

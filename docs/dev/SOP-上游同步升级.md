@@ -190,6 +190,13 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    ③ 其余为锚点漂移（`export` 剥离单发 replace 漏第二处、fixture 缺 fork
    新增的 transportMode/signMediaUrl 桩）。
    另修 appearance/locale 两域漏 `--experimental-vm-modules` 旗标。
+   **第 4 批已落地（2026-11-19）：189 → 149**——TS7006×33 + TS7031×7（隐式
+   any 回调/解构）全部注型清零，15 文件 40 处。注型原则：**接缝可知则真
+   类型**（Folder、boolean、PromiseSettledResult、videojs 返回值、监听
+   payload 结构），**JS 接缝不可知则显式 any**（沿用文件内既有 idiom，
+   不为过关编造类型）。连带发现并修复：thumbnail-scheduler 测试把**未
+   转译的 TS 源**直接 `new Function`（任何注解进入该区间都会炸），改为
+   transpile 后注入，顺带免疫未来注解。
    教训沉淀：**从上游同步测试 ≠ 拿来就能绿**——上游自己的前端测试不在
    CI 里，取回后必须在本地全量跑一遍再合入。
 4. ~~`scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化~~ **已落地

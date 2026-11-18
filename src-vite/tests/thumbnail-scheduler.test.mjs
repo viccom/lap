@@ -375,7 +375,9 @@ test('thumbnail decoding failures request one repair for protocol and base64 cac
     const thumbnailSrc = { value: src };
     const build = new Function('thumbnailSrc', 'getThumbUrl', 'props', 'config', 'isThumbnailLoaded',
       'transportMode', 'signedAssetUrl',
-      `let thumbnailRetryCount = 0; ${source.slice(start, end)}; return retryThumbnail;`);
+      // Transpile before eval: the extracted source is TypeScript (typed
+      // params), and new Function cannot parse annotations.
+      `let thumbnailRetryCount = 0; ${ts.transpile(source.slice(start, end), { target: ts.ScriptTarget.ES2022 })}; return retryThumbnail;`);
     const retry = build(thumbnailSrc, (...args) => { calls.push(args); return 'thumb://localhost/lib/1?t=123'; },
       { file: { id: 1, modified_at: 2 } }, { settings: { thumbnailSize: 512 } }, { value: true },
       'tauri', async (u) => u);

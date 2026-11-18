@@ -775,7 +775,7 @@ const startNewFolder = async (folder: Folder) => {
 const cancelNewFolder = () => {
   const parent = creatingFolderParent.value;
   if (parent?.children) {
-    parent.children = parent.children.filter(child => child.path !== creatingFolderPath.value);
+    parent.children = parent.children.filter((child: Folder) => child.path !== creatingFolderPath.value);
   }
   isCreatingFolder.value = false;
   isCreatingFolderRequest.value = false;
@@ -814,7 +814,7 @@ const confirmNewFolder = async () => {
   creatingFolderPath.value = '';
   newFolderName.value = '';
   uiStore.removeInputHandler('AlbumFolder-new');
-  const newFolder = parent.children?.find(child => child.path === newFolderPath);
+  const newFolder = parent.children?.find((child: Folder) => child.path === newFolderPath);
   if (newFolder) await clickFolder(props.albumId, newFolder);
 };
 

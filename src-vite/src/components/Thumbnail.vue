@@ -383,7 +383,7 @@ watch(
     // getThumbUrl yields the raw path; mint it here and swap the src so the
     // <img> reloads with the signed URL. Desktop keeps its custom-scheme URL.
     if (transportMode === 'http' && thumbnailSrc.value.startsWith('/api/thumb/')) {
-      void signedAssetUrl(thumbnailSrc.value).then((signed) => {
+      void signedAssetUrl(thumbnailSrc.value).then((signed: string | null) => {
         if (signed && thumbnailSrc.value.startsWith('/api/thumb/')) {
           thumbnailSrc.value = signed;
         }
@@ -410,7 +410,7 @@ function retryThumbnail() {
   const retryUrl = getThumbUrl(props.file.id, true, config.settings.thumbnailSize, Number(props.file.modified_at || 0));
   const withRepair = `${retryUrl}${retryUrl.includes('?') ? '&' : '?'}repair=true`;
   if (transportMode === 'http') {
-    void signedAssetUrl(withRepair).then((signed) => { if (signed) thumbnailSrc.value = signed; }).catch(() => {});
+    void signedAssetUrl(withRepair).then((signed: string | null) => { if (signed) thumbnailSrc.value = signed; }).catch(() => {});
   } else {
     thumbnailSrc.value = withRepair;
   }
