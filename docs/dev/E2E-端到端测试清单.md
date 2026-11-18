@@ -147,7 +147,7 @@ lappp.exe --data-dir <temp>\desk &
 | 4.1 | 设置 → 图片理解 | 页面渲染网关配置、云端模型、嵌入模型、提示词模板四区块 | ✅ |
 | 4.2 | 配置网关后 | 徽标由"未配置"→"已配置"；实验台显示"网关已配置" | ✅ |
 | 4.3 | 实验台「加载文件」 | 加载库前 39 个文件并渲染缩略图 | ✅ |
-| 4.4 | 选中照片 →「理解选中照片」→确认 | 真实云端返回**中文描述 + 标签**；结果行 `成功 N · 失败 0 · 跳过 M`（已标注的被跳过） | ✅ |
+| 4.4 | 选中照片 →「理解选中照片」→确认 | 真实云端返回**中文描述 + 标签**；**且描述必须与画面实际内容一致**（见下方「网关视觉能力校验」）；结果行 `成功 N · 失败 0 · 跳过 M`（已标注的被跳过） | ✅ |
 | 4.5 | 精确搜索（FTS） | 输入关键词（如"毕业了"）→ 命中数 + "标签/图片描述"列 | ✅ |
 | 4.6 | 语义搜索（本地 BGE） | 自然语言查询 → "语义 · 命中 N 个" + 相似度分数 | ✅ |
 | 4.7 | 云端 LLM 重排 | 勾选后 → "语义 · 云端 LLM 重排 · 命中 N 个"；显示重排模型名 | ✅ |
@@ -157,6 +157,26 @@ lappp.exe --data-dir <temp>\desk &
 | 4.11 | 模板 **编辑（版本化）** | 编辑保存 → 生成**新版本**（v2），旧版本行仍在；toast「模板已保存」 | ✅ |
 | 4.12 | 模板 **删除** | 确认框「确定删除模板「…」吗？该模板的标注也会一并删除」→ 删除该版本；内置模板不可删（按钮禁用） | ✅ |
 | 4.13 | 模板 response spec | `{}` 或 `caption,tags}` 生效（描述+标签列有值） | ✅ |
+
+### 4.x 网关视觉能力校验（**必做前置，2026-11-18 新增**）
+
+> **背景（真实缺陷暴露）**：`list_vl_models` 返回的模型元数据可能虚报 `vision:"supported"`。
+> 实测 `auto/deepseek-v4.1-flash` 标注 `vision:"supported"`，但模型自述「我是纯文本处理模型，
+> 无法直接解析和识别图像内容」，其"描述"实为**根据 EXIF 元数据编造**（如把 2013 年室内照片
+> 说成"夏末清晨户外自然场景"）。仅校验"返回了中文描述+标签"会把这种**假通过**。
+>
+> **校验方法**（选一张内容明确的照片，如"幼儿园教室里的孩子"）：
+
+```bash
+KEY=$(cat "$LOCALAPPDATA/com.julyx10.lap.debug/vl-api-key" | tr -d '\r\n')
+# 512px 缩略图 + 一句"画面里有什么" → 描述必须点名画面中的真实对象
+# 合格示例（zhipu/glm-4.6）："幼儿园教室…孩子们围坐蓝色大桌做手工…"
+# 不合格（auto/deepseek-v4.1-flash）："我无法看到这张图片" / 描述与画面无关
+```
+
+**已实测可用视觉模型**：`zhipu/glm-4.6`、`auto/glm-5.3`（准确描述画面）。
+**已实测不可用**：`auto/deepseek-v4.1-flash`（元数据标 vision:supported，实际编造）。
+⇒ 配置图片理解前**必须**做本校验，否则全库标注都是编造的。
 
 ---
 
@@ -480,3 +500,55 @@ cargo test -p lappp --no-default-features --features client  # 5/5
 **§3.3 翻页**：查看器渲染已确证；翻页按钮（右中圆形 `preview-press-button`，坐标 (1248,364)）在 IAB 中点击/DOM click/ArrowRight 均未触发翻页——**疑为 IAB 合成事件限制**（`viewerSession` 依赖原生事件），**建议人工真实鼠标复测**。
 
 
+
+---
+
+## 16. 2026-11-18 第三次复跑：图片理解 + 人脸（真实库 + 真实网关）
+
+**背景**：§14/§15 把 §4/§5 标为"需网关/需模型未覆盖"——**这是错误的**。凭据与模型本机都有，
+本轮用真实资源补齐。
+
+**环境**：复制真实测试库 `%LOCALAPPDATA%\com.julyx10.lap.debug`（2773 文件 / 2332 人脸 /
+558 人物 / 187 标签 / 94 嵌入）到隔离 data-dir；`lappp-server --port 17900`；VL 网关
+`http://192.168.199.8:3425`（anthropic 协议）+ `vl-api-key`；BGE 模型放入 `models/bge-local/`。
+
+| 条目 | 判据证据 | 结果 |
+|---|---|---|
+| 4.1/4.2 VL 配置 | `get_vl_config` → `configured:true`、gatewayUrl/model/rerank/embed 齐全 | ✅ |
+| **4.4 真实图片理解** | `run_vl_analysis([466,467], template 1)` → `finished, ok=2, fail=0`；标注含真实中文描述 + 9 标签；`model:zhipu/glm-4.6`、85s、412 output tokens | ✅（**切换视觉模型后**，见「发现 1」） |
+| 4.5 FTS | `search_fts("幼儿园")` → 5 命中，`matchedColumns:[tags,caption]` | ✅ |
+| 4.6 语义搜索 | `embed_status` → `localAvailable:true, model:bge-local-94851877, embedded:94`；`search_captions("孩子们做手工")` → **fileId 466 得分 0.613**（语义命中准确） | ✅ |
+| 4.7 云端重排 | `rerank_search_with_llm("幼儿园里孩子们做手工", [466,72,20,24,375])` → `{"matched":[466],"unannotated":[72,20,24,375]}` | ✅ |
+| 4.8 embed_status | `captions:2, embedded:94, localAvailable:true` | ✅ |
+| 4.9 批量运行 | `run_vl_analysis` 5 张 → `finished ok=5 fail=0 skip=0` | ✅ |
+| 4.10 模板创建 | `create_vl_template` → id=2, v=1, isBuiltin:false | ✅ |
+| 4.11 模板版本化 | `update_vl_template` → **新 id=3, version=2**（旧版本行保留） | ✅ |
+| 4.12 模板删除 | `delete_vl_template(id=2)` → 200；内置模板 id=1 仍在 | ✅ |
+| 5.8 face_stats | `faces:2332, processed:2519, total:2519, unprocessed:0` | ✅ |
+| 5.3 人物列表 | `get_persons` → 558 人，含 base64 人脸缩略图（1.7KB~10KB） | ✅ |
+| 5.5 人物重命名 | `rename_person(716, "E2E人物")` → 200，复查已改名 | ✅ |
+| 5.6 人物删除 | `delete_person(806)` → 200；人物数 **558→557** | ✅ |
+| 5.7 索引状态 | `is_face_indexing` → `[false, null]`；索引已完成 | ✅ |
+
+### 发现 1（**重要**）：网关模型的 `vision:"supported"` 元数据不可信
+
+- `list_vl_models` 把 **`auto/deepseek-v4.1-flash`** 标为 `vision:"supported"`。
+- 实测该模型回复：**「我是纯文本处理模型，无法直接解析和识别图像内容」**，其"描述"由
+  EXIF 元数据编造（把 2013 年室内照片说成"夏末清晨户外自然场景"），**与画面完全不符**。
+- `zhipu/glm-4.6`、`auto/glm-5.3` 实测**能正确看图**（准确描述"幼儿园教室、孩子围坐蓝色桌子做手工"）。
+- **影响**：若按默认配置跑全库理解，会产生**一整库编造的描述与标签**，并污染语义搜索。
+- **处置**：已新增 §4.x「网关视觉能力校验」为必做前置；建议用户把 `vl.model` 从
+  `auto/deepseek-v4.1-flash` 换成 `zhipu/glm-4.6` 后**强制重跑**（`force:true`）。
+
+### 发现 2：本地 BGE 模型必须确认落在 `models/bge-local/`（含 `model.onnx` + `tokenizer.json`）
+
+- 真实 debug 库的 `models/` **是空目录**；模型只在 `D:\LapPortable\models\bge-local\`。
+- 缺模型时 `search_captions` 返回 500「本地嵌入模型未安装」，语义搜索不可用。
+- §0.2 的 `cp -r /d/LapPortable/models/bge-local "$TMP/data/models/"` 在 **bge-local 为空目录时**会
+  失败（`cp: target ... is not a directory`），须显式 `mkdir -p` 后拷两个文件。
+
+### 发现 3：`run_vl_analysis` 依赖「当前库」上下文
+
+- 纯 HTTP CLI 调用报「当前图库不存在」，因 `current_library_context()` 从 `app-config.json`
+  的 `libraries[]` + `current_library_id` 解析；精简配置里 `libraries:[]` 会导致失败。
+- 正确做法：让服务端自己重建 config（删除 app-config 后重启），或在浏览器会话内调用。
