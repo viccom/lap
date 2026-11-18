@@ -194,7 +194,7 @@ import { useAppUpdater } from '@/common/updater';
 import { useUIStore } from '@/stores/uiStore';
 import { isWin, isMac, isLinux, SCALE_VALUES } from '@/common/utils';
 import { matchesShortcut, ShortcutPlatform } from '@/common/shortcuts';
-import { SIDEBAR, SETTINGS_TAB, SERVER_SETTINGS_TAB, SETTINGS_BASE_WIDTH, SETTINGS_BASE_HEIGHT, PANEL_ANIMATION_MS } from '@/common/constants';
+import { SIDEBAR, SETTINGS_TAB, SERVER_SETTINGS_TAB, SETTINGS_BASE_WIDTH, SETTINGS_BASE_HEIGHT, PANEL_ANIMATION_MS, type Sidebar } from '@/common/constants';
 import { getAppConfig, getLibraryVisibleCounts, switchLibrary, cancelIndexing, cancelFaceIndex } from '@/common/api';
 
 // vue components
@@ -694,7 +694,7 @@ const onManageLibrariesUpdated = async () => {
 };
 
 // click sidebar
-function clickSidebar(index: number) {
+function clickSidebar(index: Sidebar) {
   // While the library is corrupt the panel <component> is unmounted; ignore navigation so we don't
   // silently mutate the persisted sidebarIndex and dead-end in a blank pane.
   if (databaseCorrupted.value) return;

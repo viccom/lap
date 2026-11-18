@@ -409,12 +409,12 @@ let wheelThreshold = 10;
 const gestureType = ref<'none' | 'zoom' | 'nav'>('none');
 let horizontalDeltaAccumulator = 0;
 let verticalDeltaAccumulator = 0;
-let gestureResetTimeout: NodeJS.Timeout | null = null;
+let gestureResetTimeout: ReturnType<typeof setTimeout> | null = null;
 let hasNavigatedThisGesture = false;
 let lastDeltaX = 0;
 
 const isWheelZooming = ref(false);
-let wheelZoomTimeout: NodeJS.Timeout | null = null;
+let wheelZoomTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Touchpad detection - sticky once detected
 let isTouchpadDevice = false;
@@ -478,7 +478,7 @@ const isLoading = ref(false);
 const loadError = ref(false);
 const cloudLoadError = ref(false);
 const offlinePreview = ref(false);
-let loadingTimeout: NodeJS.Timeout | null = null;
+let loadingTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Show the RAW spinner only after loading has persisted for a moment, so fast
 // loads don't flash it. Resets immediately when loading finishes.
@@ -692,7 +692,7 @@ watch(() => [scale.value[activeImage.value], rawSource.value, rawRequestPending.
 
 let resizeObserver: ResizeObserver | null = null;
 const suppressViewportEmit = ref(false);
-let warmImageTimeout: NodeJS.Timeout | null = null;
+let warmImageTimeout: ReturnType<typeof setTimeout> | null = null;
 let warmImageIdleId: number | null = null;
 const resolvedThumbnailSrc = ref('');
 const resolvedThumbnailFileId = ref(0);
@@ -1781,7 +1781,7 @@ watch(containerSize, (size) => {
 }, { flush: 'sync' });
 
 // Image loading retains its existing deferred layout update.
-let debounceTimeout: NodeJS.Timeout | null = null;
+let debounceTimeout: ReturnType<typeof setTimeout> | null = null;
 watch(() => imageSize.value, () => {
   if (debounceTimeout) clearTimeout(debounceTimeout);
   debounceTimeout = setTimeout(() => {

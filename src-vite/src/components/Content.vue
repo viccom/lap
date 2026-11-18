@@ -11176,7 +11176,7 @@ const selectModeSetCullingFlags = async (cullingFlag: number) => {
 };
 
 // slide show
-let slideShowIntervalId: NodeJS.Timeout | null = null;
+let slideShowIntervalId: ReturnType<typeof setTimeout> | null = null;
 
 function toggleSlideShow() {
   isSlideShow.value = !isSlideShow.value;

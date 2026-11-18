@@ -11,7 +11,10 @@ import { defaultFileInfoFields } from '@/common/fileInfoFields';
 export const useConfigStore = defineStore('configStore', {
   state: () => ({
     main: {
-      sidebarIndex: SIDEBAR.ALBUM, // toolbar index
+      // JSDoc cast: in a .js file the as-const literal from SIDEBAR.ALBUM is
+      // not widened, so without this every `sidebarIndex === SIDEBAR.X`
+      // comparison in TS consumers narrows to literal 1 and fails (TS2367).
+      sidebarIndex: /** @type {import('@/common/constants').Sidebar} */ (SIDEBAR.ALBUM), // toolbar index
       maxLibraryCount: 20,        // max library count
       maxCollectionCount: 100,    // max collection count
       selectionChunkSize: 200,    // virtual list fetch chunk size

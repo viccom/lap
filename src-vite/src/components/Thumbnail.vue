@@ -304,7 +304,7 @@ const emit = defineEmits([
 ]);
 
 const isTransitionDisabled = ref(false);
-let transitionTimeout: NodeJS.Timeout | null = null;
+let transitionTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const containerRef = ref<HTMLElement | null>(null);
 const contextMenuRef = ref<InstanceType<typeof ContextMenu> | null>(null);

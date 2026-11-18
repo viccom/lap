@@ -286,7 +286,7 @@ const splitToolbarVisible = ref(false);
 
 const isSlideShow = ref(false);     // Slide show state
 const slideShowIntervalIndex = ref(Number(config.settings.slideShowInterval ?? 0));
-let timer: NodeJS.Timeout | null = null;  // Timer for slide show
+let timer: ReturnType<typeof setTimeout> | null = null;  // Timer for slide show
 
 const imageScale = ref(1);          // Image scale
 const imageDisplayScale = ref(1);   // User-facing image scale

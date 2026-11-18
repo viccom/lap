@@ -146,6 +146,13 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    重灾文件 Content.vue×147、Settings.vue×31、Image.vue×17。
    清零策略：先修 TS2367/TS2503 疑似真 bug → configStore.js 等补类型（一次消 ~94）→
    按文件烧余量；每批结束 `--update` 收缩基线。CI 接入归 §7-③。
+   **第 1 批已落地（2026-11-18）：311 → 250**——TS2367×41 全部是
+   `sidebarIndex === SIDEBAR.X`（configStore.js 的 JS 不拓宽字面量污染，非真 bug；
+   修复 = state 字段 JSDoc 标注 `Sidebar` 联合）；TS2503×8 = `NodeJS.Timeout` →
+   `ReturnType<typeof setTimeout>`；附带 12 个连锁消失 + 1 个真赋值错误
+   （Home.vue clickSidebar 参数补 `Sidebar` 类型）。教训：门禁 key 的消息必须
+   **归一化砍掉内嵌类型串**（`on/to type 'Store<…>'`），否则无关类型改动会
+   把健康修复误报成新错。
 3. 26 个孤儿测试接入 `test:*` + `npm run test` 聚合脚本；CI（pr-build.yml 目前只编译）加测试步骤。
 4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
 5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。

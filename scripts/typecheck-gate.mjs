@@ -40,9 +40,13 @@ function runVueTsc() {
   for (const line of output.split(/\r?\n/)) {
     const m = DIAG.exec(line);
     if (!m) continue;
-    // Key by file :: code :: message (NOT line/column — ordinary edits shift
-    // positions and would churn the baseline; message text anchors identity).
-    const key = `${m[1]} :: ${m[4]} :: ${m[5].trim().slice(0, 200)}`;
+    // Key by file :: code :: normalized message. The message is cut before the
+    // embedded type strings ("... on type 'Store<...>'", "... to type 'X'",
+    // "... because the types ..."): those restate whole types and churn on
+    // unrelated-but-correct type changes, which once made 23 healthy fixes
+    // look like 23 new errors. Count tracking still catches additions.
+    const message = m[5].trim().split(/\s+(?:on|to|from|in)\s+type\s+|\s+because\s+/)[0];
+    const key = `${m[1]} :: ${m[4]} :: ${message.slice(0, 200)}`;
     counts.set(key, (counts.get(key) || 0) + 1);
   }
   return { status: res.status, counts };
