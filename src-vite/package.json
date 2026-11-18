@@ -1,7 +1,7 @@
 {
   "name": "src-vue",
   "private": true,
-  "version": "0.3.3",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.js",
@@ -14,6 +14,7 @@
     "test:thumbnails": "node --test tests/thumbnail-scheduler.test.mjs",
     "preview": "vite preview",
     "test:file-info": "node --test tests/fileInfoMetadata.test.mjs",
+    "test:dedup": "node --test tests/dedupKeep.test.mjs tests/importPairing.test.mjs",
     "test:shortcuts": "node --test tests/shortcutsLayout.test.mjs",
     "test:tags": "node --test tests/tagTree.test.mjs",
     "test:vl": "node --test tests/vlApi.test.mjs tests/vlFileInfo.test.mjs tests/vlWiring.test.mjs",

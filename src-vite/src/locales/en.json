@@ -38,14 +38,14 @@
     "drop_action": "Add",
     "drop_title_hint": "Drop to add",
     "empty_drop_hint": "Drag items onto the collection above to add them.",
-    "added_toast": "{count} file(s) added to collection",
-    "add_failed_toast": "Could not add files to {count} collection(s)",
-    "already_exists_toast": "{count} file(s) already in collection",
+    "added_toast": "{count} item(s) added to collection",
+    "add_failed_toast": "Could not add items to {count} collection(s)",
+    "already_exists_toast": "{count} item(s) already in collection",
     "clear": "Empty Collection",
     "clear_confirm_title": "Clear collection",
     "clear_confirm_message": "Remove all files from \"{name}\"? Files themselves will not be deleted.",
     "clear_confirm_ok": "Clear",
-    "removed_toast": "{count} file(s) removed from collection"
+    "removed_toast": "{count} item(s) removed from collection"
   },
   "library": {
     "all_files": "All files",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Offline",
+    "download_to_open": "Download this photo in your cloud storage app before opening it.",
     "cloud_only": "Available online only",
     "cloud_only_pending": "Available online only — information incomplete",
     "original_unavailable": "Original file is unavailable",
@@ -255,7 +256,7 @@
     "section_folders": "Select folder",
     "section_status": "Import status",
     "to_import": "To import",
-    "files_progress": "{processed} / {total} files ({size})",
+    "files_progress": "{processed} / {total} items ({size})",
     "source": "Source",
     "source_placeholder": "Select a source folder",
     "destination": "Destination",
@@ -266,7 +267,7 @@
     "layout_structure": "Keep folder structure",
     "import": "Import",
     "preparing": "Preparing import",
-    "importing": "Importing files",
+    "importing": "Importing items",
     "complete": "Import complete",
     "cancelled": "Import cancelled",
     "continue": "Continue",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Start with a new album",
-    "add_album_description": "Select a folder and let lappp organize your photos and videos.",
+    "add_album_description": "Select a folder and let Lap organize your photos and videos.",
     "smart_album_title": "Organize with smart albums",
     "smart_album_description": "Use rules to automatically group photos that match your criteria.",
     "collection_title": "Group photos in collections",
@@ -296,23 +297,6 @@
     "unknown_lens": "Unknown lens",
     "semantic_matches": "Visual matches",
     "text_matches": "Text matches",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "Queued for scan",
       "indexing": "Scanning... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Skip this file and continue",
         "file_label": "Last scanned file",
         "message": "The previous scan did not close normally.",
-        "message_with_file": "The previous scanning task did not exit cleanly.\n\nLast scanned file:\n{file}\n\nIf you continue, lappp will skip this file once and resume scanning."
+        "message_with_file": "The previous scanning task did not exit cleanly.\n\nLast scanned file:\n{file}\n\nIf you continue, Lap will skip this file once and resume scanning."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Favorite folders"
   },
   "rating": {
+    "mixed": "Mixed",
     "title": "Ratings",
     "unrated": "Unrated",
     "all_rated": "All rated",
     "rated": "Rated",
-    "mixed": "Various",
     "clear_rating": "Clear rating",
     "five_stars": "5 stars",
     "four_stars": "4 stars",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Favorites only",
-      "select_mode": "Multi-select",
-      "select_files": "Select files",
-      "show_selection_panel": "Open multi-select panel",
-      "hide_selection_panel": "Hide multi-select panel",
-      "exit_select_mode": "Exit multi-select",
+      "show_selection_panel": "Open selection panel",
+      "exit_selection_mode": "Exit selection mode",
       "select_count": "{count} selected",
       "group_type_options": [
         "None",
@@ -516,14 +514,16 @@
         "RAW only",
         "Videos"
       ],
-      "file_type_other": "Other"
+      "file_type_other": "Other",
+      "select_mode": "Multi-select",
+      "select_files": "Select files",
+      "hide_selection_panel": "Hide multi-select panel",
+      "exit_select_mode": "Exit multi-select"
     },
     "tooltip": {
       "restore": "Restore",
       "refresh": "Refresh",
-      "show_info": "Show info",
-      "hide_info": "Hide info",
-      "open_dedup": "Find Duplicates & Similar",
+      "info": "Info",
       "clear_history": "Clear search history",
       "index_faces": "Index faces",
       "sort": "Sort",
@@ -534,7 +534,10 @@
       "back": "Back",
       "scanning": "Scanning…",
       "scan_paused": "Scan paused",
-      "scan_queued": "Queued for scan"
+      "scan_queued": "Queued for scan",
+      "show_info": "Show info",
+      "hide_info": "Hide info",
+      "open_dedup": "Find Duplicates & Similar"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Adjust"
     ],
     "empty_title": "This list is empty",
-    "empty_desc": "Add files or update the current filter to show items here.",
-    "select_hint": "No files selected",
+    "empty_desc": "Add items or update the current filter to show them here.",
+    "select_hint": "No items selected",
     "deselect": "Deselect",
-    "select_mode_entered": "Multi-select mode is on",
-    "selection_load_failed": "Could not load all files for selection. Try again.",
+    "selection_load_failed": "Could not load all items for selection. Try again.",
     "large_batch": {
       "title": "Confirm bulk operation",
-      "content": "This operation will process {count} files and may take some time. Continue?",
+      "content": "This operation will process {count} items and may take some time. Continue?",
       "ok": "Continue"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Keep",
       "unkeep_label": "Unkeep",
       "delete_selected": "Delete Selected",
+      "trash_all": "Move all to trash",
       "delete_all": "Delete all",
       "move_selected_to_trash": "Move to trash ({count} selected · {size})",
-      "no_removable_files": "No removable files to move to Trash",
+      "no_removable_files": "No removable items to move to trash",
       "set_keep": "Keep",
       "removable_copies_summary": "{count} removable copies · {size}",
+      "similar_items_summary": "{count} similar items · {size}",
       "similar_photos_summary": "{count} similar photos · {size}"
-    }
+    },
+    "select_mode_entered": "Multi-select mode is on"
   },
   "tooltip": {
     "loading": "Loading...",
@@ -694,9 +699,9 @@
       "success": "Desktop wallpaper updated",
       "failed": "Failed to set desktop wallpaper"
     },
-    "refresh_subfolders": {
-      "success": "Subfolders refreshed",
-      "failed": "Failed to refresh subfolders"
+    "refresh_folders": {
+      "success": "Folders refreshed",
+      "failed": "Failed to refresh folders"
     },
     "copy_image": {
       "success": "{count} file(s) copied to clipboard",
@@ -727,12 +732,17 @@
     },
     "album_exists": "This album already exists",
     "album_nested": "This folder overlaps another album",
+    "refresh_subfolders": {
+      "success": "Subfolders refreshed",
+      "failed": "Failed to refresh subfolders"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "{count} files ({size})"
+    "files_summary": "{count} files ({size})",
+    "items_summary": "{count} items ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Exclude from search",
       "remove": "Remove",
       "delete_folder": "Delete folder",
+      "refresh_folders": "Refresh folders",
       "refresh_subfolders": "Refresh subfolders"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Reveal in Finder...",
       "reveal_in_file_explorer": "Reveal in File Explorer...",
       "refresh_file_info": "Refresh file info",
-      "index_cloud_files": "Download, index, then free up space",
       "set_album_cover": "Set as album cover",
       "set_as": "Set as",
       "set_desktop_wallpaper": "Set as desktop wallpaper",
@@ -804,6 +814,7 @@
       "xmp_save_success": "Saved XMP metadata for {count} file(s)",
       "xmp_save_failed": "Failed to save XMP for {count} file(s)",
       "comment": "Description…",
+      "index_cloud_files": "Download, index, then free up space",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "OK",
+    "save": "Save",
     "discard": "Discard",
     "reset": "Reset",
     "cancel": "Cancel",
@@ -994,42 +1006,60 @@
       "invalid": "Enter a name and a positive integer start number.",
       "success": "Renamed {count} items."
     },
+    "file_delete": {
+      "permanent_summary": "1 file will be permanently deleted. | {count} files will be permanently deleted.",
+      "trash_summary": "1 file will be moved to trash. | {count} files will be moved to trash.",
+      "title": "Delete {count} file permanently? | Delete {count} files permanently?",
+      "confirm": "Delete {count} file | Delete {count} files",
+      "irreversible": "This can’t be undone.",
+      "mixed_hint": "Applies to RAW pairs only. Other selected items are always deleted in full.",
+      "trash_unavailable": "These files couldn’t be moved to trash. Trash may be unavailable on this drive."
+    },
+    "raw_pair_delete": {
+      "scope": "RAW pair files to delete",
+      "both": "Both files",
+      "raw": "RAW only",
+      "companion": "JPEG / HEIC only",
+      "format": "{format} only",
+      "failed": "One deletion failed. | {count} deletions failed."
+    },
+    "folder_delete_contents": "This includes all files and subfolders.",
     "move_to_trash": {
       "title": "Move to trash",
       "file_content": "The file '{file}' will be trashed.",
-      "files_content": "{count} selected files will be trashed.",
-      "removable_files_content": "All {count} removable files will be trashed.",
-      "raw_jpeg_companions_content": "{count} RAW+JPEG companion file(s) will also be deleted.",
+      "files_content": "{count} selected items will be trashed.",
+      "removable_files_content": "All {count} removable items will be trashed.",
       "folder_content": "The folder '{folder}' will be trashed.",
       "ok": "Trash",
       "file_success": "The file '{file}' has been trashed.",
-      "files_success": "{count} selected files have been trashed.",
+      "files_success": "{count} selected items have been trashed.",
       "folder_success": "The folder '{folder}' has been trashed.",
       "file_error": "Failed to move the file to trash.",
-      "files_error": "Failed to move selected files to trash.",
-      "folder_error": "Failed to move the folder to trash."
+      "files_error": "Failed to move selected items to trash.",
+      "folder_error": "Failed to move the folder to trash.",
+      "raw_jpeg_companions_content": "{count} RAW+JPEG companion file(s) will also be deleted."
     },
     "permanent_delete": {
       "title": "Delete permanently",
       "file_content": "The file '{file}' will be permanently deleted.",
-      "files_content": "{count} selected files will be permanently deleted.",
-      "removable_files_content": "All {count} removable files will be permanently deleted.",
+      "files_content": "{count} selected items will be permanently deleted.",
+      "removable_files_content": "All {count} removable items will be permanently deleted.",
       "folder_content": "The folder '{folder}' will be permanently deleted.",
-      "checkbox": "Delete permanently (cannot be undone)",
       "ok": "Delete",
       "file_success": "The file '{file}' has been permanently deleted.",
-      "files_success": "{count} selected files have been permanently deleted.",
+      "files_success": "{count} selected items have been permanently deleted.",
       "folder_success": "The folder '{folder}' has been permanently deleted.",
       "file_error": "Failed to permanently delete the file.",
-      "files_error": "Failed to permanently delete selected files.",
-      "folder_error": "Failed to permanently delete the folder."
+      "files_error": "Failed to permanently delete selected items.",
+      "folder_error": "Failed to permanently delete the folder.",
+      "checkbox": "Delete permanently (cannot be undone)"
     },
     "trash_failed": {
       "title": "Trash failed",
       "file_content": "The file '{file}' could not be moved to trash.\n\nDo you want to permanently delete it instead?",
-      "files_content": "{count} selected files could not be moved to trash.\n\nDo you want to permanently delete them instead?",
-      "folder_content": "The folder '{folder}' could not be moved to trash.\n\nDo you want to permanently delete it instead?\n\nThis cannot be undone through the system Trash.",
-      "folder_partial_warning": "The previous attempt may have moved some contents to Trash. Permanent deletion will remove this folder and its remaining contents.",
+      "files_content": "{count} selected items could not be moved to trash.\n\nDo you want to permanently delete them instead?",
+      "folder_content": "The folder '{folder}' could not be moved to trash.\n\nDo you want to permanently delete it instead?\n\nThis cannot be undone through the system trash.",
+      "folder_partial_warning": "The previous attempt may have moved some contents to trash.",
       "ok": "Delete permanently"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Short title",
+      "e_headline": "Headline for publication",
+      "comments": "Describe the content or add context",
+      "e_artist": "Name",
+      "e_artist_hint": "One per line",
+      "e_copyright": "© {year} Name"
+    },
+    "edit_metadata_no_fields": "Select at least one Organization field in Customize Fields before editing metadata.",
+    "edit_metadata": "Edit metadata",
+    "metadata_save_failed": "Could not save metadata",
     "paths_copied": "{count} file path(s) copied to clipboard",
     "copy_path": "Copy file path",
     "copy_path_failed": "Failed to copy file path",
@@ -1269,7 +1310,7 @@
     "organization": "Organization",
     "file": "File",
     "capture": "Capture",
-    "source_metadata": "Source metadata",
+    "source_metadata": "Other Details",
     "source_description": "Original description",
     "coordinates": "Coordinates",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "Preparing compatible playback...",
     "failed": "Video could not be played",
     "errors": {
+      "playback_failed": "Playback failed",
       "aborted": "Video loading was canceled",
       "network": "Network error while loading video",
       "decode": "Video decoding error",
       "format": "Unsupported video format or the file is corrupted.",
-      "external_player_recommended": "This video needs compatibility transcoding before it can play here. For long videos, lappp recommends using an external player instead of waiting for background processing.",
+      "external_player_recommended": "This video needs compatibility transcoding before it can play here. For long videos, Lap recommends using an external player instead of waiting for background processing.",
       "unsafe_webview": "This video format is not supported for playback.",
       "open_in_external_app": "Open in external player",
       "open_in_external_app_named": "Open video in {app}...",
       "use_external": "To open unsupported formats, set up an external player in Settings.",
       "use_external_generic": "Try opening it in the external player.",
       "use_external_with_app": "Try opening in {app} instead.",
-      "unknown": "Unknown error",
-      "playback_failed": "Video playback failed"
+      "unknown": "Unknown error"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "Paired files",
-      "clipboard_both": "Both files",
-      "clipboard_raw": "RAW only",
-      "clipboard_jpeg": "JPEG/HEIC only",
-      "clipboard_hint": "Also applies to copying file paths. Does not affect copying or moving files to folders.",
       "pair_source": "Default display for pairs",
       "pair_source_hint": "Used for paired thumbnails and previews",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Default preview source",
       "preview_source_hint": "Falls back to the other source if unavailable",
-      "rawRenderBrightness": "Rendering brightness",
-      "option_embedded": "Embedded first",
-      "option_rendered": "Render RAW first",
-      "option_original": "Original exposure",
-      "option_brightened": "Brightened",
-      "brightness_hint": "Applies only to RAW rendering",
-      "switch_to": "Switch to {source}",
+      "option_embedded": "Embedded Preview",
+      "option_rendered": "Render RAW",
+      "option_brightened": "Auto Brighten",
       "show_pair": "Show paired {format}",
-      "source_embedded": "Embedded",
-      "source_rendered": "Rendered",
-      "source_brightened": "Brightened",
-      "preview_mode": "RAW preview mode"
+      "source_embedded": "Embedded Preview",
+      "source_rendered": "Render RAW",
+      "source_brightened": "Auto Brighten",
+      "preview_mode": "RAW preview mode",
+      "clipboard_both": "Both files",
+      "clipboard_raw": "RAW only",
+      "clipboard_jpeg": "JPEG/HEIC only",
+      "clipboard_hint": "Also applies to copying file paths. Does not affect copying or moving files to folders.",
+      "rawRenderBrightness": "Rendering brightness",
+      "option_original": "Original exposure",
+      "brightness_hint": "Applies only to RAW rendering",
+      "switch_to": "Switch to {source}"
     },
     "metadata": {
       "title": "Metadata",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "The multilingual photo search model is not installed. Download it to enable search in 50+ languages.",
       "download": "Download",
       "downloading_multilingual_model": "Downloading multilingual model",
-      "multilingual_model_download_success": "Multilingual search model is ready. Restart lappp to use it.",
+      "multilingual_model_download_success": "Multilingual search model is ready. Restart Lap to use it.",
       "multilingual_model_download_failed": "Failed to download multilingual search model",
       "similarity": "Search similarity",
       "similarity_hint": "Controls visual matches for keyword searches",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Zoom in",
         "zoom_out": "Zoom out",
         "zoom_fit": "Toggle actual size / fit to window",
+        "cycle_raw_preview": "Cycle RAW Preview Mode",
         "toggle_af_areas": "Toggle AF areas",
         "cycle_background": "Cycle background",
         "open_new_window": "View in new window",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_section": "File deletion",
+      "file_delete_behavior": "When deleting files",
+      "file_delete_trash_hint": "Move a single file to trash without confirmation",
+      "file_delete_permanent_hint": "Always confirm before permanent deletion",
       "title": "Advanced",
       "external_app": {
         "section_external_apps": "External apps",

@@ -158,12 +158,14 @@ pub fn select_folder(
 }
 
 
+/// Copy up to 10 content items to the clipboard (a paired item has two files).
 #[tauri::command]
 pub async fn copy_images(
     app_handle: tauri::AppHandle,
     file_paths: Vec<String>,
+    files_only: bool,
 ) -> Result<usize, String> {
-    t_pasteboard::copy_files_to_clipboard(&app_handle, file_paths).await
+    t_pasteboard::copy_files_to_clipboard(&app_handle, file_paths, files_only).await
 }
 
 
@@ -206,6 +208,11 @@ pub async fn set_desktop_wallpaper(
         .unwrap_or_else(|| file_path.to_string());
     if !Path::new(&source_path).is_file() {
         return Err("Wallpaper source file does not exist".to_string());
+    }
+    if !t_utils::content_readable(&source_path) {
+        return Err(format!(
+            "File is online-only. Download it in your cloud storage app first: {source_path}"
+        ));
     }
 
     #[cfg(target_os = "macos")]
@@ -384,42 +391,34 @@ pub async fn has_importable_clipboard(_app_handle: tauri::AppHandle) -> bool {
 }
 
 
+/// Import copied image files while preserving their original format and
+/// metadata. Fall back to a PNG only when the clipboard contains pixels
+/// without a backing file, such as a screenshot.
 #[tauri::command]
 pub async fn import_clipboard(
     _app_handle: tauri::AppHandle,
     folder_id: i64,
     folder_path: &str,
+    group_raw_jpeg_pairs: bool,
 ) -> Result<Vec<AFile>, String> {
     #[cfg(target_os = "linux")]
     {
         let clipboard_data = crate::t_pasteboard::get_clipboard_import_data(&_app_handle).await?;
-        let mut file_error = None;
         if !clipboard_data.file_paths.is_empty() {
-            let mut imported = Vec::new();
-            for path in clipboard_data
-                .file_paths
-                .iter()
-                .map(std::path::Path::new)
-                .filter(|path| path.is_file())
-            {
-                let supported = path.to_str().and_then(t_utils::get_file_type).is_some();
-                if !supported {
-                    continue;
+            match lappp_core::t_cmds::import_clipboard_paths(
+                &clipboard_data.file_paths,
+                folder_id,
+                folder_path,
+                group_raw_jpeg_pairs,
+            ) {
+                Ok(files) if !files.is_empty() || clipboard_data.png.is_none() => return Ok(files),
+                Err(error)
+                    if clipboard_data.png.is_none()
+                        || error.starts_with("clipboard_pair_failed:") =>
+                {
+                    return Err(error);
                 }
-                match import_clipboard_file(path, folder_id, folder_path) {
-                    Ok(file) => imported.push(file),
-                    Err(error) => {
-                        eprintln!(
-                            "Failed to import clipboard file {}: {}",
-                            path.display(),
-                            error
-                        );
-                        file_error.get_or_insert(error);
-                    }
-                }
-            }
-            if !imported.is_empty() {
-                return Ok(imported);
+                _ => {}
             }
         }
 
@@ -439,39 +438,18 @@ pub async fn import_clipboard(
                 }
             };
         }
-
-        if !clipboard_data.file_paths.is_empty() {
-            return file_error.map_or_else(|| Ok(Vec::new()), Err);
-        }
     }
 
     let mut clipboard =
         arboard::Clipboard::new().map_err(|e| format!("Failed to open clipboard: {}", e))?;
     if let Ok(file_paths) = clipboard.get().file_list() {
         if !file_paths.is_empty() {
-            let mut file_error = None;
-            let mut imported = Vec::new();
-            for path in file_paths.iter().filter(|path| path.is_file()) {
-                let supported = path.to_str().and_then(t_utils::get_file_type).is_some();
-                if !supported {
-                    continue;
-                }
-                match import_clipboard_file(path, folder_id, folder_path) {
-                    Ok(file) => imported.push(file),
-                    Err(error) => {
-                        eprintln!(
-                            "Failed to import clipboard file {}: {}",
-                            path.display(),
-                            error
-                        );
-                        file_error.get_or_insert(error);
-                    }
-                }
-            }
-            if !imported.is_empty() {
-                return Ok(imported);
-            }
-            return file_error.map_or_else(|| Ok(Vec::new()), Err);
+            return lappp_core::t_cmds::import_clipboard_paths(
+                file_paths,
+                folder_id,
+                folder_path,
+                group_raw_jpeg_pairs,
+            );
         }
     }
 
@@ -1286,13 +1264,27 @@ pub async fn sync_album_folder_mtimes(
 }
 
 
+/// Reconcile RAW pairs from files already indexed in the current library.
 #[tauri::command]
-pub async fn refresh_album_subfolders(
-    album_id: i64,
-    folder_path: String,
+pub async fn reconcile_raw_jpeg_pairs(
+    library_id: String,
+    enabled: bool,
 ) -> Result<(), String>
 {
-    lappp_core::t_cmds::refresh_album_subfolders(album_id, folder_path).await
+    lappp_core::t_cmds::reconcile_raw_jpeg_pairs(library_id, enabled).await
+}
+
+
+/// Refresh the subfolder tree and synchronize the files directly in the folder.
+#[tauri::command]
+pub async fn refresh_album_folders(
+    album_id: i64,
+    folder_path: String,
+    library_id: String,
+    group_raw_jpeg_pairs: bool,
+) -> Result<lappp_core::t_utils::FolderMtimeSyncResult, String>
+{
+    lappp_core::t_cmds::refresh_album_folders(album_id, folder_path, library_id, group_raw_jpeg_pairs).await
 }
 
 
@@ -1380,9 +1372,10 @@ pub fn move_file(
     new_folder_path: &str,
     conflict_policy: &str,
     batch_id: Option<u64>,
+    group_raw_pairs: bool,
 ) -> Result<String, String>
 {
-    lappp_core::t_cmds::move_file(file_id, file_path, new_folder_id, new_folder_path, conflict_policy, batch_id)
+    lappp_core::t_cmds::move_file(file_id, file_path, new_folder_id, new_folder_path, conflict_policy, batch_id, group_raw_pairs)
 }
 
 
@@ -1407,9 +1400,10 @@ pub fn move_file_outside_library(
     new_folder_path: &str,
     conflict_policy: &str,
     batch_id: Option<u64>,
+    group_raw_pairs: bool,
 ) -> Result<String, String>
 {
-    lappp_core::t_cmds::move_file_outside_library(file_id, file_path, new_folder_path, conflict_policy, batch_id)
+    lappp_core::t_cmds::move_file_outside_library(file_id, file_path, new_folder_path, conflict_policy, batch_id, group_raw_pairs)
 }
 
 
@@ -1419,9 +1413,10 @@ pub fn copy_file(
     new_folder_path: &str,
     conflict_policy: &str,
     batch_id: Option<u64>,
+    group_raw_pairs: bool,
 ) -> Result<String, String>
 {
-    lappp_core::t_cmds::copy_file(file_path, new_folder_path, conflict_policy, batch_id)
+    lappp_core::t_cmds::copy_file(file_path, new_folder_path, conflict_policy, batch_id, group_raw_pairs)
 }
 
 
@@ -1437,6 +1432,32 @@ pub async fn import_file(
 }
 
 
+/// Import multiple files, pairing RAW+JPEG / Live Photo companions when
+/// enabled; returns (source path, error) pairs for the failed imports.
+#[tauri::command]
+pub async fn import_files(
+    library_id: String,
+    file_paths: Vec<String>,
+    folder_id: i64,
+    folder_path: String,
+    group_raw_jpeg_pairs: bool,
+    on_progress: tauri::ipc::Channel<usize>,
+) -> Result<Vec<(String, String)>, String>
+{
+    lappp_core::t_cmds::import_files(
+        library_id,
+        file_paths,
+        folder_id,
+        folder_path,
+        group_raw_jpeg_pairs,
+        move |processed| {
+            let _ = on_progress.send(processed);
+        },
+    )
+    .await
+}
+
+
 #[tauri::command]
 pub fn import_and_organize(
     album_id: i64,
@@ -1444,9 +1465,10 @@ pub fn import_and_organize(
     destination_path: String,
     layout: String,
     completed_paths: Vec<String>,
+    group_raw_jpeg_pairs: bool,
 ) -> Result<(), String>
 {
-    lappp_core::t_cmds::import_and_organize(album_id, source_path, destination_path, layout, completed_paths)
+    lappp_core::t_cmds::import_and_organize(album_id, source_path, destination_path, layout, completed_paths, group_raw_jpeg_pairs)
 }
 
 
@@ -1481,16 +1503,16 @@ pub async fn import_file_bytes(
 
 
 #[tauri::command]
-pub fn delete_file(file_id: i64, file_path: &str) -> Result<BatchDeleteResult, String>
+pub fn delete_file(file_id: i64, file_path: &str, group_raw_pairs: bool) -> Result<BatchDeleteResult, String>
 {
-    lappp_core::t_cmds::delete_file(file_id, file_path)
+    lappp_core::t_cmds::delete_file(file_id, file_path, group_raw_pairs)
 }
 
 
 #[tauri::command]
-pub fn delete_file_permanently(file_id: i64, file_path: &str) -> Result<BatchDeleteResult, String>
+pub fn delete_file_permanently(file_id: i64, file_path: &str, group_raw_pairs: bool) -> Result<BatchDeleteResult, String>
 {
-    lappp_core::t_cmds::delete_file_permanently(file_id, file_path)
+    lappp_core::t_cmds::delete_file_permanently(file_id, file_path, group_raw_pairs)
 }
 
 
@@ -1505,16 +1527,22 @@ pub fn delete_db_file(file_id: i64) -> Result<usize, String>
 pub async fn batch_delete_files(
     files: Vec<BatchDeleteFile>,
     permanently: bool,
+    group_raw_pairs: bool,
+    selection: Option<lappp_core::t_cmds::FileDeleteSelection>,
 ) -> Result<BatchDeleteResult, String>
 {
-    lappp_core::t_cmds::batch_delete_files(files, permanently).await
+    lappp_core::t_cmds::batch_delete_files(files, permanently, group_raw_pairs, selection).await
 }
 
 
 #[tauri::command]
-pub fn edit_file_comment(file_id: i64, comment: &str) -> Result<usize, String>
+pub fn edit_file_metadata(
+    library_id: String,
+    file_ids: Vec<i64>,
+    changes: HashMap<String, String>,
+) -> Result<(), String>
 {
-    lappp_core::t_cmds::edit_file_comment(file_id, comment)
+    lappp_core::t_cmds::edit_file_metadata(library_id, file_ids, changes)
 }
 
 
@@ -1645,19 +1673,6 @@ pub async fn refresh_selected_file_info(
 ) -> Result<Option<FileRefreshResult>, String>
 {
     lappp_core::t_cmds::refresh_selected_file_info(library_id, file_id, batch_id, thumbnail_size, raw_display_options).await
-}
-
-
-#[tauri::command]
-pub async fn index_cloud_file(
-    library_id: String,
-    batch_id: Option<u64>,
-    file_id: i64,
-    thumbnail_size: u32,
-    raw_display_options: RawDisplayOptions,
-) -> Result<Option<FileRefreshResult>, String>
-{
-    lappp_core::t_cmds::index_cloud_file(library_id, batch_id, file_id, thumbnail_size, raw_display_options).await
 }
 
 
@@ -2014,10 +2029,11 @@ pub fn similar_start_scan(
     params: Option<QueryParams>,
     collection_id: Option<i64>,
     file_ids: Option<Vec<i64>>,
+    group_raw_pairs: bool,
     keep_rules: Option<lappp_core::t_dedup::KeepRules>,
 ) -> Result<(), String>
 {
-    lappp_core::t_cmds::similar_start_scan(scope_key, source_version, similarity_threshold, params, collection_id, file_ids, keep_rules)
+    lappp_core::t_cmds::similar_start_scan(scope_key, source_version, similarity_threshold, params, collection_id, file_ids, group_raw_pairs, keep_rules)
 }
 
 
@@ -2040,9 +2056,10 @@ pub fn similar_get_eligible_count(
     params: Option<QueryParams>,
     collection_id: Option<i64>,
     file_ids: Option<Vec<i64>>,
+    group_raw_pairs: bool,
 ) -> Result<u64, String>
 {
-    lappp_core::t_cmds::similar_get_eligible_count(params, collection_id, file_ids)
+    lappp_core::t_cmds::similar_get_eligible_count(params, collection_id, file_ids, group_raw_pairs)
 }
 
 
@@ -2058,16 +2075,16 @@ pub fn similar_list_groups(
 
 
 #[tauri::command]
-pub fn similar_get_overview(scope_key: String) -> Result<serde_json::Value, String>
+pub fn similar_get_overview(scope_key: String, group_raw_pairs: bool) -> Result<serde_json::Value, String>
 {
-    lappp_core::t_cmds::similar_get_overview(scope_key)
+    lappp_core::t_cmds::similar_get_overview(scope_key, group_raw_pairs)
 }
 
 
 #[tauri::command]
-pub fn similar_get_group(group_id: i64, scope_key: String) -> Result<serde_json::Value, String>
+pub fn similar_get_group(group_id: i64, scope_key: String, group_raw_pairs: bool) -> Result<serde_json::Value, String>
 {
-    lappp_core::t_cmds::similar_get_group(group_id, scope_key)
+    lappp_core::t_cmds::similar_get_group(group_id, scope_key, group_raw_pairs)
 }
 
 
@@ -2195,16 +2212,20 @@ pub fn dedup_list_groups(
     page_size: u32,
     sort_by: String, // E.g., "size_desc", "count_desc"
     filter: String,  // E.g., "all", "unreviewed"
+    group_raw_pairs: bool,
 ) -> Result<Vec<lappp_core::t_dedup::DedupGroup>, String>
 {
-    lappp_core::t_cmds::dedup_list_groups(page, page_size, sort_by, filter)
+    lappp_core::t_cmds::dedup_list_groups(page, page_size, sort_by, filter, group_raw_pairs)
 }
 
 
 #[tauri::command]
-pub fn dedup_get_overview() -> Result<lappp_core::t_dedup::DedupOverview, String>
+pub async fn dedup_get_overview(
+    library_id: String,
+    group_raw_pairs: bool,
+) -> Result<lappp_core::t_dedup::DedupOverview, String>
 {
-    lappp_core::t_cmds::dedup_get_overview()
+    lappp_core::t_cmds::dedup_get_overview(library_id, group_raw_pairs).await
 }
 
 
@@ -2216,6 +2237,16 @@ pub fn dedup_set_keep(
 ) -> Result<(), String>
 {
     lappp_core::t_cmds::dedup_set_keep(group_id, file_id, group_raw_pairs)
+}
+
+
+#[tauri::command]
+pub fn dedup_get_group_items(
+    group_id: i64,
+    group_raw_pairs: bool,
+) -> Result<Vec<lappp_core::t_dedup::DedupGroupItem>, String>
+{
+    lappp_core::t_cmds::dedup_get_group_items(group_id, group_raw_pairs)
 }
 
 

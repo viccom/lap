@@ -38,14 +38,14 @@
     "drop_action": "Hozzáadás",
     "drop_title_hint": "Húzza ide a hozzáadáshoz",
     "empty_drop_hint": "Húzza az elemeket a fenti gyűjteményre.",
-    "added_toast": "{count} fájl hozzáadva",
-    "add_failed_toast": "A fájlok nem adhatók {count} gyűjteményhez",
-    "already_exists_toast": "{count} fájl már a gyűjteményben van",
+    "added_toast": "{count} elem hozzáadva a gyűjteményhez",
+    "add_failed_toast": "Nem sikerült elemeket hozzáadni {count} gyűjteményhez",
+    "already_exists_toast": "{count} elem már a gyűjteményben van",
     "clear": "Gyűjtemény ürítése",
     "clear_confirm_title": "Gyűjtemény ürítése",
     "clear_confirm_message": "Eltávolít minden fájlt innen: „{name}”? A fájlok megmaradnak.",
     "clear_confirm_ok": "Ürítés",
-    "removed_toast": "{count} fájl eltávolítva"
+    "removed_toast": "{count} elem eltávolítva a gyűjteményből"
   },
   "library": {
     "all_files": "Minden fájl",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Offline",
+    "download_to_open": "A megnyitás előtt töltse le ezt a fényképet a felhőtárhely alkalmazásában.",
     "cloud_only": "Csak online érhető el",
     "cloud_only_pending": "Csak online érhető el — hiányos fájlinformációk",
     "original_unavailable": "Az eredeti fájl nem érhető el",
@@ -255,7 +256,7 @@
     "section_folders": "Mappa kiválasztása",
     "section_status": "Importálás állapota",
     "to_import": "Importálandó",
-    "files_progress": "{processed} / {total} fájl ({size})",
+    "files_progress": "{processed} / {total} elem ({size})",
     "source": "Forrás",
     "source_placeholder": "Forrásmappa kiválasztása",
     "destination": "Cél",
@@ -266,7 +267,7 @@
     "layout_structure": "Mappaszerkezet megőrzése",
     "import": "Importálás",
     "preparing": "Importálás előkészítése",
-    "importing": "Fájlok importálása",
+    "importing": "Elemek importálása",
     "complete": "Importálás kész",
     "cancelled": "Importálás megszakítva",
     "continue": "Folytatás",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Kezdés új albummal",
-    "add_album_description": "Válasszon mappát, a lappp pedig rendszerezi a fotókat és videókat.",
+    "add_album_description": "Válasszon mappát, a Lap pedig rendszerezi a fotókat és videókat.",
     "smart_album_title": "Rendezés intelligens albumokkal",
     "smart_album_description": "Szabályokkal automatikusan csoportosíthatja a feltételeknek megfelelő fotókat.",
     "collection_title": "Fotók gyűjteményekbe rendezése",
@@ -296,23 +297,6 @@
     "unknown_lens": "Ismeretlen objektív",
     "semantic_matches": "Vizuális egyezések",
     "text_matches": "Szöveges egyezések",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "Beolvasásra vár",
       "indexing": "Beolvasás... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Fájl kihagyása és folytatás",
         "file_label": "Utolsó beolvasott fájl",
         "message": "Az előző beolvasás nem állt le megfelelően.",
-        "message_with_file": "Az előző beolvasás nem állt le megfelelően.\n\nUtolsó beolvasott fájl:\n{file}\n\nFolytatáskor a lappp egyszer kihagyja ezt a fájlt, majd folytatja a beolvasást."
+        "message_with_file": "Az előző beolvasás nem állt le megfelelően.\n\nUtolsó beolvasott fájl:\n{file}\n\nFolytatáskor a Lap egyszer kihagyja ezt a fájlt, majd folytatja a beolvasást."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Kedvenc mappák"
   },
   "rating": {
+    "mixed": "Vegyes",
     "title": "Értékelések",
     "unrated": "Nincs értékelve",
     "all_rated": "Mind értékelt",
     "rated": "Értékelt",
-    "mixed": "Vegyes",
     "clear_rating": "Értékelés törlése",
     "five_stars": "5 csillag",
     "four_stars": "4 csillag",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Csak kedvencek",
-      "select_mode": "Többszörös kijelölés",
-      "select_files": "Fájlok kijelölése",
-      "show_selection_panel": "Többszörös kijelölési panel megnyitása",
-      "hide_selection_panel": "Többszörös kijelölési panel összecsukása",
-      "exit_select_mode": "Kilépés a többszörös kijelölésből",
+      "show_selection_panel": "Kijelölési panel megnyitása",
+      "exit_selection_mode": "Kilépés a kijelölési módból",
       "select_count": "{count} kijelölve",
       "group_type_options": [
         "Nincs",
@@ -516,14 +514,16 @@
         "Csak RAW",
         "Videók"
       ],
-      "file_type_other": "Egyéb"
+      "file_type_other": "Egyéb",
+      "select_mode": "Többszörös kijelölés",
+      "select_files": "Fájlok kijelölése",
+      "hide_selection_panel": "Többszörös kijelölési panel összecsukása",
+      "exit_select_mode": "Kilépés a többszörös kijelölésből"
     },
     "tooltip": {
       "restore": "Visszaállítás",
       "refresh": "Frissítés",
-      "show_info": "Adatok megjelenítése",
-      "hide_info": "Adatok elrejtése",
-      "open_dedup": "Duplikátumok és hasonlók keresése",
+      "info": "Információk",
       "clear_history": "Keresési előzmények törlése",
       "index_faces": "Arcok indexelése",
       "sort": "Rendezés",
@@ -534,7 +534,10 @@
       "back": "Vissza",
       "scanning": "Beolvasás…",
       "scan_paused": "Beolvasás szünetel",
-      "scan_queued": "Beolvasásra vár"
+      "scan_queued": "Beolvasásra vár",
+      "show_info": "Adatok megjelenítése",
+      "hide_info": "Adatok elrejtése",
+      "open_dedup": "Duplikátumok és hasonlók keresése"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Korrekció"
     ],
     "empty_title": "A lista üres",
-    "empty_desc": "Adjon hozzá fájlokat, vagy módosítsa a szűrőt az elemek megjelenítéséhez.",
-    "select_hint": "Nincs kijelölt fájl",
+    "empty_desc": "Adjon hozzá elemeket, vagy módosítsa a szűrőt az elemek megjelenítéséhez.",
+    "select_hint": "Nincs kijelölt elem",
     "deselect": "Kijelölés törlése",
-    "select_mode_entered": "Többszörös kijelölés bekapcsolva",
-    "selection_load_failed": "Nem tölthető be minden fájl a kijelöléshez. Próbálja újra.",
+    "selection_load_failed": "Nem tölthető be minden elem a kijelöléshez. Próbálja újra.",
     "large_batch": {
       "title": "Tömeges művelet megerősítése",
-      "content": "A művelet {count} fájlt dolgoz fel, és időbe telhet. Folytatja?",
+      "content": "A művelet {count} elemet dolgoz fel, és időbe telhet. Folytatja?",
       "ok": "Folytatás"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Megtartás",
       "unkeep_label": "Megtartás törlése",
       "delete_selected": "Kijelöltek törlése",
+      "trash_all": "Összes áthelyezése a kukába",
       "delete_all": "Összes törlése",
       "move_selected_to_trash": "Kukába helyezés ({count} kijelölve · {size})",
-      "no_removable_files": "Nincs kukába helyezhető fájl",
+      "no_removable_files": "Nincs kukába helyezhető eltávolítható elem",
       "set_keep": "Megtartás",
       "removable_copies_summary": "{count} törölhető példány · {size}",
+      "similar_items_summary": "{count} hasonló elem · {size}",
       "similar_photos_summary": "{count} hasonló fotó · {size}"
-    }
+    },
+    "select_mode_entered": "Többszörös kijelölés bekapcsolva"
   },
   "tooltip": {
     "loading": "Betöltés...",
@@ -694,9 +699,9 @@
       "success": "Háttérkép frissítve",
       "failed": "A háttérkép nem állítható be"
     },
-    "refresh_subfolders": {
-      "success": "Almappák frissítve",
-      "failed": "Az almappák nem frissíthetők"
+    "refresh_folders": {
+      "success": "Mappák frissítve",
+      "failed": "Az mappák nem frissíthetők"
     },
     "copy_image": {
       "success": "{count} fájl a vágólapra másolva",
@@ -727,12 +732,17 @@
     },
     "album_exists": "Ez az album már létezik",
     "album_nested": "A mappa átfed egy másik albumot",
+    "refresh_subfolders": {
+      "success": "Almappák frissítve",
+      "failed": "Az almappák nem frissíthetők"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "{count} fájl ({size})"
+    "files_summary": "{count} fájl ({size})",
+    "items_summary": "{count} elem ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Kizárás a keresésből",
       "remove": "Eltávolítás",
       "delete_folder": "Mappa törlése",
+      "refresh_folders": "Mappák frissítése",
       "refresh_subfolders": "Almappák frissítése"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Megjelenítés a Finderben...",
       "reveal_in_file_explorer": "Megjelenítés a Fájlkezelőben...",
       "refresh_file_info": "Fájladatok frissítése",
-      "index_cloud_files": "Letöltés, indexelés, majd tárhely felszabadítása",
       "set_album_cover": "Beállítás albumborítóként",
       "set_as": "Beállítás mint",
       "set_desktop_wallpaper": "Beállítás háttérképként",
@@ -804,6 +814,7 @@
       "xmp_save_success": "XMP-metaadatok mentve {count} fájlhoz",
       "xmp_save_failed": "Az XMP mentése sikertelen {count} fájlnál",
       "comment": "Leírás…",
+      "index_cloud_files": "Letöltés, indexelés, majd tárhely felszabadítása",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "OK",
+    "save": "Mentés",
     "discard": "Elvetés",
     "reset": "Alaphelyzet",
     "cancel": "Mégse",
@@ -994,42 +1006,60 @@
       "invalid": "Adjon meg egy nevet és egy pozitív egész kezdőszámot.",
       "success": "{count} elem átnevezve."
     },
+    "file_delete": {
+      "permanent_summary": "{count} fájl véglegesen törlődik.",
+      "trash_summary": "{count} fájl a kukába kerül.",
+      "title": "Véglegesen töröl {count} fájlt?",
+      "confirm": "{count} fájl törlése",
+      "irreversible": "Ez a művelet nem vonható vissza.",
+      "mixed_hint": "Csak a RAW-párokra vonatkozik. A többi kijelölt elem mindig teljesen törlődik.",
+      "trash_unavailable": "A fájlok nem helyezhetők át a kukába. Lehet, hogy ezen a meghajtón nem érhető el a kuka."
+    },
+    "raw_pair_delete": {
+      "scope": "Törlendő RAW-pár fájlok",
+      "both": "Mindkét fájl",
+      "raw": "Csak RAW",
+      "companion": "Csak JPEG / HEIC",
+      "format": "Csak {format}",
+      "failed": "Sikertelen törlések: {count}."
+    },
+    "folder_delete_contents": "Ez minden fájlra és almappára vonatkozik.",
     "move_to_trash": {
       "title": "Kukába helyezés",
       "file_content": "A(z) \"{file}\" fájl a kukába kerül.",
-      "files_content": "{count} kiválasztott fájl a kukába kerül.",
-      "removable_files_content": "Az összes {count} eltávolítható fájl a kukába kerül.",
-      "raw_jpeg_companions_content": "{count} RAW+JPEG kísérőfájl is törlődik.",
+      "files_content": "{count} kiválasztott elem a kukába kerül.",
+      "removable_files_content": "Az összes {count} eltávolítható elem a kukába kerül.",
       "folder_content": "A(z) \"{folder}\" mappa a kukába kerül.",
       "ok": "Kukába",
       "file_success": "A(z) \"{file}\" fájl a kukába került.",
-      "files_success": "{count} kiválasztott fájl a kukába került.",
+      "files_success": "{count} kiválasztott elem a kukába került.",
       "folder_success": "A(z) \"{folder}\" mappa a kukába került.",
       "file_error": "Nem sikerült áthelyezni a fájlt a kukába.",
-      "files_error": "Nem sikerült a kiválasztott fájlokat a kukába helyezni.",
-      "folder_error": "Nem sikerült a mappát a kukába helyezni."
+      "files_error": "Nem sikerült a kiválasztott elemeket a kukába helyezni.",
+      "folder_error": "Nem sikerült a mappát a kukába helyezni.",
+      "raw_jpeg_companions_content": "{count} RAW+JPEG kísérőfájl is törlődik."
     },
     "permanent_delete": {
       "title": "Végleges törlés",
       "file_content": "A(z) \"{file}\" fájl véglegesen törlődik.",
-      "files_content": "{count} kiválasztott fájl véglegesen törlődik.",
-      "removable_files_content": "Az összes {count} eltávolítható fájl véglegesen törlődik.",
+      "files_content": "{count} kiválasztott elem véglegesen törlődik.",
+      "removable_files_content": "Az összes {count} eltávolítható elem véglegesen törlődik.",
       "folder_content": "A(z) \"{folder}\" mappa véglegesen törlődik.",
-      "checkbox": "Végleges törlés (nem vonható vissza)",
       "ok": "Törlés",
       "file_success": "A(z) \"{file}\" fájl véglegesen törölve lett.",
-      "files_success": "{count} kiválasztott fájl véglegesen törölve lett.",
+      "files_success": "{count} kiválasztott elem véglegesen törölve lett.",
       "folder_success": "A(z) \"{folder}\" mappa véglegesen törölve lett.",
       "file_error": "Nem sikerült véglegesen törölni a fájlt.",
-      "files_error": "Nem sikerült véglegesen törölni a kiválasztott fájlokat.",
-      "folder_error": "Nem sikerült véglegesen törölni a mappát."
+      "files_error": "Nem sikerült véglegesen törölni a kiválasztott elemeket.",
+      "folder_error": "Nem sikerült véglegesen törölni a mappát.",
+      "checkbox": "Végleges törlés (nem vonható vissza)"
     },
     "trash_failed": {
       "title": "Sikertelen kukába helyezés",
       "file_content": "A(z) \"{file}\" fájl nem helyezhető át a kukába.\n\nEhelyett véglegesen törölni szeretné?",
-      "files_content": "{count} kiválasztott fájlt nem sikerült a kukába helyezni.\n\nEhelyett véglegesen törölni szeretné őket?",
+      "files_content": "{count} kiválasztott elemet nem sikerült a kukába helyezni.\n\nEhelyett véglegesen törölni szeretné őket?",
       "folder_content": "A(z) \"{folder}\" mappa nem helyezhető át a kukába.\n\nEhelyett véglegesen törölni szeretné?\n\nEz a művelet nem vonható vissza a rendszer Lomtárából.",
-      "folder_partial_warning": "Az előző kísérlet során a tartalom egy része a Lomtárba kerülhetett. A végleges törlés ezt a mappát és a megmaradt tartalmát törli.",
+      "folder_partial_warning": "Az előző kísérlet során a tartalom egy része a Lomtárba kerülhetett.",
       "ok": "Végleges törlés"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Rövid cím",
+      "e_headline": "Közzétételi cím",
+      "comments": "Írja le a tartalmat vagy adjon kontextust",
+      "e_artist": "Név",
+      "e_artist_hint": "Soronként egy",
+      "e_copyright": "© {year} Név"
+    },
+    "edit_metadata_no_fields": "A metaadatok szerkesztése előtt jelöljön ki legalább egy mezőt a Rendezés szakaszban, a mezők testreszabásánál.",
+    "edit_metadata": "Metaadatok szerkesztése",
+    "metadata_save_failed": "Nem sikerült menteni a metaadatokat",
     "paths_copied": "{count} fájlútvonal a vágólapra másolva",
     "copy_path": "Fájlútvonal másolása",
     "copy_path_failed": "Az útvonal másolása sikertelen",
@@ -1269,7 +1310,7 @@
     "organization": "Rendszerezés",
     "file": "Fájl",
     "capture": "Felvétel",
-    "source_metadata": "Forrásfájl metaadatai",
+    "source_metadata": "Egyéb információk",
     "source_description": "Eredeti leírás",
     "coordinates": "Koordináták",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "Kompatibilis lejátszás előkészítése...",
     "failed": "A videót nem lehetett lejátszani",
     "errors": {
+      "playback_failed": "A lejátszás sikertelen",
       "aborted": "A videó betöltése megszakadt",
       "network": "Hálózati hiba a videó betöltése közben",
       "decode": "Videó dekódolási hiba",
       "format": "Nem támogatott videoformátum, vagy a fájl sérült.",
-      "external_player_recommended": "A videó lejátszásához kompatibilis formátumba kell kódolni. Hosszú videóknál a lappp külső lejátszót javasol a háttérfeldolgozás kivárása helyett.",
+      "external_player_recommended": "A videó lejátszásához kompatibilis formátumba kell kódolni. Hosszú videóknál a Lap külső lejátszót javasol a háttérfeldolgozás kivárása helyett.",
       "unsafe_webview": "Ez a videóformátum nem játszható le.",
       "open_in_external_app": "Megnyitás külső lejátszóban",
       "open_in_external_app_named": "Videó megnyitása itt: {app}...",
       "use_external": "A nem támogatott formátumokhoz állítson be külső lejátszót.",
       "use_external_generic": "Próbálja külső lejátszóval megnyitni.",
       "use_external_with_app": "Próbálja inkább ezzel megnyitni: {app}.",
-      "unknown": "Ismeretlen hiba",
-      "playback_failed": "Video playback failed"
+      "unknown": "Ismeretlen hiba"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "Párosított fájlok",
-      "clipboard_both": "Mindkét fájl",
-      "clipboard_raw": "Csak RAW",
-      "clipboard_jpeg": "Csak JPEG/HEIC",
-      "clipboard_hint": "Az útvonalak másolására is érvényes. A mappákba másolást és áthelyezést nem érinti.",
       "pair_source": "A párok alapértelmezett megjelenítése",
       "pair_source_hint": "A párosított bélyegképek és előnézetek használják",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Alapértelmezett előnézeti forrás",
       "preview_source_hint": "Ha az elsődleges forrás nem elérhető, a másikat használja",
-      "rawRenderBrightness": "Feldolgozási fényerő",
-      "option_embedded": "Először a beágyazott",
-      "option_rendered": "RAW-feldolgozás először",
-      "option_original": "Eredeti expozíció",
-      "option_brightened": "Felderített",
-      "brightness_hint": "Csak RAW-feldolgozáskor érvényes",
-      "switch_to": "Váltás erre: {source}",
+      "option_embedded": "Beágyazott előnézet",
+      "option_rendered": "RAW feldolgozása",
+      "option_brightened": "Automatikus világosítás",
       "show_pair": "Párosított {format} megjelenítése",
-      "source_embedded": "Beágyazott",
-      "source_rendered": "Feldolgozott",
-      "source_brightened": "Felderített",
-      "preview_mode": "RAW-előnézet módja"
+      "source_embedded": "Beágyazott előnézet",
+      "source_rendered": "RAW feldolgozása",
+      "source_brightened": "Automatikus világosítás",
+      "preview_mode": "RAW-előnézet módja",
+      "clipboard_both": "Mindkét fájl",
+      "clipboard_raw": "Csak RAW",
+      "clipboard_jpeg": "Csak JPEG/HEIC",
+      "clipboard_hint": "Az útvonalak másolására is érvényes. A mappákba másolást és áthelyezést nem érinti.",
+      "rawRenderBrightness": "Feldolgozási fényerő",
+      "option_original": "Eredeti expozíció",
+      "brightness_hint": "Csak RAW-feldolgozáskor érvényes",
+      "switch_to": "Váltás erre: {source}"
     },
     "metadata": {
       "title": "Metaadatok",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Nagyítás",
         "zoom_out": "Kicsinyítés",
         "zoom_fit": "Tényleges méret / ablakhoz igazítás",
+        "cycle_raw_preview": "Váltás a RAW előnézeti módok között",
         "toggle_af_areas": "AF-területek megjelenítése/elrejtése",
         "cycle_background": "Háttér váltása",
         "open_new_window": "Megtekintés új ablakban",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "Fájlok törlésekor",
+      "file_delete_trash_hint": "Egyetlen fájl megerősítés nélkül a kukába kerül",
+      "file_delete_permanent_hint": "A végleges törléshez mindig megerősítés szükséges",
+      "file_delete_section": "Fájlok törlése",
       "title": "Speciális",
       "external_app": {
         "section_external_apps": "Külső alkalmazások",

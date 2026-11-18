@@ -6,6 +6,7 @@
 //! move in — the boundary guard in `guard.rs` keeps it that way.
 
 pub mod t_af_area;
+pub mod t_affinity;
 pub mod t_ai;
 pub mod t_ai_png;
 pub mod t_batch_rename;

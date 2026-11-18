@@ -38,14 +38,14 @@
     "drop_action": "추가",
     "drop_title_hint": "추가하려면 드롭",
     "empty_drop_hint": "항목을 컬렉션으로 드래그하여 추가하세요.",
-    "added_toast": "{count}개 파일을 컬렉션에 추가했습니다",
-    "add_failed_toast": "{count}개 컬렉션에 파일을 추가할 수 없습니다",
-    "already_exists_toast": "{count}개 파일이 이미 컬렉션에 있습니다",
+    "added_toast": "{count}개 항목을 컬렉션에 추가했습니다",
+    "add_failed_toast": "{count}개 컬렉션에 항목을 추가할 수 없습니다",
+    "already_exists_toast": "{count}개 항목이 이미 컬렉션에 있습니다",
     "clear": "컬렉션 비우기",
     "clear_confirm_title": "컬렉션 비우기",
     "clear_confirm_message": "\"{name}\"에서 모든 파일을 제거하시겠습니까? 파일 자체는 삭제되지 않습니다.",
     "clear_confirm_ok": "비우기",
-    "removed_toast": "{count}개 파일을 컬렉션에서 제거했습니다"
+    "removed_toast": "{count}개 항목을 컬렉션에서 제거했습니다"
   },
   "library": {
     "all_files": "모든 파일",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "오프라인",
+    "download_to_open": "이 사진을 열려면 먼저 클라우드 저장소 앱에서 다운로드하세요.",
     "cloud_only": "온라인에서만 사용 가능",
     "cloud_only_pending": "온라인에서만 사용 가능 — 파일 정보 미완성",
     "original_unavailable": "원본 파일에 접근할 수 없습니다",
@@ -255,7 +256,7 @@
     "section_folders": "폴더 선택",
     "section_status": "가져오기 상태",
     "to_import": "가져올 파일",
-    "files_progress": "{processed} / {total}개 파일 ({size})",
+    "files_progress": "{processed} / {total}개 항목 ({size})",
     "source": "원본",
     "source_placeholder": "원본 폴더 선택",
     "destination": "대상",
@@ -266,7 +267,7 @@
     "layout_structure": "폴더 구조 유지",
     "import": "가져오기",
     "preparing": "가져오기 준비 중",
-    "importing": "파일 가져오는 중",
+    "importing": "항목 가져오는 중",
     "complete": "가져오기 완료",
     "cancelled": "가져오기가 취소됨",
     "continue": "계속",
@@ -356,11 +357,11 @@
     "folders": "즐겨찾는 폴더"
   },
   "rating": {
+    "mixed": "혼합",
     "title": "평점",
     "unrated": "별점 없음",
     "all_rated": "모든 평점 있음",
     "rated": "평점 있음",
-    "mixed": "여러 값",
     "clear_rating": "별점 지우기",
     "five_stars": "5점",
     "four_stars": "4점",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "즐겨찾기만",
-      "select_mode": "다중 선택",
-      "select_files": "파일 선택",
-      "show_selection_panel": "다중 선택 패널 열기",
-      "hide_selection_panel": "다중 선택 패널 접기",
-      "exit_select_mode": "다중 선택 모드 종료",
+      "show_selection_panel": "선택 패널 열기",
+      "exit_selection_mode": "선택 모드 종료",
       "select_count": "{count}개 선택됨",
       "group_type_options": [
         "없음",
@@ -521,9 +519,7 @@
     "tooltip": {
       "restore": "복원",
       "refresh": "새로고침",
-      "show_info": "정보 보기",
-      "hide_info": "정보 숨기기",
-      "open_dedup": "중복 및 유사 사진 찾기",
+      "info": "정보",
       "clear_history": "기록 지우기",
       "index_faces": "얼굴 인덱싱",
       "sort": "정렬",
@@ -543,14 +539,13 @@
       "조정"
     ],
     "empty_title": "현재 목록이 비어 있습니다",
-    "empty_desc": "파일을 추가하거나 현재 필터를 업데이트해 여기에 항목을 표시하세요.",
-    "select_hint": "선택한 파일이 없습니다",
+    "empty_desc": "항목을 추가하거나 현재 필터를 업데이트해 여기에 표시하세요.",
+    "select_hint": "선택한 항목이 없습니다",
     "deselect": "선택 해제",
-    "select_mode_entered": "다중 선택 모드가 켜졌습니다",
-    "selection_load_failed": "선택할 모든 파일을 불러오지 못했습니다. 다시 시도하세요.",
+    "selection_load_failed": "선택할 모든 항목을 불러오지 못했습니다. 다시 시도하세요.",
     "large_batch": {
       "title": "일괄 작업 확인",
-      "content": "이 작업은 {count}개 파일을 처리하며 시간이 걸릴 수 있습니다. 계속하시겠습니까?",
+      "content": "이 작업은 {count}개 항목을 처리하며 시간이 걸릴 수 있습니다. 계속하시겠습니까?",
       "ok": "계속"
     },
     "drag_action": {
@@ -640,12 +635,13 @@
       "keep_label": "유지",
       "unkeep_label": "유지 안 함",
       "delete_selected": "선택 항목 삭제",
+      "trash_all": "모두 휴지통으로 이동",
       "delete_all": "모두 삭제",
       "move_selected_to_trash": "휴지통으로 이동 ({count}개 선택 · {size})",
-      "no_removable_files": "휴지통으로 이동할 삭제 가능한 파일이 없습니다",
+      "no_removable_files": "휴지통으로 이동할 삭제 가능한 항목이 없습니다",
       "set_keep": "유지",
       "removable_copies_summary": "삭제 가능한 사본 {count}개 · {size}",
-      "similar_photos_summary": "유사 사진 {count}장 · {size}"
+      "similar_items_summary": "유사 항목 {count}개 · {size}"
     }
   },
   "tooltip": {
@@ -694,9 +690,9 @@
       "success": "바탕 화면 배경이 업데이트되었습니다",
       "failed": "바탕 화면 배경을 설정하지 못했습니다"
     },
-    "refresh_subfolders": {
-      "success": "하위 폴더를 새로 고쳤습니다",
-      "failed": "하위 폴더를 새로 고치지 못했습니다"
+    "refresh_folders": {
+      "success": "폴더를 새로 고쳤습니다",
+      "failed": "폴더를 새로 고치지 못했습니다"
     },
     "copy_image": {
       "success": "{count}개 파일을 클립보드에 복사했습니다",
@@ -732,7 +728,8 @@
     }
   },
   "statusbar": {
-    "files_summary": "{count} 파일 ({size})"
+    "files_summary": "{count} 파일 ({size})",
+    "items_summary": "{count}개 항목 ({size})"
   },
   "menu": {
     "select": {
@@ -763,7 +760,7 @@
       "exclude_from_search": "검색에서 제외",
       "remove": "제거",
       "delete_folder": "폴더 삭제",
-      "refresh_subfolders": "하위 폴더 새로고침"
+      "refresh_folders": "폴더 새로고침"
     },
     "file": {
       "new_folder": "새 폴더",
@@ -793,7 +790,6 @@
       "reveal_in_finder": "Finder에서 보기...",
       "reveal_in_file_explorer": "탐색기에서 보기...",
       "refresh_file_info": "파일 정보 새로 고침",
-      "index_cloud_files": "다운로드 및 색인 생성 후 공간 확보",
       "set_album_cover": "앨범 커버로 설정",
       "set_as": "다음으로 설정",
       "set_desktop_wallpaper": "바탕 화면 배경으로 설정",
@@ -852,6 +848,7 @@
   },
   "msgbox": {
     "ok": "확인",
+    "save": "저장",
     "discard": "취소",
     "reset": "초기화",
     "cancel": "취소",
@@ -994,42 +991,58 @@
       "invalid": "이름과 양의 정수 시작 번호를 입력하세요.",
       "success": "{count}개 항목의 이름을 변경했습니다."
     },
+    "file_delete": {
+      "permanent_summary": "파일 {count}개가 영구 삭제됩니다.",
+      "trash_summary": "파일 {count}개가 휴지통으로 이동됩니다.",
+      "title": "파일 {count}개를 영구 삭제하시겠습니까?",
+      "confirm": "파일 {count}개 삭제",
+      "irreversible": "이 작업은 되돌릴 수 없습니다.",
+      "mixed_hint": "RAW 페어에만 적용됩니다. 다른 선택 항목은 항상 전체가 삭제됩니다.",
+      "trash_unavailable": "파일을 휴지통으로 이동할 수 없습니다. 이 드라이브에서 휴지통을 사용할 수 없을 수 있습니다."
+    },
+    "raw_pair_delete": {
+      "scope": "삭제할 RAW 페어 파일",
+      "both": "두 파일 모두",
+      "raw": "RAW만",
+      "companion": "JPEG / HEIC만",
+      "format": "{format}만",
+      "failed": "삭제 실패: {count}건."
+    },
+    "folder_delete_contents": "모든 파일과 하위 폴더가 포함됩니다.",
     "move_to_trash": {
       "title": "휴지통으로 이동",
       "file_content": "'{file}'을(를) 휴지통으로 이동합니다.",
-      "files_content": "{count}개의 파일을 휴지통으로 이동합니다.",
-      "removable_files_content": "삭제 가능한 {count}개의 모든 파일을 휴지통으로 이동합니다.",
-      "raw_jpeg_companions_content": "RAW+JPEG 연결 파일 {count}개도 함께 삭제됩니다.",
+      "files_content": "선택한 {count}개 항목을 휴지통으로 이동합니다.",
+      "removable_files_content": "삭제 가능한 {count}개 항목을 모두 휴지통으로 이동합니다.",
       "folder_content": "'{folder}'을(를) 휴지통으로 이동합니다.",
       "ok": "이동",
       "file_success": "'{file}'을(를) 휴지통으로 이동했습니다.",
-      "files_success": "{count}개의 파일을 휴지통으로 이동했습니다.",
+      "files_success": "선택한 {count}개 항목을 휴지통으로 이동했습니다.",
       "folder_success": "'{folder}'을(를) 휴지통으로 이동했습니다.",
       "file_error": "파일을 휴지통으로 이동하지 못했습니다.",
-      "files_error": "선택한 파일을 휴지통으로 이동하지 못했습니다.",
+      "files_error": "선택한 항목을 휴지통으로 이동하지 못했습니다.",
       "folder_error": "폴더를 휴지통으로 이동하지 못했습니다."
     },
     "permanent_delete": {
       "title": "영구 삭제",
       "file_content": "'{file}' 파일을 영구 삭제합니다.",
-      "files_content": "선택한 {count}개 파일을 영구 삭제합니다.",
-      "removable_files_content": "삭제 가능한 {count}개의 모든 파일을 영구 삭제합니다.",
+      "files_content": "선택한 {count}개 항목을 영구 삭제합니다.",
+      "removable_files_content": "삭제 가능한 {count}개 항목을 모두 영구 삭제합니다.",
       "folder_content": "'{folder}' 폴더를 영구 삭제합니다.",
-      "checkbox": "영구 삭제(되돌릴 수 없음)",
       "ok": "삭제",
       "file_success": "'{file}' 파일을 영구 삭제했습니다.",
-      "files_success": "선택한 {count}개 파일을 영구 삭제했습니다.",
+      "files_success": "선택한 {count}개 항목을 영구 삭제했습니다.",
       "folder_success": "'{folder}' 폴더를 영구 삭제했습니다.",
       "file_error": "파일을 영구 삭제하지 못했습니다.",
-      "files_error": "선택한 파일을 영구 삭제하지 못했습니다.",
+      "files_error": "선택한 항목을 영구 삭제하지 못했습니다.",
       "folder_error": "폴더를 영구 삭제하지 못했습니다."
     },
     "trash_failed": {
       "title": "휴지통으로 이동하지 못했습니다",
       "file_content": "파일 '{file}'을(를) 휴지통으로 이동할 수 없습니다.\n\n대신 영구적으로 삭제하시겠습니까?",
-      "files_content": "선택한 {count}개 파일을 휴지통으로 이동할 수 없습니다.\n\n대신 영구적으로 삭제하시겠습니까?",
+      "files_content": "선택한 {count}개 항목을 휴지통으로 이동할 수 없습니다.\n\n대신 영구적으로 삭제하시겠습니까?",
       "folder_content": "폴더 '{folder}'을(를) 휴지통으로 이동할 수 없습니다.\n\n대신 영구적으로 삭제하시겠습니까?\n\n이 작업은 시스템 휴지통을 통해 되돌릴 수 없습니다.",
-      "folder_partial_warning": "이전 시도로 일부 내용이 휴지통으로 이동했을 수 있습니다. 영구 삭제하면 이 폴더와 남아 있는 내용이 삭제됩니다.",
+      "folder_partial_warning": "이전 시도로 일부 내용이 휴지통으로 이동했을 수 있습니다.",
       "ok": "영구 삭제"
     },
     "open_external_many": {
@@ -1069,10 +1082,7 @@
       "cancelled": "취소됨",
       "complete": "완료",
       "succeeded": "업데이트됨: {count}",
-      "failed": "실패: {count}",
-      "release_requested": "공간 확보 요청: {count}",
-      "kept_local": "이 장치에 유지: {count}",
-      "kept_local_hint": "이 장치에 항상 유지하는 파일 또는 Windows가 Lap의 공간 확보를 허용하지 않은 파일입니다(제어된 폴더 액세스)."
+      "failed": "실패: {count}"
     },
     "image_editor": {
       "title": "편집",
@@ -1204,6 +1214,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "짧은 제목",
+      "e_headline": "게시용 제목",
+      "comments": "내용을 설명하거나 맥락 추가",
+      "e_artist": "이름",
+      "e_artist_hint": "한 줄에 한 명",
+      "e_copyright": "© {year} 이름"
+    },
+    "edit_metadata_no_fields": "메타데이터를 편집하려면 표시 항목 설정에서 정리 항목을 하나 이상 선택하세요.",
+    "edit_metadata": "메타데이터 편집",
+    "metadata_save_failed": "메타데이터를 저장하지 못했습니다",
     "paths_copied": "파일 경로 {count}개를 클립보드에 복사했습니다",
     "copy_path": "파일 경로 복사",
     "copy_path_failed": "파일 경로를 복사하지 못했습니다",
@@ -1269,7 +1290,7 @@
     "organization": "정리",
     "file": "파일",
     "capture": "촬영 정보",
-    "source_metadata": "원본 파일 메타데이터",
+    "source_metadata": "기타 정보",
     "source_description": "원본 설명",
     "coordinates": "좌표",
     "detail_fields": {
@@ -1365,6 +1386,7 @@
     "loading_compatible": "호환 재생을 준비 중...",
     "failed": "재생 실패",
     "errors": {
+      "playback_failed": "재생 실패",
       "aborted": "중단됨",
       "network": "네트워크 오류",
       "decode": "디코딩 오류",
@@ -1453,26 +1475,18 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "쌍을 이룬 파일",
-      "clipboard_both": "두 파일 모두",
-      "clipboard_raw": "RAW만",
-      "clipboard_jpeg": "JPEG/HEIC만",
-      "clipboard_hint": "파일 경로 복사에도 적용됩니다. 폴더로 복사하거나 이동하는 작업에는 영향을 주지 않습니다.",
       "pair_source": "쌍의 기본 표시",
       "pair_source_hint": "쌍을 이룬 썸네일과 미리보기에 사용됩니다",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "기본 미리보기 소스",
       "preview_source_hint": "우선 소스를 사용할 수 없으면 다른 소스를 사용합니다",
-      "rawRenderBrightness": "렌더링 밝기",
-      "option_embedded": "내장 미리보기 우선",
-      "option_rendered": "RAW 렌더링 우선",
-      "option_original": "원본 노출",
-      "option_brightened": "밝게",
-      "brightness_hint": "RAW 렌더링에만 적용됩니다",
-      "switch_to": "{source}(으)로 전환",
+      "option_embedded": "내장 미리보기",
+      "option_rendered": "RAW 렌더링",
+      "option_brightened": "자동 밝기 보정",
       "show_pair": "페어링된 {format} 표시",
-      "source_embedded": "내장",
-      "source_rendered": "렌더링",
-      "source_brightened": "밝게",
+      "source_embedded": "내장 미리보기",
+      "source_rendered": "RAW 렌더링",
+      "source_brightened": "자동 밝기 보정",
       "preview_mode": "RAW 미리보기 모드"
     },
     "metadata": {
@@ -1680,6 +1694,7 @@
         "zoom_in": "확대",
         "zoom_out": "축소",
         "zoom_fit": "실제 크기 / 창 맞춤 전환",
+        "cycle_raw_preview": "RAW 미리보기 모드 전환",
         "toggle_af_areas": "AF 영역 표시 전환",
         "cycle_background": "배경 전환",
         "open_new_window": "새 창에서 보기",
@@ -1727,6 +1742,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "파일 삭제 시 동작",
+      "file_delete_trash_hint": "파일 1개는 확인 없이 휴지통으로 이동합니다",
+      "file_delete_permanent_hint": "영구 삭제는 항상 확인이 필요합니다",
+      "file_delete_section": "파일 삭제",
       "title": "고급",
       "external_app": {
         "section_external_apps": "외부 앱",

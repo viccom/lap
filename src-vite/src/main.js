@@ -81,8 +81,10 @@ if (isMainWindow) {
   listen('config-settings-synced', async (event) => {
     const request = ++settingsSyncRequest
     if (isSettingsWindow) {
-      // Keep main-window choices in sync while preserving edits in Settings.
-      config.settings.deletePermanently = event.payload.deletePermanently === true
+      // Keep shared preferences in sync while preserving other edits in Settings.
+      if (event.payload.fileDeleteBehavior === 'trash' || event.payload.fileDeleteBehavior === 'permanent') {
+        config.settings.fileDeleteBehavior = event.payload.fileDeleteBehavior
+      }
       config.setLanguage(event.payload.language)
     } else {
       const { language, ...settings } = event.payload
@@ -181,6 +183,11 @@ if (isMainWindow) {
   listen('settings-language-changed', (event) => {
     config.setLanguage(event.payload, { fromUser: true })
   })
+  listen('settings-fileDeleteBehavior-changed', (event) => {
+    if (event.payload === 'trash' || event.payload === 'permanent') {
+      config.settings.fileDeleteBehavior = event.payload
+    }
+  })
   listen('settings-showToolTip-changed', (event) => {
     config.setShowToolTip(event.payload)
   })
@@ -208,17 +215,11 @@ if (isMainWindow) {
   listen('settings-thumbnailSize-changed', (event) => {
     config.setThumbnailSize(event.payload)
   })
-  listen('settings-rawPairClipboardMode-changed', (event) => {
-    config.setRawPairClipboardMode(event.payload)
-  })
   listen('settings-rawPairDisplaySource-changed', (event) => {
     config.setRawPairDisplaySource(event.payload)
   })
   listen('settings-rawPreviewSource-changed', (event) => {
     config.setRawPreviewSource(event.payload)
-  })
-  listen('settings-rawRenderBrightness-changed', (event) => {
-    config.setRawRenderBrightness(event.payload)
   })
   listen('settings-mapProvider-changed', (event) => {
     config.setMapProvider(event.payload)

@@ -38,14 +38,14 @@
     "drop_action": "Thêm",
     "drop_title_hint": "Thả để thêm",
     "empty_drop_hint": "Kéo các mục vào bộ sưu tập ở trên để thêm.",
-    "added_toast": "Đã thêm {count} tệp vào bộ sưu tập",
-    "add_failed_toast": "Không thể thêm tệp vào {count} bộ sưu tập",
-    "already_exists_toast": "{count} tệp đã có trong bộ sưu tập",
+    "added_toast": "Đã thêm {count} mục vào bộ sưu tập",
+    "add_failed_toast": "Không thể thêm mục vào {count} bộ sưu tập",
+    "already_exists_toast": "{count} mục đã có trong bộ sưu tập",
     "clear": "Làm trống bộ sưu tập",
     "clear_confirm_title": "Làm trống bộ sưu tập",
     "clear_confirm_message": "Gỡ bỏ tất cả tệp khỏi “{name}”? Tệp gốc sẽ không bị xóa.",
     "clear_confirm_ok": "Làm trống",
-    "removed_toast": "Đã gỡ bỏ {count} tệp khỏi bộ sưu tập"
+    "removed_toast": "Đã gỡ bỏ {count} mục khỏi bộ sưu tập"
   },
   "library": {
     "all_files": "Tất cả tệp",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Ngoại tuyến",
+    "download_to_open": "Hãy tải ảnh này xuống trong ứng dụng lưu trữ đám mây trước khi mở.",
     "cloud_only": "Chỉ có trực tuyến",
     "cloud_only_pending": "Chỉ có trực tuyến — thông tin chưa đầy đủ",
     "original_unavailable": "Tệp gốc không khả dụng",
@@ -255,7 +256,7 @@
     "section_folders": "Chọn thư mục",
     "section_status": "Trạng thái nhập",
     "to_import": "Cần nhập",
-    "files_progress": "{processed} / {total} tệp ({size})",
+    "files_progress": "{processed} / {total} mục ({size})",
     "source": "Nguồn",
     "source_placeholder": "Chọn thư mục nguồn",
     "destination": "Đích",
@@ -266,7 +267,7 @@
     "layout_structure": "Giữ cấu trúc thư mục",
     "import": "Nhập",
     "preparing": "Đang chuẩn bị nhập",
-    "importing": "Đang nhập tệp",
+    "importing": "Đang nhập mục",
     "complete": "Đã nhập xong",
     "cancelled": "Đã hủy nhập",
     "continue": "Tiếp tục",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Bắt đầu với một album mới",
-    "add_album_description": "Chọn một thư mục và để lappp sắp xếp ảnh và video của bạn.",
+    "add_album_description": "Chọn một thư mục và để Lap sắp xếp ảnh và video của bạn.",
     "smart_album_title": "Sắp xếp bằng album thông minh",
     "smart_album_description": "Dùng quy tắc để tự động nhóm các ảnh khớp với tiêu chí của bạn.",
     "collection_title": "Nhóm ảnh vào bộ sưu tập",
@@ -296,23 +297,6 @@
     "unknown_lens": "Ống kính không xác định",
     "semantic_matches": "Khớp về hình ảnh",
     "text_matches": "Khớp về văn bản",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "Đang chờ quét",
       "indexing": "Đang quét... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Bỏ qua tệp này và tiếp tục",
         "file_label": "Tệp được quét cuối cùng",
         "message": "Lần quét trước không kết thúc bình thường.",
-        "message_with_file": "Tác vụ quét trước đó không thoát đúng cách.\n\nTệp được quét cuối cùng:\n{file}\n\nNếu tiếp tục, lappp sẽ bỏ qua tệp này một lần và tiếp tục quét."
+        "message_with_file": "Tác vụ quét trước đó không thoát đúng cách.\n\nTệp được quét cuối cùng:\n{file}\n\nNếu tiếp tục, Lap sẽ bỏ qua tệp này một lần và tiếp tục quét."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Thư mục yêu thích"
   },
   "rating": {
+    "mixed": "Hỗn hợp",
     "title": "Đánh giá",
     "unrated": "Chưa đánh giá",
     "all_rated": "Tất cả đã đánh giá",
     "rated": "Đã đánh giá",
-    "mixed": "Khác nhau",
     "clear_rating": "Xóa đánh giá",
     "five_stars": "5 sao",
     "four_stars": "4 sao",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Chỉ hiện mục yêu thích",
-      "select_mode": "Chọn nhiều",
-      "select_files": "Chọn tệp",
-      "show_selection_panel": "Mở bảng chọn nhiều",
-      "hide_selection_panel": "Ẩn bảng chọn nhiều",
-      "exit_select_mode": "Thoát chế độ chọn nhiều",
+      "show_selection_panel": "Mở bảng chọn",
+      "exit_selection_mode": "Thoát chế độ chọn",
       "select_count": "Đã chọn {count}",
       "group_type_options": [
         "Không",
@@ -516,14 +514,16 @@
         "Tệp RAW",
         "Video"
       ],
-      "file_type_other": "Khác"
+      "file_type_other": "Khác",
+      "select_mode": "Chọn nhiều",
+      "select_files": "Chọn tệp",
+      "hide_selection_panel": "Ẩn bảng chọn nhiều",
+      "exit_select_mode": "Thoát chế độ chọn nhiều"
     },
     "tooltip": {
       "restore": "Khôi phục",
       "refresh": "Làm mới",
-      "show_info": "Hiện thông tin",
-      "hide_info": "Ẩn thông tin",
-      "open_dedup": "Tìm ảnh trùng lặp và tương tự",
+      "info": "Thông tin",
       "clear_history": "Xóa lịch sử tìm kiếm",
       "index_faces": "Lập chỉ mục khuôn mặt",
       "sort": "Sắp xếp",
@@ -534,7 +534,10 @@
       "back": "Quay lại",
       "scanning": "Đang quét…",
       "scan_paused": "Đã tạm dừng quét",
-      "scan_queued": "Đang chờ quét"
+      "scan_queued": "Đang chờ quét",
+      "show_info": "Hiện thông tin",
+      "hide_info": "Ẩn thông tin",
+      "open_dedup": "Tìm ảnh trùng lặp và tương tự"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Điều chỉnh"
     ],
     "empty_title": "Danh sách này trống",
-    "empty_desc": "Thêm tệp hoặc thay đổi bộ lọc hiện tại để hiển thị các mục ở đây.",
-    "select_hint": "Chưa chọn tệp nào",
+    "empty_desc": "Thêm mục hoặc cập nhật bộ lọc hiện tại để hiển thị chúng ở đây.",
+    "select_hint": "Chưa chọn mục nào",
     "deselect": "Bỏ chọn",
-    "select_mode_entered": "Đã bật chế độ chọn nhiều",
-    "selection_load_failed": "Không thể tải tất cả tệp để chọn. Hãy thử lại.",
+    "selection_load_failed": "Không thể tải tất cả mục để chọn. Hãy thử lại.",
     "large_batch": {
       "title": "Xác nhận thao tác hàng loạt",
-      "content": "Thao tác này sẽ xử lý {count} tệp và có thể mất một lúc. Tiếp tục?",
+      "content": "Thao tác này sẽ xử lý {count} mục và có thể mất một lúc. Tiếp tục?",
       "ok": "Tiếp tục"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Giữ lại",
       "unkeep_label": "Bỏ giữ lại",
       "delete_selected": "Xóa mục đã chọn",
+      "trash_all": "Chuyển tất cả vào thùng rác",
       "delete_all": "Xóa tất cả",
       "move_selected_to_trash": "Chuyển vào thùng rác (đã chọn {count} · {size})",
-      "no_removable_files": "Không có tệp nào có thể chuyển vào thùng rác",
+      "no_removable_files": "Không có mục nào có thể chuyển vào thùng rác",
       "set_keep": "Giữ lại",
       "removable_copies_summary": "{count} bản sao có thể gỡ bỏ · {size}",
+      "similar_items_summary": "{count} mục tương tự · {size}",
       "similar_photos_summary": "{count} ảnh tương tự · {size}"
-    }
+    },
+    "select_mode_entered": "Đã bật chế độ chọn nhiều"
   },
   "tooltip": {
     "loading": "Đang tải...",
@@ -694,9 +699,9 @@
       "success": "Đã cập nhật hình nền màn hình",
       "failed": "Không thể đặt hình nền màn hình"
     },
-    "refresh_subfolders": {
-      "success": "Đã làm mới thư mục con",
-      "failed": "Không thể làm mới thư mục con"
+    "refresh_folders": {
+      "success": "Đã làm mới thư mục",
+      "failed": "Không thể làm mới thư mục"
     },
     "copy_image": {
       "success": "Đã sao chép {count} tệp vào bộ nhớ tạm",
@@ -727,12 +732,17 @@
     },
     "album_exists": "Album này đã tồn tại",
     "album_nested": "Thư mục này chồng lấn với một album khác",
+    "refresh_subfolders": {
+      "success": "Đã làm mới thư mục con",
+      "failed": "Không thể làm mới thư mục con"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "{count} tệp ({size})"
+    "files_summary": "{count} tệp ({size})",
+    "items_summary": "{count} mục ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Loại khỏi tìm kiếm",
       "remove": "Gỡ bỏ",
       "delete_folder": "Xóa thư mục",
+      "refresh_folders": "Làm mới thư mục",
       "refresh_subfolders": "Làm mới thư mục con"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Hiện trong Finder...",
       "reveal_in_file_explorer": "Hiện trong File Explorer...",
       "refresh_file_info": "Làm mới thông tin tệp",
-      "index_cloud_files": "Tải xuống, lập chỉ mục rồi giải phóng dung lượng",
       "set_album_cover": "Đặt làm ảnh bìa album",
       "set_as": "Đặt làm",
       "set_desktop_wallpaper": "Đặt làm hình nền màn hình",
@@ -804,6 +814,7 @@
       "xmp_save_success": "Đã lưu siêu dữ liệu XMP cho {count} tệp",
       "xmp_save_failed": "Không thể lưu XMP cho {count} tệp",
       "comment": "Mô tả…",
+      "index_cloud_files": "Tải xuống, lập chỉ mục rồi giải phóng dung lượng",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "OK",
+    "save": "Lưu",
     "discard": "Bỏ thay đổi",
     "reset": "Đặt lại",
     "cancel": "Hủy",
@@ -994,42 +1006,60 @@
       "invalid": "Nhập tên và số bắt đầu là số nguyên dương.",
       "success": "Đã đổi tên {count} mục."
     },
+    "file_delete": {
+      "permanent_summary": "{count} tệp sẽ bị xóa vĩnh viễn.",
+      "trash_summary": "{count} tệp sẽ được chuyển vào thùng rác.",
+      "title": "Xóa vĩnh viễn {count} tệp?",
+      "confirm": "Xóa {count} tệp",
+      "irreversible": "Không thể hoàn tác thao tác này.",
+      "mixed_hint": "Chỉ áp dụng cho cặp RAW. Các mục đã chọn khác luôn bị xóa hoàn toàn.",
+      "trash_unavailable": "Không thể chuyển các tệp này vào thùng rác. Có thể ổ đĩa này không hỗ trợ thùng rác."
+    },
+    "raw_pair_delete": {
+      "scope": "Tệp cặp RAW cần xóa",
+      "both": "Cả hai tệp",
+      "raw": "Chỉ RAW",
+      "companion": "Chỉ JPEG / HEIC",
+      "format": "Chỉ {format}",
+      "failed": "Số lần xóa thất bại: {count}."
+    },
+    "folder_delete_contents": "Thao tác này bao gồm tất cả tệp và thư mục con.",
     "move_to_trash": {
       "title": "Chuyển vào thùng rác",
       "file_content": "Tệp “{file}” sẽ được chuyển vào thùng rác.",
-      "files_content": "{count} tệp đã chọn sẽ được chuyển vào thùng rác.",
-      "removable_files_content": "Tất cả {count} tệp có thể gỡ bỏ sẽ được chuyển vào thùng rác.",
-      "raw_jpeg_companions_content": "{count} tệp đi kèm RAW+JPEG cũng sẽ bị xóa.",
+      "files_content": "{count} mục đã chọn sẽ được chuyển vào thùng rác.",
+      "removable_files_content": "Tất cả {count} mục có thể gỡ bỏ sẽ được chuyển vào thùng rác.",
       "folder_content": "Thư mục “{folder}” sẽ được chuyển vào thùng rác.",
       "ok": "Chuyển vào thùng rác",
       "file_success": "Đã chuyển tệp “{file}” vào thùng rác.",
-      "files_success": "Đã chuyển {count} tệp đã chọn vào thùng rác.",
+      "files_success": "Đã chuyển {count} mục đã chọn vào thùng rác.",
       "folder_success": "Đã chuyển thư mục “{folder}” vào thùng rác.",
       "file_error": "Không thể chuyển tệp vào thùng rác.",
-      "files_error": "Không thể chuyển các tệp đã chọn vào thùng rác.",
-      "folder_error": "Không thể chuyển thư mục vào thùng rác."
+      "files_error": "Không thể chuyển các mục đã chọn vào thùng rác.",
+      "folder_error": "Không thể chuyển thư mục vào thùng rác.",
+      "raw_jpeg_companions_content": "{count} tệp đi kèm RAW+JPEG cũng sẽ bị xóa."
     },
     "permanent_delete": {
       "title": "Xóa vĩnh viễn",
       "file_content": "Tệp “{file}” sẽ bị xóa vĩnh viễn.",
-      "files_content": "{count} tệp đã chọn sẽ bị xóa vĩnh viễn.",
-      "removable_files_content": "Tất cả {count} tệp có thể gỡ bỏ sẽ bị xóa vĩnh viễn.",
+      "files_content": "{count} mục đã chọn sẽ bị xóa vĩnh viễn.",
+      "removable_files_content": "Tất cả {count} mục có thể gỡ bỏ sẽ bị xóa vĩnh viễn.",
       "folder_content": "Thư mục “{folder}” sẽ bị xóa vĩnh viễn.",
-      "checkbox": "Xóa vĩnh viễn (không thể hoàn tác)",
       "ok": "Xóa",
       "file_success": "Đã xóa vĩnh viễn tệp “{file}”.",
-      "files_success": "Đã xóa vĩnh viễn {count} tệp đã chọn.",
+      "files_success": "Đã xóa vĩnh viễn {count} mục đã chọn.",
       "folder_success": "Đã xóa vĩnh viễn thư mục “{folder}”.",
       "file_error": "Không thể xóa vĩnh viễn tệp.",
-      "files_error": "Không thể xóa vĩnh viễn các tệp đã chọn.",
-      "folder_error": "Không thể xóa vĩnh viễn thư mục."
+      "files_error": "Không thể xóa vĩnh viễn các mục đã chọn.",
+      "folder_error": "Không thể xóa vĩnh viễn thư mục.",
+      "checkbox": "Xóa vĩnh viễn (không thể hoàn tác)"
     },
     "trash_failed": {
       "title": "Không thể chuyển vào thùng rác",
       "file_content": "Không thể chuyển tệp “{file}” vào thùng rác.\n\nBạn có muốn xóa vĩnh viễn tệp này không?",
-      "files_content": "Không thể chuyển {count} tệp đã chọn vào thùng rác.\n\nBạn có muốn xóa vĩnh viễn các tệp này không?",
-      "folder_content": "Không thể chuyển thư mục “{folder}” vào thùng rác.\n\nBạn có muốn xóa vĩnh viễn thư mục này không?\n\nKhông thể hoàn tác thao tác này qua Thùng rác của hệ thống.",
-      "folder_partial_warning": "Lần thử trước có thể đã chuyển một phần nội dung vào Thùng rác. Xóa vĩnh viễn sẽ xóa thư mục này cùng phần nội dung còn lại.",
+      "files_content": "Không thể chuyển {count} mục đã chọn vào thùng rác.\n\nBạn có muốn xóa vĩnh viễn các mục này không?",
+      "folder_content": "Không thể chuyển thư mục “{folder}” vào thùng rác.\n\nBạn có muốn xóa vĩnh viễn thư mục này không?\n\nKhông thể hoàn tác thao tác này qua thùng rác của hệ thống.",
+      "folder_partial_warning": "Lần thử trước có thể đã chuyển một phần nội dung vào thùng rác.",
       "ok": "Xóa vĩnh viễn"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Tiêu đề ngắn",
+      "e_headline": "Tiêu đề xuất bản",
+      "comments": "Mô tả nội dung hoặc thêm ngữ cảnh",
+      "e_artist": "Tên",
+      "e_artist_hint": "Mỗi dòng một",
+      "e_copyright": "© {year} Tên"
+    },
+    "edit_metadata_no_fields": "Trước khi chỉnh sửa siêu dữ liệu, hãy chọn ít nhất một trường trong mục Tổ chức ở phần Tùy chỉnh trường.",
+    "edit_metadata": "Chỉnh sửa siêu dữ liệu",
+    "metadata_save_failed": "Không thể lưu siêu dữ liệu",
     "paths_copied": "Đã sao chép {count} đường dẫn tệp vào bộ nhớ tạm",
     "copy_path": "Sao chép đường dẫn tệp",
     "copy_path_failed": "Không thể sao chép đường dẫn tệp",
@@ -1269,7 +1310,7 @@
     "organization": "Phân loại",
     "file": "Tệp",
     "capture": "Thông tin chụp",
-    "source_metadata": "Siêu dữ liệu nguồn",
+    "source_metadata": "Thông tin khác",
     "source_description": "Mô tả gốc",
     "coordinates": "Tọa độ",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "Đang chuẩn bị phát ở chế độ tương thích...",
     "failed": "Không thể phát video",
     "errors": {
+      "playback_failed": "Không phát được video",
       "aborted": "Đã hủy tải video",
       "network": "Lỗi mạng khi tải video",
       "decode": "Lỗi giải mã video",
       "format": "Định dạng video không được hỗ trợ hoặc tệp bị hỏng.",
-      "external_player_recommended": "Video này cần chuyển mã tương thích trước khi có thể phát tại đây. Với video dài, lappp khuyên dùng trình phát bên ngoài thay vì chờ xử lý nền.",
+      "external_player_recommended": "Video này cần chuyển mã tương thích trước khi có thể phát tại đây. Với video dài, Lap khuyên dùng trình phát bên ngoài thay vì chờ xử lý nền.",
       "unsafe_webview": "Định dạng video này không được hỗ trợ phát.",
       "open_in_external_app": "Mở bằng trình phát bên ngoài",
       "open_in_external_app_named": "Mở video bằng {app}...",
       "use_external": "Để mở các định dạng không được hỗ trợ, hãy thiết lập trình phát bên ngoài trong Cài đặt.",
       "use_external_generic": "Hãy thử mở bằng trình phát bên ngoài.",
       "use_external_with_app": "Hãy thử mở bằng {app}.",
-      "unknown": "Lỗi không xác định",
-      "playback_failed": "Video playback failed"
+      "unknown": "Lỗi không xác định"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "Tệp ghép cặp",
-      "clipboard_both": "Cả hai tệp",
-      "clipboard_raw": "Chỉ RAW",
-      "clipboard_jpeg": "Chỉ JPEG/HEIC",
-      "clipboard_hint": "Cũng áp dụng khi sao chép đường dẫn tệp. Không ảnh hưởng đến việc sao chép hoặc di chuyển tệp vào thư mục.",
       "pair_source": "Hiển thị mặc định cho cặp tệp",
       "pair_source_hint": "Dùng cho ảnh thu nhỏ và bản xem trước của cặp tệp",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Nguồn xem trước mặc định",
       "preview_source_hint": "Chuyển sang nguồn còn lại nếu không khả dụng",
-      "rawRenderBrightness": "Độ sáng khi kết xuất",
-      "option_embedded": "Ưu tiên bản nhúng",
-      "option_rendered": "Ưu tiên kết xuất RAW",
-      "option_original": "Phơi sáng gốc",
-      "option_brightened": "Tăng sáng",
-      "brightness_hint": "Chỉ áp dụng khi kết xuất RAW",
-      "switch_to": "Chuyển sang {source}",
+      "option_embedded": "Bản xem trước nhúng",
+      "option_rendered": "Kết xuất RAW",
+      "option_brightened": "Tự động làm sáng",
       "show_pair": "Hiện tệp {format} ghép cặp",
-      "source_embedded": "Bản nhúng",
-      "source_rendered": "Bản kết xuất",
-      "source_brightened": "Bản tăng sáng",
-      "preview_mode": "Chế độ xem trước RAW"
+      "source_embedded": "Bản xem trước nhúng",
+      "source_rendered": "Kết xuất RAW",
+      "source_brightened": "Tự động làm sáng",
+      "preview_mode": "Chế độ xem trước RAW",
+      "clipboard_both": "Cả hai tệp",
+      "clipboard_raw": "Chỉ RAW",
+      "clipboard_jpeg": "Chỉ JPEG/HEIC",
+      "clipboard_hint": "Cũng áp dụng khi sao chép đường dẫn tệp. Không ảnh hưởng đến việc sao chép hoặc di chuyển tệp vào thư mục.",
+      "rawRenderBrightness": "Độ sáng khi kết xuất",
+      "option_original": "Phơi sáng gốc",
+      "brightness_hint": "Chỉ áp dụng khi kết xuất RAW",
+      "switch_to": "Chuyển sang {source}"
     },
     "metadata": {
       "title": "Siêu dữ liệu",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "Chưa cài đặt mô hình tìm kiếm ảnh đa ngôn ngữ. Hãy tải xuống để tìm kiếm bằng hơn 50 ngôn ngữ.",
       "download": "Tải xuống",
       "downloading_multilingual_model": "Đang tải xuống mô hình đa ngôn ngữ",
-      "multilingual_model_download_success": "Mô hình tìm kiếm đa ngôn ngữ đã sẵn sàng. Hãy khởi động lại lappp để sử dụng.",
+      "multilingual_model_download_success": "Mô hình tìm kiếm đa ngôn ngữ đã sẵn sàng. Hãy khởi động lại Lap để sử dụng.",
       "multilingual_model_download_failed": "Không thể tải xuống mô hình tìm kiếm đa ngôn ngữ",
       "similarity": "Độ tương đồng khi tìm kiếm",
       "similarity_hint": "Điều chỉnh các kết quả khớp về hình ảnh khi tìm theo từ khóa",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Phóng to",
         "zoom_out": "Thu nhỏ",
         "zoom_fit": "Chuyển giữa kích thước thực / vừa cửa sổ",
+        "cycle_raw_preview": "Chuyển chế độ xem trước RAW",
         "toggle_af_areas": "Bật/tắt vùng AF",
         "cycle_background": "Lần lượt đổi màu nền",
         "open_new_window": "Xem trong cửa sổ mới",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "Khi xóa tệp",
+      "file_delete_trash_hint": "Chuyển một tệp vào thùng rác mà không cần xác nhận",
+      "file_delete_permanent_hint": "Luôn xác nhận trước khi xóa vĩnh viễn",
+      "file_delete_section": "Xóa tệp",
       "title": "Nâng cao",
       "external_app": {
         "section_external_apps": "Ứng dụng bên ngoài",

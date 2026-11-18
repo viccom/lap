@@ -321,32 +321,59 @@ fn get_migrations() -> Vec<Migration> {
         },
         Migration {
             version: 23,
+            description: "Record tag creation source",
+            sql: "",
+        },
+        Migration {
+            version: 24,
+            description: "Index search exclusions by album",
+            sql: "CREATE INDEX IF NOT EXISTS idx_afolders_excluded_album
+                  ON afolders(album_id) WHERE is_excluded_from_search = 1;",
+        },
+        // Fork migrations below were numbered v23–v28 before the v0.4.0
+        // upstream sync; they are renumbered to v25–v30 to make room for
+        // upstream's v23/v24 above. Every effect is idempotent (IF NOT EXISTS
+        // schema or empty SQL), and the v31 compensation migration replays
+        // upstream v23/v24 effects for libraries created before the sync
+        // (whose user_version already exceeded 24).
+        Migration {
+            version: 25,
             description: "Image understanding templates, annotations and call evidence",
             sql: VL_SCHEMA_SQL,
         },
         Migration {
-            version: 24,
+            version: 26,
             description: "Full text search index over the library",
             sql: crate::t_fts::FTS_SCHEMA_SQL,
         },
         Migration {
-            version: 25,
+            version: 27,
             description: "Reindex with character tokens for relaxed matching",
             sql: "",
         },
         Migration {
-            version: 26,
+            version: 28,
             description: "Caption embeddings for semantic search over descriptions",
             sql: crate::t_embed::EMBED_SCHEMA_SQL,
         },
         Migration {
-            version: 27,
+            version: 29,
             description: "Persisted image understanding runs and call grouping",
             sql: "",
         },
         Migration {
-            version: 28,
+            version: 30,
             description: "Queued image understanding tasks and the run source tag",
+            sql: "",
+        },
+        // Compensation for libraries created before the v0.4.0 upstream sync:
+        // their user_version (fork numbering, max 28) skipped upstream v23/v24,
+        // so `atags.source` and the search-exclusion index may be missing even
+        // though the runtime code now relies on both. Idempotent guards make
+        // this a no-op on fresh installs (upstream v23/v24 already ran there).
+        Migration {
+            version: 31,
+            description: "Replay upstream v23 tag-source column and v24 search-exclusion index",
             sql: "",
         },
     ]
@@ -804,13 +831,21 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                 tx.pragma_update(None, "user_version", migration.version)
                     .map_err(|e| e.to_string())?;
                 tx.commit().map_err(|e| e.to_string())?;
+            } else if migration.version == 23 {
+                let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+                if !table_has_column(&tx, "atags", "source")? {
+                    tx.execute("ALTER TABLE atags ADD COLUMN source TEXT", [])
+                        .map_err(|e| format!("Migration 23 failed: {e}"))?;
+                }
+                tx.pragma_update(None, "user_version", migration.version).map_err(|e| e.to_string())?;
+                tx.commit().map_err(|e| e.to_string())?;
             } else if migration.version == 21 {
                 migrate_tag_tree(conn)?;
-            } else if migration.version == 23 {
+            } else if migration.version == 25 {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
                 seed_vl_builtin_template(conn)?;
-            } else if migration.version == 24 {
+            } else if migration.version == 26 {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
                 // The index starts empty; the files already in the library are
@@ -821,7 +856,7 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                         migration.version, e
                     )
                 })?;
-            } else if migration.version == 25 {
+            } else if migration.version == 27 {
                 // The index now also carries single characters; documents
                 // indexed with bigrams only cannot serve the relaxed pass.
                 crate::t_fts::reindex_all_with_conn(conn).map_err(|e| {
@@ -830,12 +865,30 @@ pub fn check_and_migrate(conn: &Connection) -> Result<(), String> {
                         migration.version, e
                     )
                 })?;
-            } else if migration.version == 27 {
+            } else if migration.version == 29 {
                 ensure_runs_schema(conn)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
-            } else if migration.version == 28 {
+            } else if migration.version == 30 {
                 ensure_tasks_schema(conn)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
+            } else if migration.version == 31 {
+                // Compensation (see the migration list): replay upstream v23/v24
+                // effects for pre-sync fork libraries. Both guards are
+                // idempotent, so fresh installs and upstream-lineage libraries
+                // pass through as no-ops.
+                let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+                if !table_has_column(&tx, "atags", "source")? {
+                    tx.execute("ALTER TABLE atags ADD COLUMN source TEXT", [])
+                        .map_err(|e| format!("Migration 31 failed: {e}"))?;
+                }
+                tx.execute_batch(
+                    "CREATE INDEX IF NOT EXISTS idx_afolders_excluded_album
+                     ON afolders(album_id) WHERE is_excluded_from_search = 1;",
+                )
+                .map_err(|e| format!("Migration 31 failed: {e}"))?;
+                tx.pragma_update(None, "user_version", migration.version)
+                    .map_err(|e| e.to_string())?;
+                tx.commit().map_err(|e| e.to_string())?;
             } else if !migration.sql.trim().is_empty() {
                 conn.execute_batch(migration.sql)
                     .map_err(|e| format!("Migration {} failed: {}", migration.version, e))?;
@@ -909,6 +962,9 @@ mod vl_migration_tests {
             "PRAGMA foreign_keys=ON;
              CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
              INSERT INTO afiles VALUES(1,'a.jpg'),(2,'b.jpg');
+             CREATE TABLE atags(id INTEGER PRIMARY KEY, name TEXT NOT NULL, parent_id INTEGER);
+             CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT,
+                                   is_excluded_from_search INTEGER);
              PRAGMA user_version=22;",
         )
         .unwrap();
@@ -917,7 +973,7 @@ mod vl_migration_tests {
     }
 
     #[test]
-    fn vision_language_tables_are_created_by_migration_23() {
+    fn vision_language_tables_are_created_by_migration_25() {
         let conn = migrated();
         for table in ["vl_templates", "vl_annotations", "vl_calls"] {
             let count: i64 = conn
@@ -932,12 +988,12 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            28
+            31
         );
     }
 
     #[test]
-    fn migration_27_persists_runs_and_groups_calls() {
+    fn migration_29_persists_runs_and_groups_calls() {
         let conn = migrated();
         // The run table exists and carries the snapshot columns.
         let has_runs: i64 = conn
@@ -987,7 +1043,7 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            28
+            31
         );
     }
 
@@ -1042,7 +1098,7 @@ mod vl_migration_tests {
     }
 
     #[test]
-    fn migration_23_seeds_the_builtin_template_once() {
+    fn migration_25_seeds_the_builtin_template_once() {
         let conn = migrated();
         let builtin: (String, i64, i64) = conn
             .query_row(
@@ -1136,7 +1192,7 @@ mod vl_migration_tests {
     }
 
     #[test]
-    fn migration_23_is_restartable_without_touching_existing_rows() {
+    fn migration_25_is_restartable_without_touching_existing_rows() {
         let conn = migrated();
         conn.execute(
             "INSERT INTO vl_templates(id,name,version,prompt_template,response_spec,created_at)
@@ -1156,7 +1212,7 @@ mod vl_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            28
+            31
         );
     }
 }
@@ -1171,6 +1227,9 @@ mod fts_migration_tests {
             "PRAGMA foreign_keys=ON;
              CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
              INSERT INTO afiles VALUES(1,'a.jpg'),(2,'b.jpg');
+             CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT,
+                                   is_excluded_from_search INTEGER);
+             CREATE TABLE atags(id INTEGER PRIMARY KEY, name TEXT NOT NULL, parent_id INTEGER);
              PRAGMA user_version=23;",
         )
         .unwrap();
@@ -1179,7 +1238,7 @@ mod fts_migration_tests {
     }
 
     #[test]
-    fn migration_24_creates_the_full_text_index() {
+    fn migration_26_creates_the_full_text_index() {
         let conn = migrated();
         let count: i64 = conn
             .query_row(
@@ -1192,12 +1251,12 @@ mod fts_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
                 .unwrap(),
-            28
+            31
         );
     }
 
     #[test]
-    fn migration_24_backfills_the_existing_files() {
+    fn migration_26_backfills_the_existing_files() {
         let conn = migrated();
         let rows: i64 = conn
             .query_row("SELECT COUNT(*) FROM files_fts", [], |row| row.get(0))
@@ -1206,7 +1265,7 @@ mod fts_migration_tests {
     }
 
     #[test]
-    fn migration_24_is_restartable_without_duplicating_documents() {
+    fn migration_26_is_restartable_without_duplicating_documents() {
         let conn = migrated();
         // Simulate the migration completing before the version was persisted.
         conn.execute_batch("PRAGMA user_version=23;").unwrap();
@@ -1218,7 +1277,7 @@ mod fts_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i32>(0))
                 .unwrap(),
-            28
+            31
         );
     }
 }
@@ -1227,6 +1286,84 @@ mod fts_migration_tests {
 mod album_filter_migration_tests {
     use super::*;
 
+    /// Folders hidden from search: an excluded folder hides itself and its
+    /// subfolders, only within its own album.
+    const VISIBLE_FOLDERS: &str = "SELECT b.id FROM afolders b WHERE NOT EXISTS (
+        SELECT 1 FROM afolders xf
+        WHERE xf.is_excluded_from_search = 1 AND xf.album_id = b.album_id
+          AND (xf.path = b.path OR instr(b.path, xf.path || '/') = 1)
+    ) ORDER BY b.id";
+
+    fn exclusion_fixture(rows: &str) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&format!(
+            "CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, inode INTEGER,
+                                   path TEXT, is_excluded_from_search INTEGER);
+             CREATE INDEX idx_afolders_album_inode ON afolders(album_id, inode);
+             CREATE INDEX idx_afolders_is_excluded_from_search ON afolders(is_excluded_from_search);
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL);
+             CREATE TABLE atags(id INTEGER PRIMARY KEY, name TEXT NOT NULL, parent_id INTEGER);
+             {rows}
+             PRAGMA user_version=23;"
+        ))
+        .unwrap();
+        conn
+    }
+
+    fn visible(conn: &Connection) -> Vec<i64> {
+        conn.prepare(VISIBLE_FOLDERS).unwrap()
+            .query_map([], |row| row.get::<_, i64>(0)).unwrap()
+            .collect::<Result<Vec<_>, _>>().unwrap()
+    }
+
+    fn has_exclusion_index(conn: &Connection) -> bool {
+        conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_afolders_excluded_album'",
+            [], |row| row.get::<_, i64>(0)).unwrap() == 1
+    }
+
+    #[test]
+    fn upgrading_from_version_23_creates_the_exclusion_index() {
+        let conn = exclusion_fixture("");
+        assert!(!has_exclusion_index(&conn));
+        check_and_migrate(&conn).unwrap();
+        assert!(has_exclusion_index(&conn));
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 31);
+        // Running again changes nothing.
+        check_and_migrate(&conn).unwrap();
+        assert!(has_exclusion_index(&conn));
+        assert_eq!(conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(), 31);
+    }
+
+    #[test]
+    fn exclusion_index_restricts_the_search_to_excluded_folders_in_the_same_album() {
+        // Album 1 excludes /photos/skip (and so its child); a neighbour with a
+        // similar name and the same path in album 2 stay visible.
+        let conn = exclusion_fixture(
+            "INSERT INTO afolders VALUES
+                 (1, 1, 1, '/photos/skip', 1), (2, 1, 2, '/photos/skip/child', 0),
+                 (3, 1, 3, '/photos/skip-neighbor', 0), (4, 2, 4, '/photos/skip/child', 0);",
+        );
+        assert_eq!(visible(&conn), [3, 4]);
+        check_and_migrate(&conn).unwrap();
+        assert_eq!(visible(&conn), [3, 4]);
+        let plan = format!("EXPLAIN QUERY PLAN {VISIBLE_FOLDERS}");
+        let details = conn.prepare(&plan).unwrap().query_map([], |row| row.get::<_, String>(3))
+            .unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+        assert!(details.iter().any(|line| line.contains("idx_afolders_excluded_album")
+            && line.contains("album_id=?")), "{details:?}");
+    }
+
+    #[test]
+    fn with_no_excluded_folders_every_folder_stays_visible() {
+        let conn = exclusion_fixture(
+            "INSERT INTO afolders VALUES
+                 (1, 1, 1, '/photos/a', 0), (2, 1, 2, '/photos/a/b', 0), (3, 2, 3, '/other', 0);",
+        );
+        check_and_migrate(&conn).unwrap();
+        assert_eq!(visible(&conn), [1, 2, 3]);
+    }
+
     #[test]
     fn image_properties_schedule_one_backfill_without_clearing_other_pending_work() {
         let conn = Connection::open_in_memory().unwrap();
@@ -1234,6 +1371,7 @@ mod album_filter_migration_tests {
             .unwrap();
         conn.execute_batch("CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER, metadata_pending INTEGER NOT NULL DEFAULT 0);
             INSERT INTO afiles VALUES(1,1,0),(2,3,0),(3,2,0),(4,2,1);
+            CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT, is_excluded_from_search INTEGER); 
             PRAGMA user_version=19;").unwrap();
         check_and_migrate(&conn).unwrap();
         let pending: Vec<i64> = conn
@@ -1260,7 +1398,7 @@ mod album_filter_migration_tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);")
             .unwrap();
-        conn.execute_batch("CREATE TABLE albums(id INTEGER PRIMARY KEY); CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER); INSERT INTO albums VALUES(1); PRAGMA user_version=17;").unwrap();
+        conn.execute_batch("CREATE TABLE albums(id INTEGER PRIMARY KEY); CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER); INSERT INTO albums VALUES(1); CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT, is_excluded_from_search INTEGER); PRAGMA user_version=17;").unwrap();
         check_and_migrate(&conn).unwrap();
         let settings: (i64, Option<i64>, String) = conn
             .query_row(
@@ -1276,7 +1414,7 @@ mod album_filter_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            28
+            31
         );
     }
 
@@ -1285,7 +1423,7 @@ mod album_filter_migration_tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);")
             .unwrap();
-        conn.execute_batch("CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER); INSERT INTO afiles(id) VALUES(1); PRAGMA user_version=18;").unwrap();
+        conn.execute_batch("CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER); INSERT INTO afiles(id) VALUES(1); CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT, is_excluded_from_search INTEGER); PRAGMA user_version=18;").unwrap();
         check_and_migrate(&conn).unwrap();
         let state: (i64, i64) = conn
             .query_row(
@@ -1301,14 +1439,14 @@ mod album_filter_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
                 .unwrap(),
-            28
+            31
         );
     }
 
     #[test]
     fn title_migration_is_restartable_without_scheduling_thumbnail_work() {
         let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("CREATE TABLE afiles(id INTEGER PRIMARY KEY,metadata_pending INTEGER DEFAULT 0); INSERT INTO afiles(id) VALUES(1); PRAGMA user_version=21;").unwrap();
+        conn.execute_batch("CREATE TABLE atags(id INTEGER PRIMARY KEY); CREATE TABLE afiles(id INTEGER PRIMARY KEY,metadata_pending INTEGER DEFAULT 0); INSERT INTO afiles(id) VALUES(1); CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT, is_excluded_from_search INTEGER); PRAGMA user_version=21;").unwrap();
         check_and_migrate(&conn).unwrap();
         let values: (Option<String>, Option<String>, i32) = conn
             .query_row(
@@ -1329,8 +1467,82 @@ mod album_filter_migration_tests {
         assert_eq!(
             conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i32>(0))
                 .unwrap(),
-            28
+            31
         );
+    }
+
+    #[test]
+    fn v31_compensation_replays_upstream_v23_v24_for_pre_sync_fork_libraries() {
+        // A library last migrated under the fork's pre-sync numbering tops out
+        // at user_version=28 and never saw upstream v23/v24: no `atags.source`,
+        // no search-exclusion index. The v31 compensation must add both.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL,parent_id INTEGER);
+             CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT, is_excluded_from_search INTEGER);
+             CREATE TABLE albums(id INTEGER PRIMARY KEY);
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, file_type INTEGER);
+             CREATE TABLE vl_annotations(id INTEGER PRIMARY KEY);
+             PRAGMA user_version=28;",
+        )
+        .unwrap();
+        check_and_migrate(&conn).unwrap();
+        let source_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('atags')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(source_count, 1);
+        // The compensation added the missing column and index.
+        let columns: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_table_info('atags') WHERE name='source'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(columns, 1);
+        let index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_afolders_excluded_album'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(index_count, 1);
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+            31
+        );
+        // Idempotency: re-running on the migrated library changes nothing.
+        check_and_migrate(&conn).unwrap();
+        let columns_again: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_table_info('atags') WHERE name='source'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(columns_again, 1);
+    }
+
+    #[test]
+    fn v31_compensation_is_noop_on_upstream_lineage_libraries() {
+        // A fresh install runs upstream v23 (guarded ALTER) and v24 (IF NOT
+        // EXISTS index) before reaching v31; the compensation must be a no-op.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT NOT NULL,source TEXT,parent_id INTEGER);
+             CREATE TABLE afolders(id INTEGER PRIMARY KEY, album_id INTEGER, path TEXT, is_excluded_from_search INTEGER);
+             CREATE TABLE albums(id INTEGER PRIMARY KEY);
+             CREATE TABLE afiles(id INTEGER PRIMARY KEY, name TEXT NOT NULL, file_type INTEGER);
+             PRAGMA user_version=24;",
+        )
+        .unwrap();
+        check_and_migrate(&conn).unwrap();
+        assert_eq!(
+            conn.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0)).unwrap(),
+            31
+        );
+        // Exactly one source column — the compensation did not duplicate it.
+        let columns: i64 = conn
+            .query_row("SELECT COUNT(*) FROM pragma_table_info('atags') WHERE name='source'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(columns, 1);
     }
 }
 

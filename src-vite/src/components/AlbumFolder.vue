@@ -139,28 +139,25 @@
   <!-- trash folder -->
   <MessageBox
     v-if="showTrashFolderMsgbox"
+    position-key="folder-delete"
     :title="trashFolderDialogTitle"
     :message="trashFolderDialogMessage"
     :OkText="trashFolderDialogOkText"
     :cancelText="$t('msgbox.cancel')"
     :warningOk="true"
+    :focusCancel="true"
     :isLoading="isDeletingFolder"
-    :checkboxText="$t('msgbox.permanent_delete.checkbox')"
-    :checkboxChecked="deletePermanently"
     @ok="clickTrashFolder"
     @cancel="showTrashFolderMsgbox = false"
-    @checkbox-change="deletePermanently = $event"
   />
 
   <MessageBox
     v-if="showTrashFailedFolderMsgbox"
     :title="$t('msgbox.trash_failed.title')"
     :message="folderTrashFailureMessage"
-    :OkText="folderTrashFailure?.canDeletePermanently ? $t('msgbox.trash_failed.ok') : $t('msgbox.ok')"
+    :OkText="$t('msgbox.ok')"
     :isLoading="isDeletingFolder"
-    :cancelText="folderTrashFailure?.canDeletePermanently ? $t('msgbox.cancel') : ''"
-    :warningOk="!!folderTrashFailure?.canDeletePermanently"
-    @ok="folderTrashFailure?.canDeletePermanently ? confirmTrashFailedFolderDelete() : showTrashFailedFolderMsgbox = false"
+    @ok="showTrashFailedFolderMsgbox = false"
     @cancel="showTrashFailedFolderMsgbox = false"
   />
 
@@ -194,7 +191,7 @@ import { isMac, shortenFilename, isValidFileName, getFolderPath, getFullPath, no
 import {
   createFolder, renameFolder, fetchFolder, getAllAlbums, moveFolder, moveFolderOutsideLibrary,
   copyFolder, checkFileExists, revealPath, prepareFolderDelete, deleteFolder, deleteFolderPermanently, recountAlbum, selectFolder as selectFolderInDb,
-  isDirectoryAccessible, setFolderFavorite, setFolderSearchExcluded, hasImportableClipboard, refreshAlbumSubfolders,
+  isDirectoryAccessible, setFolderFavorite, setFolderSearchExcluded, hasImportableClipboard, refreshAlbumFolders,
 } from '@/common/api';
 import { DEFAULT_PLATFORM, getShortcutLabel } from '@/common/shortcuts';
 import { Album, Folder } from '@/common/types';
@@ -245,8 +242,8 @@ const props = withDefaults(defineProps<{
   showFolderActions?: boolean;
   folderPicker?: boolean;
   treeRoot?: boolean;       // only root tree listens to keyboard
-  filterVisiblePaths?: string[];
-  filterMatchedPaths?: string[];
+  filterVisiblePaths?: ReadonlySet<string>;
+  filterMatchedPaths?: ReadonlySet<string>;
   unavailable?: boolean;
 }>(), {
   treeRoot: true,
@@ -280,9 +277,10 @@ const getFolderByPath = (children: Folder[] | undefined, path: string): Folder |
 };
 
 const selectedFolder = computed(() => getFolderByPath(props.children, selection.folderPath.value));
-const isFolderFiltering = computed(() => Array.isArray(props.filterVisiblePaths));
-const visibleFolderPaths = computed(() => new Set(props.filterVisiblePaths || []));
-const matchedFolderPaths = computed(() => new Set(props.filterMatchedPaths || []));
+const EMPTY_PATHS: ReadonlySet<string> = new Set();
+const isFolderFiltering = computed(() => props.filterVisiblePaths instanceof Set);
+const visibleFolderPaths = computed(() => props.filterVisiblePaths ?? EMPTY_PATHS);
+const matchedFolderPaths = computed(() => props.filterMatchedPaths ?? EMPTY_PATHS);
 const visibleChildren = computed(() => (props.children || []).filter(folder =>
   !isFolderFiltering.value || visibleFolderPaths.value.has(folder.path)
 ));
@@ -307,21 +305,22 @@ const shouldRenderChildren = (folder: Folder) => {
   return isFolderFiltering.value ? shouldShowFilteredChildren(folder) : Boolean(folder.is_expanded);
 };
 
-const trashFolderDialogTitle = computed(() =>
-  deletePermanently.value
-    ? t('msgbox.permanent_delete.title')
-    : t('msgbox.move_to_trash.title')
-);
+const folderDeleteLabel = (permanent: boolean) =>
+  t(permanent ? 'menu.album.delete_folder' : 'msgbox.move_to_trash.title');
+const trashFolderDialogTitle = computed(() => folderDeleteLabel(deletePermanently.value));
 const trashFolderDialogOkText = computed(() =>
   deletePermanently.value
-    ? t('msgbox.permanent_delete.ok')
+    ? t('msgbox.permanent_delete.title')
     : t('msgbox.move_to_trash.ok')
 );
-const trashFolderDialogMessage = computed(() =>
-  deletePermanently.value
-    ? t('msgbox.permanent_delete.folder_content', { folder: pendingFolderDelete.value?.path || '' })
-    : t('msgbox.move_to_trash.folder_content', { folder: pendingFolderDelete.value?.path || '' })
-);
+const trashFolderDialogMessage = computed(() => {
+  const action = deletePermanently.value ? 'permanent_delete' : 'move_to_trash';
+  const message = t(`msgbox.${action}.folder_content`, { folder: pendingFolderDelete.value?.path || '' });
+  const contents = t('msgbox.folder_delete_contents');
+  return deletePermanently.value
+    ? `${message}\n\n${contents} ${t('msgbox.file_delete.irreversible')}`
+    : `${message}\n\n${contents}`;
+});
 
 // rename folder
 const isRenamingFolder = ref(false);
@@ -348,16 +347,13 @@ const {
 const showTrashFolderMsgbox = ref(false);
 const showTrashFailedFolderMsgbox = ref(false);
 const showMoveTo = ref(false);
-const permanentDeleteChecked = ref(false);
 const deletePermanently = ref(false);
 const pendingFolderDelete = ref<{ path: string; name: string; libraryId: string; identity: string } | null>(null);
 const isDeletingFolder = ref(false);
-const folderTrashFailure = ref<{ canDeletePermanently: boolean; error: string; mayHavePartiallyCompleted?: boolean } | null>(null);
+const folderTrashFailure = ref<{ error: string; mayHavePartiallyCompleted?: boolean } | null>(null);
 const folderTrashFailureMessage = computed(() => {
   const path = pendingFolderDelete.value?.path || '';
-  const message = folderTrashFailure.value?.canDeletePermanently
-    ? t('msgbox.trash_failed.folder_content', { folder: path })
-    : `${t('msgbox.move_to_trash.folder_error')}\n\n${path}`;
+  const message = `${t('msgbox.move_to_trash.folder_error')}\n\n${path}`;
   const partialWarning = folderTrashFailure.value?.mayHavePartiallyCompleted
     ? `\n\n${t('msgbox.trash_failed.folder_partial_warning')}` : '';
   return `${message}${partialWarning}\n\n${folderTrashFailure.value?.error || ''}`;
@@ -412,7 +408,7 @@ async function startDeleteFolder(folder: Folder) {
   if (disposed || target.libraryId !== libConfig._libraryId || selection.folderPath.value !== target.path) return;
   pendingFolderDelete.value = target;
   folderTrashFailure.value = null;
-  deletePermanently.value = permanentDeleteChecked.value;
+  deletePermanently.value = typeof config !== 'undefined' && config.settings.fileDeleteBehavior === 'permanent';
   showTrashFolderMsgbox.value = true;
 }
 
@@ -514,10 +510,10 @@ const getMenuItemsForFolder = async (folder: any) => {
       action: null
     },
     {
-      label: localeMsg.value.menu.album.refresh_subfolders,
+      label: localeMsg.value.menu.album.refresh_folders,
       icon: IconRefresh,
       disabled: unavailable || refreshingSubfolderPaths.value.has(folder.path),
-      action: () => { void refreshSubfolders(folder); }
+      action: () => { void refreshFolders(folder); }
     },
     {
       label: folder?.is_excluded_from_search ? localeMsg.value.menu.album.include_in_search : localeMsg.value.menu.album.exclude_from_search,
@@ -531,7 +527,7 @@ const getMenuItemsForFolder = async (folder: any) => {
       action: null
     },
     {
-      label: localeMsg.value.menu.album.delete_folder,
+      label: folderDeleteLabel(config.settings.fileDeleteBehavior === 'permanent'),
       icon: IconTrash,
       disabled: unavailable || isRoot,
       action: () => { void startDeleteFolder(folder); }
@@ -568,22 +564,32 @@ const toggleFolderFavorite = async (folder: Folder) => {
 
 const refreshingSubfolderPaths = ref(new Set<string>());
 
-const refreshSubfolders = async (folder: Folder) => {
+const refreshFolders = async (folder: Folder) => {
+  const albumId = props.albumId;
+  const libraryId = libConfig._libraryId;
   const paths = new Set(refreshingSubfolderPaths.value);
   paths.add(folder.path);
   refreshingSubfolderPaths.value = paths;
   try {
-    await refreshAlbumSubfolders(props.albumId, folder.path);
+    const result = await refreshAlbumFolders(albumId, folder.path, libraryId);
+    if (disposed || libraryId !== libConfig._libraryId) return;
+    if (result.dirty_folder_count > 0) {
+      const treeChanged = Boolean(result.refresh_error)
+        || result.deleted_folder_count > 0 || result.folder_path_migrations.length > 0;
+      await tauriEmit('refresh-content', { libraryId, albumId, folderPath: folder.path, treeChanged });
+    }
     const refreshed = await fetchFolder(folder.path, true, config.settings.folderSort);
+    if (disposed || libraryId !== libConfig._libraryId) return;
     if (refreshed) {
       folder.has_subfolders = refreshed.has_subfolders;
       folder.children = refreshed.children;
       folder.is_expanded = true;
     }
-    toast.success(localeMsg.value.tooltip.refresh_subfolders.success);
+    if (result.refresh_error) throw new Error(result.refresh_error);
+    toast.success(localeMsg.value.tooltip.refresh_folders.success);
   } catch (error) {
-    console.error('Failed to refresh subfolders:', error);
-    toast.error(localeMsg.value.tooltip.refresh_subfolders.failed);
+    console.error('Failed to refresh folders:', error);
+    toast.error(localeMsg.value.tooltip.refresh_folders.failed);
   } finally {
     const nextPaths = new Set(refreshingSubfolderPaths.value);
     nextPaths.delete(folder.path);
@@ -1075,7 +1081,6 @@ const clickTrashFolder = async () => {
   try {
     const folderName = target.name;
     folderTrashFailure.value = null;
-    permanentDeleteChecked.value = deletePermanently.value;
     let deleteResult = 0;
     let deleteErrored = false;
     try {
@@ -1086,7 +1091,7 @@ const clickTrashFolder = async () => {
         deleteResult = result.deletedCount;
         if (result.error) {
           folderTrashFailure.value = {
-            canDeletePermanently: result.canDeletePermanently === true, error: result.error,
+            error: result.error,
             mayHavePartiallyCompleted: result.mayHavePartiallyCompleted === true,
           };
         }
@@ -1094,7 +1099,7 @@ const clickTrashFolder = async () => {
     } catch (error) {
       deleteErrored = true;
       if (!deletePermanently.value) {
-        folderTrashFailure.value = { canDeletePermanently: false, error: String(error) };
+        folderTrashFailure.value = { error: String(error) };
       }
       console.error('Failed to delete folder:', error);
     }
@@ -1158,20 +1163,6 @@ const clickTrashFolder = async () => {
     }
   } finally {
     isDeletingFolder.value = false;
-  }
-};
-
-const confirmTrashFailedFolderDelete = async () => {
-  if (!folderTrashFailure.value?.canDeletePermanently || isDeletingFolder.value) return;
-  const previousDeletePermanently = deletePermanently.value;
-  const previousPermanentDeleteChecked = permanentDeleteChecked.value;
-  showTrashFailedFolderMsgbox.value = false;
-  deletePermanently.value = true;
-  try {
-    await clickTrashFolder();
-  } finally {
-    deletePermanently.value = previousDeletePermanently;
-    permanentDeleteChecked.value = previousPermanentDeleteChecked;
   }
 };
 

@@ -38,14 +38,14 @@
     "drop_action": "Přidat",
     "drop_title_hint": "Přidejte přetažením",
     "empty_drop_hint": "Přetáhněte položky do výše uvedené kolekce a přidejte je.",
-    "added_toast": "Do kolekce přidáno: {count} souborů",
-    "add_failed_toast": "Nepodařilo se přidat: {count} souborů do kolekcí:",
-    "already_exists_toast": "V kolekci se nachází: {count} souborů",
+    "added_toast": "Do kolekce přidáno: {count} položek",
+    "add_failed_toast": "Nepodařilo se přidat položky do kolekcí: {count}",
+    "already_exists_toast": "V kolekci se nachází: {count} položek",
     "clear": "Vyprázdnit kolekci",
     "clear_confirm_title": "Vyprázdnit kolekci",
     "clear_confirm_message": "Odebrat všechny soubory z „{name}“? Samotné soubory nebudou odstraněny.",
     "clear_confirm_ok": "Vyprázdnit",
-    "removed_toast": "Z kolekce odebráno: {count} souborů"
+    "removed_toast": "Z kolekce odebráno: {count} položek"
   },
   "library": {
     "all_files": "Všechny soubory",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Offline",
+    "download_to_open": "Před otevřením stáhněte tuto fotografii v aplikaci cloudového úložiště.",
     "cloud_only": "Dostupné pouze online",
     "cloud_only_pending": "Dostupné pouze online – informace nejsou úplné",
     "original_unavailable": "Původní soubor není dostupný",
@@ -255,7 +256,7 @@
     "section_folders": "Vybrat složku",
     "section_status": "Stav importu",
     "to_import": "K importu",
-    "files_progress": "{processed} / {total} souborů ({size})",
+    "files_progress": "{processed} / {total} položek ({size})",
     "source": "Zdroj",
     "source_placeholder": "Vyberte zdrojovou složku",
     "destination": "Cíl",
@@ -266,7 +267,7 @@
     "layout_structure": "Zachovat strukturu složek",
     "import": "Importovat",
     "preparing": "Připravuje se import",
-    "importing": "Importují se soubory",
+    "importing": "Importuji položky",
     "complete": "Import dokončen",
     "cancelled": "Import zrušen",
     "continue": "Pokračovat",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Začněte novým albem",
-    "add_album_description": "Vyberte složku a nechte lappp uspořádat vaše fotografie a videa.",
+    "add_album_description": "Vyberte složku a nechte Lap uspořádat vaše fotografie a videa.",
     "smart_album_title": "Organizujte pomocí chytrých alb",
     "smart_album_description": "Pomocí pravidel automaticky seskupujte fotografie, které odpovídají vašim kritériím.",
     "collection_title": "Seskupujte fotografie do kolekcí",
@@ -296,23 +297,6 @@
     "unknown_lens": "Neznámý objektiv",
     "semantic_matches": "Vizuální shody",
     "text_matches": "Textové shody",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "Ve frontě na skenování",
       "indexing": "Probíhá skenování… {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Přeskočit tento soubor a pokračovat",
         "file_label": "Poslední skenovaný soubor",
         "message": "Předchozí skenování nebylo řádně ukončeno.",
-        "message_with_file": "Předchozí úloha skenování nebyla řádně ukončena.\n\nPoslední skenovaný soubor:\n{file}\n\nPokud budete pokračovat, lappp tento soubor jednou přeskočí a obnoví skenování."
+        "message_with_file": "Předchozí úloha skenování nebyla řádně ukončena.\n\nPoslední skenovaný soubor:\n{file}\n\nPokud budete pokračovat, Lap tento soubor jednou přeskočí a obnoví skenování."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Oblíbené složky"
   },
   "rating": {
+    "mixed": "Smíšené",
     "title": "Hodnocení",
     "unrated": "Bez hodnocení",
     "all_rated": "Všechny ohodnocené",
     "rated": "Ohodnocené",
-    "mixed": "Různé",
     "clear_rating": "Zrušit hodnocení",
     "five_stars": "5 hvězdiček",
     "four_stars": "4 hvězdičky",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Jen oblíbené",
-      "select_mode": "Vícenásobný výběr",
-      "select_files": "Vybrat soubory",
-      "show_selection_panel": "Otevřít panel vícenásobného výběru",
-      "hide_selection_panel": "Skrýt panel vícenásobného výběru",
-      "exit_select_mode": "Ukončit vícenásobný výběr",
+      "show_selection_panel": "Otevřít panel výběru",
+      "exit_selection_mode": "Ukončit režim výběru",
       "select_count": "Vybráno: {count}",
       "group_type_options": [
         "Žádné",
@@ -516,14 +514,16 @@
         "Jen RAW",
         "Videa"
       ],
-      "file_type_other": "Ostatní"
+      "file_type_other": "Ostatní",
+      "select_mode": "Vícenásobný výběr",
+      "select_files": "Vybrat soubory",
+      "hide_selection_panel": "Skrýt panel vícenásobného výběru",
+      "exit_select_mode": "Ukončit vícenásobný výběr"
     },
     "tooltip": {
       "restore": "Obnovit",
       "refresh": "Obnovit",
-      "show_info": "Zobrazit informace",
-      "hide_info": "Skrýt informace",
-      "open_dedup": "Najít duplicity a podobné fotografie",
+      "info": "Informace",
       "clear_history": "Vymazat historii hledání",
       "index_faces": "Indexovat tváře",
       "sort": "Řadit",
@@ -534,7 +534,10 @@
       "back": "Zpět",
       "scanning": "Probíhá skenování…",
       "scan_paused": "Skenování pozastaveno",
-      "scan_queued": "Ve frontě na skenování"
+      "scan_queued": "Ve frontě na skenování",
+      "show_info": "Zobrazit informace",
+      "hide_info": "Skrýt informace",
+      "open_dedup": "Najít duplicity a podobné fotografie"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Úpravy"
     ],
     "empty_title": "Tento seznam je prázdný",
-    "empty_desc": "Přidejte soubory nebo upravte aktuální filtr, aby se zde zobrazily položky.",
-    "select_hint": "Nejsou vybrány žádné soubory",
+    "empty_desc": "Přidejte položky nebo upravte aktuální filtr, aby se zde zobrazily.",
+    "select_hint": "Nejsou vybrány žádné položky",
     "deselect": "Zrušit výběr",
-    "select_mode_entered": "Je zapnutý režim vícenásobného výběru",
-    "selection_load_failed": "Nepodařilo se načíst všechny soubory z výběru. Zkuste to znovu.",
+    "selection_load_failed": "Nepodařilo se načíst všechny položky z výběru. Zkuste to znovu.",
     "large_batch": {
       "title": "Potvrdit hromadnou operaci",
-      "content": "Tato operace zpracuje {count} souborů a může chvíli trvat. Chcete pokračovat?",
+      "content": "Tato operace zpracuje {count} položek a může chvíli trvat. Chcete pokračovat?",
       "ok": "Pokračovat"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Ponechat",
       "unkeep_label": "Zrušit označení k ponechání",
       "delete_selected": "Odstranit vybrané",
+      "trash_all": "Přesunout vše do koše",
       "delete_all": "Odstranit vše",
       "move_selected_to_trash": "Přesunout do koše ({count} vybraných · {size})",
-      "no_removable_files": "Nejsou zde žádné soubory k přesunutí do koše",
+      "no_removable_files": "Nejsou zde žádné odstranitelné položky k přesunutí do koše",
       "set_keep": "Ponechat",
       "removable_copies_summary": "K odstranění {count} · {size} kopií",
+      "similar_items_summary": "Podobných {count} · {size} položek",
       "similar_photos_summary": "Podobných {count} · {size} fotografií"
-    }
+    },
+    "select_mode_entered": "Je zapnutý režim vícenásobného výběru"
   },
   "tooltip": {
     "loading": "Načítání…",
@@ -694,9 +699,9 @@
       "success": "Tapeta plochy byla aktualizována",
       "failed": "Nepodařilo se nastavit tapetu plochy"
     },
-    "refresh_subfolders": {
-      "success": "Podsložky byly aktualizovány",
-      "failed": "Nepodařilo se aktualizovat podsložky"
+    "refresh_folders": {
+      "success": "Složky byly aktualizovány",
+      "failed": "Nepodařilo se aktualizovat složky"
     },
     "copy_image": {
       "success": "Do schránky bylo zkopírováno {count} souborů",
@@ -727,12 +732,17 @@
     },
     "album_exists": "Toto album již existuje",
     "album_nested": "Tato složka se překrývá s jiným albem",
+    "refresh_subfolders": {
+      "success": "Podsložky byly aktualizovány",
+      "failed": "Nepodařilo se aktualizovat podsložky"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "{count} souborů ({size})"
+    "files_summary": "{count} souborů ({size})",
+    "items_summary": "{count} položek ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Vyloučit z vyhledávání",
       "remove": "Odebrat",
       "delete_folder": "Odstranit složku",
+      "refresh_folders": "Aktualizovat složky",
       "refresh_subfolders": "Aktualizovat podsložky"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Zobrazit ve Vyhledávači…",
       "reveal_in_file_explorer": "Zobrazit v Průzkumníku souborů…",
       "refresh_file_info": "Aktualizovat informace o souboru",
-      "index_cloud_files": "Stáhnout, zaindexovat a poté uvolnit místo",
       "set_album_cover": "Nastavit jako obálku alba",
       "set_as": "Nastavit jako",
       "set_desktop_wallpaper": "Nastavit jako tapetu plochy",
@@ -804,6 +814,7 @@
       "xmp_save_success": "Metadata XMP uložena pro tento počet souborů: {count}",
       "xmp_save_failed": "Nepodařilo se uložit XMP pro {count} souborů",
       "comment": "Popis…",
+      "index_cloud_files": "Stáhnout, zaindexovat a poté uvolnit místo",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "OK",
+    "save": "Uložit",
     "discard": "Zahodit",
     "reset": "Resetovat",
     "cancel": "Zrušit",
@@ -994,42 +1006,60 @@
       "invalid": "Zadejte název a kladné celé počáteční číslo.",
       "success": "Přejmenováno položek: {count}."
     },
+    "file_delete": {
+      "permanent_summary": "Bude trvale odstraněno: {count}.",
+      "trash_summary": "Bude přesunuto do koše: {count}.",
+      "title": "Trvale odstranit: {count}?",
+      "confirm": "Odstranit: {count}",
+      "irreversible": "Tuto akci nelze vrátit zpět.",
+      "mixed_hint": "Platí pouze pro páry RAW. Ostatní vybrané položky se vždy odstraní celé.",
+      "trash_unavailable": "Soubory se nepodařilo přesunout do koše. Koš na tomto disku nemusí být dostupný."
+    },
+    "raw_pair_delete": {
+      "scope": "Soubory párů RAW k odstranění",
+      "both": "Oba soubory",
+      "raw": "Pouze RAW",
+      "companion": "Pouze JPEG / HEIC",
+      "format": "Pouze {format}",
+      "failed": "Nezdařená odstranění: {count}."
+    },
+    "folder_delete_contents": "Týká se to všech souborů a podsložek.",
     "move_to_trash": {
       "title": "Přesunout do koše",
       "file_content": "Soubor „{file}“ bude přesunut do koše.",
-      "files_content": "Vybrané soubory ({count}) budou přesunuty do koše.",
-      "removable_files_content": "Všech {count} odstranitelných souborů bude přesunuto do koše.",
-      "raw_jpeg_companions_content": "Budou odstraněny také doprovodné soubory RAW+JPEG: {count}.",
+      "files_content": "Vybrané položky ({count}) budou přesunuty do koše.",
+      "removable_files_content": "Všech {count} odstranitelných položek bude přesunuto do koše.",
       "folder_content": "Složka „{folder}“ bude přesunuta do koše.",
       "ok": "Koš",
       "file_success": "Soubor „{file}“ byl přesunut do koše.",
-      "files_success": "Vybrané soubory ({count}) byly přesunuty do koše.",
+      "files_success": "Vybrané položky ({count}) byly přesunuty do koše.",
       "folder_success": "Složka „{folder}“ byla přesunuta do koše.",
       "file_error": "Soubor se nepodařilo přesunout do koše.",
-      "files_error": "Vybrané soubory se nepodařilo přesunout do koše.",
-      "folder_error": "Složku se nepodařilo přesunout do koše."
+      "files_error": "Vybrané položky se nepodařilo přesunout do koše.",
+      "folder_error": "Složku se nepodařilo přesunout do koše.",
+      "raw_jpeg_companions_content": "Budou odstraněny také doprovodné soubory RAW+JPEG: {count}."
     },
     "permanent_delete": {
       "title": "Odstranit trvale",
       "file_content": "Soubor „{file}“ bude trvale odstraněn.",
-      "files_content": "Vybrané soubory ({count}) budou trvale odstraněny.",
-      "removable_files_content": "Všech {count} odstranitelných souborů bude trvale smazáno.",
+      "files_content": "Vybrané položky ({count}) budou trvale odstraněny.",
+      "removable_files_content": "Všech {count} odstranitelných položek bude trvale smazáno.",
       "folder_content": "Složka „{folder}“ bude trvale odstraněna.",
-      "checkbox": "Trvale odstranit (nelze vrátit zpět)",
       "ok": "Odstranit",
       "file_success": "Soubor „{file}“ byl trvale odstraněn.",
-      "files_success": "Vybrané soubory ({count}) byly trvale odstraněny.",
+      "files_success": "Vybrané položky ({count}) byly trvale odstraněny.",
       "folder_success": "Složka „{folder}“ byla trvale odstraněna.",
       "file_error": "Soubor se nepodařilo trvale odstranit.",
-      "files_error": "Vybrané soubory se nepodařilo trvale odstranit.",
-      "folder_error": "Složku se nepodařilo trvale odstranit."
+      "files_error": "Vybrané položky se nepodařilo trvale odstranit.",
+      "folder_error": "Složku se nepodařilo trvale odstranit.",
+      "checkbox": "Trvale odstranit (nelze vrátit zpět)"
     },
     "trash_failed": {
       "title": "Přesunutí do koše se nezdařilo",
       "file_content": "Soubor „{file}“ se nepodařilo přesunout do koše.\n\nChcete jej místo toho trvale odstranit?",
-      "files_content": "Vybrané soubory ({count}) se nepodařilo přesunout do koše.\n\nChcete je místo toho trvale odstranit?",
+      "files_content": "Vybrané položky ({count}) se nepodařilo přesunout do koše.\n\nChcete je místo toho trvale odstranit?",
       "folder_content": "Složku „{folder}“ se nepodařilo přesunout do koše.\n\nChcete ji místo toho trvale odstranit?\n\nTuto akci nelze vrátit zpět přes systémový koš.",
-      "folder_partial_warning": "Předchozí pokus mohl část obsahu přesunout do koše. Trvalé odstranění smaže tuto složku i její zbývající obsah.",
+      "folder_partial_warning": "Předchozí pokus mohl část obsahu přesunout do koše.",
       "ok": "Odstranit trvale"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Krátký název",
+      "e_headline": "Titulek pro publikaci",
+      "comments": "Popište obsah nebo přidejte kontext",
+      "e_artist": "Jméno",
+      "e_artist_hint": "Jeden na řádek",
+      "e_copyright": "© {year} Jméno"
+    },
+    "edit_metadata_no_fields": "Nejprve v nastavení polí vyberte alespoň jedno pole ze sekce Organizace.",
+    "edit_metadata": "Upravit metadata",
+    "metadata_save_failed": "Metadata se nepodařilo uložit",
     "paths_copied": "Do schránky byly zkopírovány cesty k souborům: {count}",
     "copy_path": "Kopírovat cestu k souboru",
     "copy_path_failed": "Cestu k souboru se nepodařilo zkopírovat",
@@ -1269,7 +1310,7 @@
     "organization": "Organizace",
     "file": "Soubor",
     "capture": "Pořízení",
-    "source_metadata": "Zdrojová metadata",
+    "source_metadata": "Další informace",
     "source_description": "Původní popis",
     "coordinates": "Souřadnice",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "Připravuje se kompatibilní přehrávání…",
     "failed": "Video se nepodařilo přehrát",
     "errors": {
+      "playback_failed": "Přehrávání selhalo",
       "aborted": "Načítání videa bylo zrušeno",
       "network": "Síťová chyba při načítání videa",
       "decode": "Chyba dekódování videa",
       "format": "Formát videa není podporován nebo je soubor poškozený.",
-      "external_player_recommended": "Aby bylo možné toto video přehrát, je nejprve nutný převod do kompatibilního formátu. U dlouhých videí lappp doporučuje použít externí přehrávač místo čekání na zpracování na pozadí.",
+      "external_player_recommended": "Aby bylo možné toto video přehrát, je nejprve nutný převod do kompatibilního formátu. U dlouhých videí Lap doporučuje použít externí přehrávač místo čekání na zpracování na pozadí.",
       "unsafe_webview": "Tento formát videa není podporován pro přehrávání.",
       "open_in_external_app": "Otevřít v externím přehrávači",
       "open_in_external_app_named": "Otevřít video v aplikaci {app}…",
       "use_external": "Chcete-li otevírat nepodporované formáty, nastavte v Nastavení externí přehrávač.",
       "use_external_generic": "Zkuste video otevřít v externím přehrávači.",
       "use_external_with_app": "Zkuste místo toho otevřít v aplikaci {app}.",
-      "unknown": "Neznámá chyba",
-      "playback_failed": "Video playback failed"
+      "unknown": "Neznámá chyba"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "Spárované soubory",
-      "clipboard_both": "Oba soubory",
-      "clipboard_raw": "Jen RAW",
-      "clipboard_jpeg": "Jen JPEG/HEIC",
-      "clipboard_hint": "Platí i pro kopírování cest k souborům. Nemá vliv na kopírování nebo přesouvání souborů do složek.",
       "pair_source": "Výchozí zobrazení dvojic",
       "pair_source_hint": "Používá se pro miniatury a náhledy spárovaných souborů",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Výchozí zdroj náhledu",
       "preview_source_hint": "Pokud zdroj není dostupný, použije se druhý",
-      "rawRenderBrightness": "Jas vykreslení",
-      "option_embedded": "Nejprve vložený náhled",
-      "option_rendered": "Nejprve vykreslit RAW",
-      "option_original": "Původní expozice",
-      "option_brightened": "Zesvětlený",
-      "brightness_hint": "Platí pouze pro vykreslování RAW",
-      "switch_to": "Přepnout na {source}",
+      "option_embedded": "Vložený náhled",
+      "option_rendered": "Vykreslit RAW",
+      "option_brightened": "Automaticky zesvětlit",
       "show_pair": "Zobrazit spárovaný formát {format}",
-      "source_embedded": "Vložený",
-      "source_rendered": "Vykreslený",
-      "source_brightened": "Zesvětlený",
-      "preview_mode": "Režim náhledu RAW"
+      "source_embedded": "Vložený náhled",
+      "source_rendered": "Vykreslit RAW",
+      "source_brightened": "Automaticky zesvětlit",
+      "preview_mode": "Režim náhledu RAW",
+      "clipboard_both": "Oba soubory",
+      "clipboard_raw": "Jen RAW",
+      "clipboard_jpeg": "Jen JPEG/HEIC",
+      "clipboard_hint": "Platí i pro kopírování cest k souborům. Nemá vliv na kopírování nebo přesouvání souborů do složek.",
+      "rawRenderBrightness": "Jas vykreslení",
+      "option_original": "Původní expozice",
+      "brightness_hint": "Platí pouze pro vykreslování RAW",
+      "switch_to": "Přepnout na {source}"
     },
     "metadata": {
       "title": "Metadata",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "Vícejazyčný model pro vyhledávání fotografií není nainstalován. Stáhněte jej, chcete-li povolit vyhledávání ve více než 50 jazycích.",
       "download": "Stáhnout",
       "downloading_multilingual_model": "Stahuje se vícejazyčný model",
-      "multilingual_model_download_success": "Vícejazyčný model vyhledávání je připraven. Chcete-li jej použít, restartujte lappp.",
+      "multilingual_model_download_success": "Vícejazyčný model vyhledávání je připraven. Chcete-li jej použít, restartujte Lap.",
       "multilingual_model_download_failed": "Nepodařilo se stáhnout vícejazyčný model vyhledávání",
       "similarity": "Hledat podobnost",
       "similarity_hint": "Ovlivňuje vizuální shody při vyhledávání podle klíčových slov",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Přiblížit",
         "zoom_out": "Oddálit",
         "zoom_fit": "Přepnout mezi skutečnou velikostí a přizpůsobením oknu",
+        "cycle_raw_preview": "Přepnout režim náhledu RAW",
         "toggle_af_areas": "Zobrazit / skrýt body ostření AF",
         "cycle_background": "Přepínat cyklicky pozadí",
         "open_new_window": "Zobrazit v novém okně",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "Chování při odstraňování",
+      "file_delete_trash_hint": "Jeden soubor se přesune do koše bez potvrzení",
+      "file_delete_permanent_hint": "Trvalé odstranění vždy vyžaduje potvrzení",
+      "file_delete_section": "Odstraňování souborů",
       "title": "Pokročilé",
       "external_app": {
         "section_external_apps": "Externí aplikace",

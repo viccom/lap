@@ -9,7 +9,7 @@ bridge-specific layer:
 
   * wrapper fidelity scan — async flag, return type, and a pass-through
     check that every bridged command's shell body is exactly one call to
-    `lap_core::<module>::<name>(...)`;
+    `lappp_core::<module>::<name>(...)`;
   * parameter parsing — comment-stripped, string-aware top-level comma
     split, `name: Type` extraction, `&str` / `Option<&str>` normalization;
   * the bridge whitelist — class A commands whose exposure is NOT
@@ -19,7 +19,7 @@ Re-run after adding commands:
 
     python -I docs/dev/gen-lapd-bridge.py
 
-Outputs `src-tauri/crates/lap-server/src/bridge_gen.rs` (deterministic,
+Outputs `src-tauri/crates/lappp-server/src/bridge_gen.rs` (deterministic,
 registration order). The Rust-side completeness guard test pins the B/C/
 internal skip list by hand, so a newly added command stays red until the
 generator is re-run AND the skip list is reviewed.
@@ -34,7 +34,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 INVENTORY = ROOT / "docs" / "dev" / "gen-command-inventory.py"
 SRC_DIR = ROOT / "src-tauri" / "src"
-OUT = ROOT / "src-tauri" / "crates" / "lap-server" / "src" / "bridge_gen.rs"
+OUT = ROOT / "src-tauri" / "crates" / "lappp-server" / "src" / "bridge_gen.rs"
 
 PRIMITIVES = {
     "String", "bool", "char", "f32", "f64", "i8", "i16", "i32", "i64",
@@ -42,31 +42,32 @@ PRIMITIVES = {
 }
 
 # Non-primitive parameter types that may reach the bridge, mapped to their
-# lap_core paths. Anything else fails the generation loudly — add the type
+# lappp_core paths. Anything else fails the generation loudly — add the type
 # here only after checking it derives Deserialize.
 TYPE_IMPORTS = {
-    "ACollectionOrder": "lap_core::t_sqlite::ACollectionOrder",
-    "AlbumDisplayOrder": "lap_core::t_sqlite::AlbumDisplayOrder",
-    "BatchDeleteFile": "lap_core::t_cmds::BatchDeleteFile",
-    "BatchFileMetadataUpdate": "lap_core::t_write::BatchFileMetadataUpdate",
-    "DedupDeleteRequest": "lap_core::t_dedup::DedupDeleteRequest",
-    "EditParams": "lap_core::t_image::EditParams",
-    "ImageSearchParams": "lap_core::t_sqlite::ImageSearchParams",
-    "KeepRules": "lap_core::t_dedup::KeepRules",
-    "LibraryState": "lap_core::t_config::LibraryState",
-    "MontageParams": "lap_core::t_montage::MontageParams",
+    "HashMap<String, String>": "std::collections::HashMap",
+    "ACollectionOrder": "lappp_core::t_sqlite::ACollectionOrder",
+    "AlbumDisplayOrder": "lappp_core::t_sqlite::AlbumDisplayOrder",
+    "BatchDeleteFile": "lappp_core::t_cmds::BatchDeleteFile",
+    "BatchFileMetadataUpdate": "lappp_core::t_write::BatchFileMetadataUpdate",
+    "DedupDeleteRequest": "lappp_core::t_dedup::DedupDeleteRequest",
+    "EditParams": "lappp_core::t_image::EditParams",
+    "ImageSearchParams": "lappp_core::t_sqlite::ImageSearchParams",
+    "KeepRules": "lappp_core::t_dedup::KeepRules",
+    "LibraryState": "lappp_core::t_config::LibraryState",
+    "MontageParams": "lappp_core::t_montage::MontageParams",
     "PathBuf": "std::path::PathBuf",
-    "PersonPageRequest": "lap_core::t_sqlite::PersonPageRequest",
-    "QueryParams": "lap_core::t_sqlite::QueryParams",
-    "RawDisplayOptions": "lap_core::t_raw_display::RawDisplayOptions",
-    "RenameItem": "lap_core::t_batch_rename::RenameItem",
-    "RenameOptions": "lap_core::t_batch_rename::RenameOptions",
-    "RestoreSelection": "lap_core::t_storage::RestoreSelection",
-    "SmartQueryParams": "lap_core::t_sqlite::SmartQueryParams",
-    "ThumbRequest": "lap_core::t_cmds::ThumbRequest",
+    "PersonPageRequest": "lappp_core::t_sqlite::PersonPageRequest",
+    "QueryParams": "lappp_core::t_sqlite::QueryParams",
+    "RawDisplayOptions": "lappp_core::t_raw_display::RawDisplayOptions",
+    "RenameItem": "lappp_core::t_batch_rename::RenameItem",
+    "RenameOptions": "lappp_core::t_batch_rename::RenameOptions",
+    "RestoreSelection": "lappp_core::t_storage::RestoreSelection",
+    "SmartQueryParams": "lappp_core::t_sqlite::SmartQueryParams",
+    "ThumbRequest": "lappp_core::t_cmds::ThumbRequest",
 }
 
-QUALIFIED_TYPE = re.compile(r"(?:lap_core|std)::[A-Za-z0-9_:]+|t_[a-z_0-9]+::[A-Za-z0-9_:]+")
+QUALIFIED_TYPE = re.compile(r"(?:lappp_core|std)::[A-Za-z0-9_:]+|t_[a-z_0-9]+::[A-Za-z0-9_:]+")
 
 RUST_KEYWORDS = {
     "as", "box", "dyn", "fn", "in", "let", "loop", "match", "mod", "move",
@@ -207,7 +208,7 @@ def collect_type_imports(type_: str, imports: set[str], modules: set[str], unkno
             return
     if type_ == "&str" or type_ in PRIMITIVES:
         return
-    if type_.startswith("lap_core::") or type_.startswith("std::"):
+    if type_.startswith("lappp_core::") or type_.startswith("std::"):
         return  # fully qualified — usable inline
     if QUALIFIED_TYPE.fullmatch(type_):
         # module-relative (`t_sqlite::QueryParams`) — needs the module import
@@ -251,7 +252,7 @@ def main() -> int:
             continue
         params = [parse_param(p) for p in split_params(signatures[name])]
         wrap = wrappers[name]
-        call = f"lap_core::{entry['module']}::{name}("
+        call = f"lappp_core::{entry['module']}::{name}("
         if call not in wrap["body"]:
             raise ValueError(
                 f"{name}: shell wrapper body is not a pass-through to {call}"
@@ -279,7 +280,7 @@ def main() -> int:
             line, expr = render_binding(pname, ptype, unknown)
             bindings.append(line)
             args.append(expr)
-        core = f"lap_core::{cmd['module']}::{cmd['name']}"
+        core = f"lappp_core::{cmd['module']}::{cmd['name']}"
         call_args = ", ".join(args)
         is_result = cmd["ret"].startswith("Result<")
         if cmd["async"]:
@@ -308,7 +309,7 @@ def main() -> int:
     names = ",\n    ".join(f'"{c["name"]}"' for c in bridge)
     exposures = ",\n    ".join(f'("{c["name"]}", "{c["exposure"]}")' for c in bridge)
     imports = "\n".join(f"use {path};" for path in sorted(_imports))
-    module_imports = "\n".join(f"use lap_core::{modname};" for modname in sorted(_modules))
+    module_imports = "\n".join(f"use lappp_core::{modname};" for modname in sorted(_modules))
     header = f"""\
 //! @generated by docs/dev/gen-lapd-bridge.py — DO NOT EDIT BY HAND.
 //!

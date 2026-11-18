@@ -147,7 +147,7 @@ export const useConfigStore = defineStore('configStore', {
       showToolTip: true,          // show button tooltip
       showStatusBar: true,        // show status bar
       autoCheckUpdates: true,      // automatically check for updates
-      deletePermanently: false,   // last confirmed file deletion choice
+      fileDeleteBehavior: 'trash',
       debugMode: false,           // debug mode
 
       // navigation settings
@@ -163,10 +163,8 @@ export const useConfigStore = defineStore('configStore', {
 
       // RAW display settings
       groupRawJpegPairs: false,   // group matching RAW and JPEG/HEIC files
-      rawPairClipboardMode: 'both', // both | raw | jpeg; clipboard operations only
       rawPairDisplaySource: 'jpeg', // jpeg | raw (used when pairs are grouped)
-      rawPreviewSource: 'embedded', // embedded | rendered
-      rawRenderBrightness: 'original', // original | brightened
+      rawPreviewSource: 'embedded', // embedded | rendered | brightened
       
       // grid view settings
       thumbnailSize: 512,         // gallery thumbnail quality: 256, 512, or 1024
@@ -353,17 +351,11 @@ export const useConfigStore = defineStore('configStore', {
     setThumbnailSize(thumbnailSize) {
       this.settings.thumbnailSize = thumbnailSize;
     },
-    setRawPairClipboardMode(mode) {
-      this.settings.rawPairClipboardMode = ['both', 'raw', 'jpeg'].includes(mode) ? mode : 'both';
-    },
     setRawPairDisplaySource(source) {
       this.settings.rawPairDisplaySource = source === 'raw' ? 'raw' : 'jpeg';
     },
     setRawPreviewSource(source) {
-      this.settings.rawPreviewSource = source === 'rendered' ? 'rendered' : 'embedded';
-    },
-    setRawRenderBrightness(brightness) {
-      this.settings.rawRenderBrightness = brightness === 'brightened' ? 'brightened' : 'original';
+      this.settings.rawPreviewSource = source === 'rendered' || source === 'brightened' ? source : 'embedded';
     },
     setMapProvider(mapProvider) {
       this.settings.mapProvider = mapProvider === 'tianditu' ? 'tianditu' : 'global';
@@ -469,11 +461,13 @@ export const useConfigStore = defineStore('configStore', {
           if (typeof settings.languageInitialized !== 'boolean' && typeof settings.language === 'string' && settings.language) {
             settings.languageInitialized = true;
           }
-          settings.rawPreviewSource = settings.rawPreviewSource === 'rendered' ? 'rendered' : 'embedded';
-          settings.rawRenderBrightness = settings.rawRenderBrightness === 'brightened' ? 'brightened' : 'original';
+          settings.rawPreviewSource = ['rendered', 'brightened'].includes(settings.rawPreviewSource) ? settings.rawPreviewSource : 'embedded';
           settings.rawPairDisplaySource = settings.rawPairDisplaySource === 'raw' ? 'raw' : 'jpeg';
-          settings.rawPairClipboardMode = ['both', 'raw', 'jpeg'].includes(settings.rawPairClipboardMode)
-            ? settings.rawPairClipboardMode : 'both';
+          delete settings.rawPairClipboardMode;
+          if (settings.fileDeleteBehavior !== 'trash' && settings.fileDeleteBehavior !== 'permanent') {
+            settings.fileDeleteBehavior = settings.deletePermanently === true ? 'permanent' : 'trash';
+          }
+          delete settings.deletePermanently;
         }
         return state;
       },

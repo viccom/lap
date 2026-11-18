@@ -38,14 +38,14 @@
     "drop_action": "Toevoegen",
     "drop_title_hint": "Loslaten om toe te voegen",
     "empty_drop_hint": "Sleep items naar de collectie hierboven om ze toe te voegen.",
-    "added_toast": "{count} bestand(en) toegevoegd aan collectie",
-    "add_failed_toast": "Kan bestanden niet toevoegen aan {count} collectie(s)",
-    "already_exists_toast": "{count} bestand(en) al in collectie",
+    "added_toast": "{count} item(s) toegevoegd aan collectie",
+    "add_failed_toast": "Kan items niet toevoegen aan {count} collectie(s)",
+    "already_exists_toast": "{count} item(s) al in collectie",
     "clear": "Collectie leegmaken",
     "clear_confirm_title": "Collectie leegmaken",
     "clear_confirm_message": "Alle bestanden uit \"{name}\" halen? De bestanden zelf worden niet verwijderd.",
     "clear_confirm_ok": "Leegmaken",
-    "removed_toast": "{count} bestand(en) uit collectie gehaald"
+    "removed_toast": "{count} item(s) uit collectie gehaald"
   },
   "library": {
     "all_files": "Alle bestanden",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Offline",
+    "download_to_open": "Download deze foto eerst in je cloudopslagapp voordat je hem opent.",
     "cloud_only": "Alleen online beschikbaar",
     "cloud_only_pending": "Alleen online beschikbaar — bestandsinformatie onvolledig",
     "original_unavailable": "Het oorspronkelijke bestand is niet beschikbaar",
@@ -255,7 +256,7 @@
     "section_folders": "Kies map",
     "section_status": "Importstatus",
     "to_import": "Te importeren",
-    "files_progress": "{processed} / {total} bestanden ({size})",
+    "files_progress": "{processed} / {total} items ({size})",
     "source": "Bron",
     "source_placeholder": "Kies een bronmap",
     "destination": "Bestemming",
@@ -266,7 +267,7 @@
     "layout_structure": "Mapstructuur behouden",
     "import": "Importeren",
     "preparing": "Import voorbereiden",
-    "importing": "Bestanden importeren",
+    "importing": "Items importeren",
     "complete": "Import voltooid",
     "cancelled": "Import geannuleerd",
     "continue": "Doorgaan",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Begin met een nieuw album",
-    "add_album_description": "Kies een map en laat lappp je foto's en video's ordenen.",
+    "add_album_description": "Kies een map en laat Lap je foto's en video's ordenen.",
     "smart_album_title": "Ordenen met slimme albums",
     "smart_album_description": "Gebruik regels om foto's die aan je criteria voldoen automatisch te groeperen.",
     "collection_title": "Groepeer foto's in collecties",
@@ -296,23 +297,6 @@
     "unknown_lens": "Onbekend objectief",
     "semantic_matches": "Visuele overeenkomsten",
     "text_matches": "Tekstovereenkomsten",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "In wachtrij voor scan",
       "indexing": "Scannen... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Dit bestand overslaan en doorgaan",
         "file_label": "Laatst gescande bestand",
         "message": "De vorige scan is niet normaal afgesloten.",
-        "message_with_file": "De vorige scantaak is niet netjes afgesloten.\n\nLaatst gescande bestand:\n{file}\n\nAls je doorgaat, slaat lappp dit bestand eenmalig over en hervat het scannen."
+        "message_with_file": "De vorige scantaak is niet netjes afgesloten.\n\nLaatst gescande bestand:\n{file}\n\nAls je doorgaat, slaat Lap dit bestand eenmalig over en hervat het scannen."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Favoriete mappen"
   },
   "rating": {
+    "mixed": "Gemengd",
     "title": "Beoordelingen",
     "unrated": "Niet beoordeeld",
     "all_rated": "Alle beoordeelde",
     "rated": "Beoordeeld",
-    "mixed": "Gemengd",
     "clear_rating": "Beoordeling wissen",
     "five_stars": "5 sterren",
     "four_stars": "4 sterren",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Alleen favorieten",
-      "select_mode": "Meervoudige selectie",
-      "select_files": "Bestanden selecteren",
-      "show_selection_panel": "Paneel voor meervoudige selectie openen",
-      "hide_selection_panel": "Paneel voor meervoudige selectie inklappen",
-      "exit_select_mode": "Meervoudige selectie beëindigen",
+      "show_selection_panel": "Selectiepaneel openen",
+      "exit_selection_mode": "Selectiemodus beëindigen",
       "select_count": "{count} geselecteerd",
       "group_type_options": [
         "Geen",
@@ -516,14 +514,16 @@
         "Alleen RAW",
         "Video's"
       ],
-      "file_type_other": "Overig"
+      "file_type_other": "Overig",
+      "select_mode": "Meervoudige selectie",
+      "select_files": "Bestanden selecteren",
+      "hide_selection_panel": "Paneel voor meervoudige selectie inklappen",
+      "exit_select_mode": "Meervoudige selectie beëindigen"
     },
     "tooltip": {
       "restore": "Herstellen",
       "refresh": "Vernieuwen",
-      "show_info": "Info tonen",
-      "hide_info": "Info verbergen",
-      "open_dedup": "Duplicaten en vergelijkbare foto's zoeken",
+      "info": "Info",
       "clear_history": "Zoekgeschiedenis wissen",
       "index_faces": "Gezichten indexeren",
       "sort": "Sorteren",
@@ -534,7 +534,10 @@
       "back": "Terug",
       "scanning": "Scannen…",
       "scan_paused": "Scan gepauzeerd",
-      "scan_queued": "In wachtrij voor scan"
+      "scan_queued": "In wachtrij voor scan",
+      "show_info": "Info tonen",
+      "hide_info": "Info verbergen",
+      "open_dedup": "Duplicaten en vergelijkbare foto's zoeken"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Aanpassen"
     ],
     "empty_title": "Deze lijst is leeg",
-    "empty_desc": "Voeg bestanden toe of pas het huidige filter aan om hier items te zien.",
-    "select_hint": "Geen bestanden geselecteerd",
+    "empty_desc": "Voeg items toe of pas het huidige filter aan om ze hier te zien.",
+    "select_hint": "Geen items geselecteerd",
     "deselect": "Deselecteren",
-    "select_mode_entered": "Meervoudige selectie staat aan",
-    "selection_load_failed": "Kan niet alle bestanden laden voor de selectie. Probeer het opnieuw.",
+    "selection_load_failed": "Kan niet alle items laden voor de selectie. Probeer het opnieuw.",
     "large_batch": {
       "title": "Bulkbewerking bevestigen",
-      "content": "Deze bewerking verwerkt {count} bestanden en kan even duren. Doorgaan?",
+      "content": "Deze bewerking verwerkt {count} items en kan even duren. Doorgaan?",
       "ok": "Doorgaan"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Behouden",
       "unkeep_label": "Niet behouden",
       "delete_selected": "Selectie verwijderen",
+      "trash_all": "Alles naar de prullenmand verplaatsen",
       "delete_all": "Alles verwijderen",
       "move_selected_to_trash": "Naar prullenbak ({count} geselecteerd · {size})",
-      "no_removable_files": "Geen verwijderbare bestanden om naar de prullenbak te verplaatsen",
+      "no_removable_files": "Geen verwijderbare items om naar de prullenbak te verplaatsen",
       "set_keep": "Behouden",
       "removable_copies_summary": "{count} verwijderbare kopieën · {size}",
+      "similar_items_summary": "{count} vergelijkbare items · {size}",
       "similar_photos_summary": "{count} vergelijkbare foto's · {size}"
-    }
+    },
+    "select_mode_entered": "Meervoudige selectie staat aan"
   },
   "tooltip": {
     "loading": "Laden...",
@@ -694,9 +699,9 @@
       "success": "Bureaubladachtergrond bijgewerkt",
       "failed": "Kan bureaubladachtergrond niet instellen"
     },
-    "refresh_subfolders": {
-      "success": "Submappen vernieuwd",
-      "failed": "Kan submappen niet vernieuwen"
+    "refresh_folders": {
+      "success": "Mappen vernieuwd",
+      "failed": "Kan mappen niet vernieuwen"
     },
     "copy_image": {
       "success": "{count} bestand(en) naar klembord gekopieerd",
@@ -727,12 +732,17 @@
     },
     "album_exists": "Dit album bestaat al",
     "album_nested": "Deze map overlapt met een ander album",
+    "refresh_subfolders": {
+      "success": "Submappen vernieuwd",
+      "failed": "Kan submappen niet vernieuwen"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "{count} bestanden ({size})"
+    "files_summary": "{count} bestanden ({size})",
+    "items_summary": "{count} items ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Uitsluiten van zoeken",
       "remove": "Verwijderen",
       "delete_folder": "Map verwijderen",
+      "refresh_folders": "Mappen vernieuwen",
       "refresh_subfolders": "Submappen vernieuwen"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Toon in Finder...",
       "reveal_in_file_explorer": "Toon in Verkenner...",
       "refresh_file_info": "Bestandsinfo vernieuwen",
-      "index_cloud_files": "Downloaden, indexeren en ruimte vrijmaken",
       "set_album_cover": "Instellen als albumomslag",
       "set_as": "Instellen als",
       "set_desktop_wallpaper": "Instellen als bureaubladachtergrond",
@@ -804,6 +814,7 @@
       "xmp_save_success": "XMP-metadata opgeslagen voor {count} bestand(en)",
       "xmp_save_failed": "XMP opslaan mislukt voor {count} bestand(en)",
       "comment": "Beschrijving…",
+      "index_cloud_files": "Downloaden, indexeren en ruimte vrijmaken",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "OK",
+    "save": "Opslaan",
     "discard": "Negeren",
     "reset": "Resetten",
     "cancel": "Annuleren",
@@ -994,42 +1006,60 @@
       "invalid": "Voer een naam en een positief geheel startnummer in.",
       "success": "{count} items hernoemd."
     },
+    "file_delete": {
+      "permanent_summary": "1 bestand wordt permanent verwijderd. | {count} bestanden worden permanent verwijderd.",
+      "trash_summary": "1 bestand wordt naar de prullenmand verplaatst. | {count} bestanden worden naar de prullenmand verplaatst.",
+      "title": "{count} bestand permanent verwijderen? | {count} bestanden permanent verwijderen?",
+      "confirm": "{count} bestand verwijderen | {count} bestanden verwijderen",
+      "irreversible": "Dit kan niet ongedaan worden gemaakt.",
+      "mixed_hint": "Geldt alleen voor RAW-paren. Andere geselecteerde items worden altijd volledig verwijderd.",
+      "trash_unavailable": "Deze bestanden konden niet naar de prullenmand worden verplaatst. Mogelijk is er geen prullenmand beschikbaar op dit station."
+    },
+    "raw_pair_delete": {
+      "scope": "Te verwijderen RAW-paardbestanden",
+      "both": "Beide bestanden",
+      "raw": "Alleen RAW",
+      "companion": "Alleen JPEG / HEIC",
+      "format": "Alleen {format}",
+      "failed": "Mislukte verwijderingen: {count}."
+    },
+    "folder_delete_contents": "Dit omvat alle bestanden en submappen.",
     "move_to_trash": {
       "title": "Naar prullenbak",
       "file_content": "Het bestand '{file}' wordt naar de prullenbak verplaatst.",
-      "files_content": "{count} geselecteerde bestanden worden naar de prullenbak verplaatst.",
-      "removable_files_content": "Alle {count} verwijderbare bestanden worden naar de prullenbak verplaatst.",
-      "raw_jpeg_companions_content": "{count} bijbehorende RAW+JPEG-bestand(en) worden ook verwijderd.",
+      "files_content": "{count} geselecteerde items worden naar de prullenbak verplaatst.",
+      "removable_files_content": "Alle {count} verwijderbare items worden naar de prullenbak verplaatst.",
       "folder_content": "De map '{folder}' wordt naar de prullenbak verplaatst.",
       "ok": "Naar prullenbak",
       "file_success": "Het bestand '{file}' is naar de prullenbak verplaatst.",
-      "files_success": "{count} geselecteerde bestanden zijn naar de prullenbak verplaatst.",
+      "files_success": "{count} geselecteerde items zijn naar de prullenbak verplaatst.",
       "folder_success": "De map '{folder}' is naar de prullenbak verplaatst.",
       "file_error": "Kan het bestand niet naar de prullenbak verplaatsen.",
-      "files_error": "Kan de geselecteerde bestanden niet naar de prullenbak verplaatsen.",
-      "folder_error": "Kan de map niet naar de prullenbak verplaatsen."
+      "files_error": "Kan de geselecteerde items niet naar de prullenbak verplaatsen.",
+      "folder_error": "Kan de map niet naar de prullenbak verplaatsen.",
+      "raw_jpeg_companions_content": "{count} bijbehorende RAW+JPEG-bestand(en) worden ook verwijderd."
     },
     "permanent_delete": {
       "title": "Definitief verwijderen",
       "file_content": "Het bestand '{file}' wordt definitief verwijderd.",
-      "files_content": "{count} geselecteerde bestanden worden definitief verwijderd.",
-      "removable_files_content": "Alle {count} verwijderbare bestanden worden definitief verwijderd.",
+      "files_content": "{count} geselecteerde items worden definitief verwijderd.",
+      "removable_files_content": "Alle {count} verwijderbare items worden definitief verwijderd.",
       "folder_content": "De map '{folder}' wordt definitief verwijderd.",
-      "checkbox": "Definitief verwijderen (kan niet ongedaan worden gemaakt)",
       "ok": "Verwijderen",
       "file_success": "Het bestand '{file}' is definitief verwijderd.",
-      "files_success": "{count} geselecteerde bestanden zijn definitief verwijderd.",
+      "files_success": "{count} geselecteerde items zijn definitief verwijderd.",
       "folder_success": "De map '{folder}' is definitief verwijderd.",
       "file_error": "Kan het bestand niet definitief verwijderen.",
-      "files_error": "Kan de geselecteerde bestanden niet definitief verwijderen.",
-      "folder_error": "Kan de map niet definitief verwijderen."
+      "files_error": "Kan de geselecteerde items niet definitief verwijderen.",
+      "folder_error": "Kan de map niet definitief verwijderen.",
+      "checkbox": "Definitief verwijderen (kan niet ongedaan worden gemaakt)"
     },
     "trash_failed": {
       "title": "Naar prullenbak mislukt",
       "file_content": "Het bestand '{file}' kon niet naar de prullenbak worden verplaatst.\n\nWil je het in plaats daarvan definitief verwijderen?",
-      "files_content": "{count} geselecteerde bestanden konden niet naar de prullenbak worden verplaatst.\n\nWil je ze in plaats daarvan definitief verwijderen?",
+      "files_content": "{count} geselecteerde items konden niet naar de prullenbak worden verplaatst.\n\nWil je ze in plaats daarvan definitief verwijderen?",
       "folder_content": "De map '{folder}' kon niet naar de prullenbak worden verplaatst.\n\nWil je deze in plaats daarvan definitief verwijderen?\n\nDeze actie kan niet via de prullenbak van het systeem ongedaan worden gemaakt.",
-      "folder_partial_warning": "Bij de vorige poging is mogelijk een deel van de inhoud naar de prullenbak verplaatst. Permanent verwijderen wist deze map en de resterende inhoud.",
+      "folder_partial_warning": "Bij de vorige poging is mogelijk een deel van de inhoud naar de prullenbak verplaatst.",
       "ok": "Definitief verwijderen"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Korte titel",
+      "e_headline": "Kop voor publicatie",
+      "comments": "Beschrijf de inhoud of voeg context toe",
+      "e_artist": "Naam",
+      "e_artist_hint": "Eén per regel",
+      "e_copyright": "© {year} Naam"
+    },
+    "edit_metadata_no_fields": "Selecteer minstens één veld onder Organisatie bij Velden aanpassen voordat je metadata bewerkt.",
+    "edit_metadata": "Metadata bewerken",
+    "metadata_save_failed": "Metadata konden niet worden opgeslagen",
     "paths_copied": "{count} bestandspad(en) naar klembord gekopieerd",
     "copy_path": "Bestandspad kopiëren",
     "copy_path_failed": "Bestandspad kopiëren mislukt",
@@ -1269,7 +1310,7 @@
     "organization": "Organisatie",
     "file": "Bestand",
     "capture": "Opname",
-    "source_metadata": "Bronmetadata",
+    "source_metadata": "Overige informatie",
     "source_description": "Oorspronkelijke beschrijving",
     "coordinates": "Coördinaten",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "Compatibele weergave voorbereiden...",
     "failed": "Video kan niet worden afgespeeld",
     "errors": {
+      "playback_failed": "Afspelen mislukt",
       "aborted": "Laden van video is geannuleerd",
       "network": "Netwerkfout bij het laden van de video",
       "decode": "Fout bij het decoderen van de video",
       "format": "Niet-ondersteund videoformaat of het bestand is beschadigd.",
-      "external_player_recommended": "Deze video moet eerst worden omgezet voordat hij hier kan worden afgespeeld. Voor lange video's raadt lappp aan een externe speler te gebruiken in plaats van te wachten op de verwerking op de achtergrond.",
+      "external_player_recommended": "Deze video moet eerst worden omgezet voordat hij hier kan worden afgespeeld. Voor lange video's raadt Lap aan een externe speler te gebruiken in plaats van te wachten op de verwerking op de achtergrond.",
       "unsafe_webview": "Dit videoformaat wordt niet ondersteund voor afspelen.",
       "open_in_external_app": "Openen in externe speler",
       "open_in_external_app_named": "Video openen in {app}...",
       "use_external": "Stel een externe speler in bij Instellingen om niet-ondersteunde formaten te openen.",
       "use_external_generic": "Probeer het te openen in de externe speler.",
       "use_external_with_app": "Probeer het in plaats daarvan te openen in {app}.",
-      "unknown": "Onbekende fout",
-      "playback_failed": "Video playback failed"
+      "unknown": "Onbekende fout"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "Gekoppelde bestanden",
-      "clipboard_both": "Beide bestanden",
-      "clipboard_raw": "Alleen RAW",
-      "clipboard_jpeg": "Alleen JPEG/HEIC",
-      "clipboard_hint": "Geldt ook voor bestandspaden. Kopiëren of verplaatsen naar mappen blijft ongewijzigd.",
       "pair_source": "Standaardweergave voor paren",
       "pair_source_hint": "Gebruikt voor miniaturen en voorbeelden van gekoppelde bestanden",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Standaardvoorbeeldbron",
       "preview_source_hint": "Als de voorkeursbron ontbreekt, wordt de andere gebruikt",
-      "rawRenderBrightness": "Helderheid bij renderen",
-      "option_embedded": "Ingesloten voorbeeld eerst",
-      "option_rendered": "RAW eerst renderen",
-      "option_original": "Originele belichting",
-      "option_brightened": "Helderder",
-      "brightness_hint": "Geldt alleen voor RAW-rendering",
-      "switch_to": "Overschakelen naar {source}",
+      "option_embedded": "Ingesloten voorbeeld",
+      "option_rendered": "RAW renderen",
+      "option_brightened": "Automatisch oplichten",
       "show_pair": "Gekoppelde {format} tonen",
-      "source_embedded": "Ingesloten",
-      "source_rendered": "Gerenderd",
-      "source_brightened": "Helderder",
-      "preview_mode": "RAW-voorbeeldmodus"
+      "source_embedded": "Ingesloten voorbeeld",
+      "source_rendered": "RAW renderen",
+      "source_brightened": "Automatisch oplichten",
+      "preview_mode": "RAW-voorbeeldmodus",
+      "clipboard_both": "Beide bestanden",
+      "clipboard_raw": "Alleen RAW",
+      "clipboard_jpeg": "Alleen JPEG/HEIC",
+      "clipboard_hint": "Geldt ook voor bestandspaden. Kopiëren of verplaatsen naar mappen blijft ongewijzigd.",
+      "rawRenderBrightness": "Helderheid bij renderen",
+      "option_original": "Originele belichting",
+      "brightness_hint": "Geldt alleen voor RAW-rendering",
+      "switch_to": "Overschakelen naar {source}"
     },
     "metadata": {
       "title": "Metagegevens",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "Het meertalige zoekmodel voor foto's is niet geïnstalleerd. Download het om te kunnen zoeken in meer dan 50 talen.",
       "download": "Downloaden",
       "downloading_multilingual_model": "Meertalig model downloaden",
-      "multilingual_model_download_success": "Het meertalige zoekmodel is klaar. Start lappp opnieuw om het te gebruiken.",
+      "multilingual_model_download_success": "Het meertalige zoekmodel is klaar. Start Lap opnieuw om het te gebruiken.",
       "multilingual_model_download_failed": "Kan het meertalige zoekmodel niet downloaden",
       "similarity": "Zoekovereenkomst",
       "similarity_hint": "Bepaalt de visuele overeenkomsten bij zoeken op trefwoord",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Inzoomen",
         "zoom_out": "Uitzoomen",
         "zoom_fit": "Wisselen tussen ware grootte / passend in venster",
+        "cycle_raw_preview": "RAW-voorbeeldmodus wisselen",
         "toggle_af_areas": "AF-gebieden tonen/verbergen",
         "cycle_background": "Achtergrond wisselen",
         "open_new_window": "Bekijken in nieuw venster",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "Bij het verwijderen van bestanden",
+      "file_delete_trash_hint": "Verplaats één bestand zonder bevestiging naar de prullenmand",
+      "file_delete_permanent_hint": "Permanent verwijderen vereist altijd bevestiging",
+      "file_delete_section": "Bestanden verwijderen",
       "title": "Geavanceerd",
       "external_app": {
         "section_external_apps": "Externe apps",

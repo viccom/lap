@@ -3,7 +3,7 @@
 # desktop shell) shares — storage, imaging decoders, AI engine, VL pipeline.
 # The desktop bin keeps only Tauri glue (see the workspace root package).
 name = "lappp-core"
-version = "0.3.3"
+version = "0.4.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 build = "build.rs"

@@ -306,7 +306,26 @@ mod tests {
                     "sync_album_folder_mtimes",
                     &["albumId", "folderId", "folderPath", "groupRawJpegPairs"],
                 ),
-                ("refresh_album_subfolders", &["albumId", "folderPath"]),
+                (
+                    "refresh_album_folders",
+                    &["albumId", "folderPath", "libraryId", "groupRawJpegPairs"],
+                ),
+                (
+                    "reconcile_raw_jpeg_pairs",
+                    &["libraryId", "enabled"],
+                ),
+                (
+                    "import_files",
+                    &[
+                        "libraryId",
+                        "filePaths",
+                        "folderId",
+                        "folderPath",
+                        "groupRawJpegPairs",
+                        "onProgress",
+                    ],
+                ),
+                ("edit_file_metadata", &["libraryId", "fileIds", "changes"]),
                 (
                     "import_and_organize",
                     &[
@@ -315,9 +334,11 @@ mod tests {
                         "destinationPath",
                         "layout",
                         "completedPaths",
+                        "groupRawJpegPairs",
                     ],
                 ),
                 ("cancel_import_and_organize", &[]),
+                ("dedup_get_group_items", &["groupId", "groupRawPairs"]),
                 ("check_ai_status", &[]),
                 ("get_image_search_model_status", &[]),
                 ("set_image_search_model", &["model"]),
@@ -347,6 +368,7 @@ mod tests {
                         "params",
                         "collectionId",
                         "fileIds",
+                        "groupRawPairs",
                         "keepRules",
                     ],
                 ),

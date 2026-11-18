@@ -1184,6 +1184,7 @@ pub async fn prepare_video(
     request_id: Option<u64>,
 ) -> Result<VideoPrepareResult, String> {
     let state = crate::t_state::video_manager();
+    crate::t_utils::require_local_content(std::path::Path::new(&file_path)).map_err(|e| e.to_string())?;
     if is_mpeg_program_stream(&file_path) {
         return Err(EXTERNAL_PLAYER_REQUIRED_ERROR.to_string());
     }

@@ -175,7 +175,7 @@
         :selected-file="activeFileInfo"
         :selected-item-index="getFileIndexByPane(statusPane)"
         :total-file-count="fileCount"
-        :total-file-size="activeFileInfo?.size || 0"
+        :total-file-size="getMediaItemSize(activeFileInfo)"
         :image-scale="getPaneScale(statusPane).display"
         :show-scale="true"
         :is-embedded="true"
@@ -198,18 +198,8 @@
       @cancel="showAddToCollectionDialog = false"
     />
 
-    <MessageBox
-      v-if="showCommentMsgbox"
-      :title="$t('msgbox.edit_comment.title')"
-      :showInput="true"
-      :inputText="activeFileInfo?.comments ?? ''"
-      :inputPlaceholder="$t('msgbox.edit_comment.placeholder')"
-      :multiLine="true"
-      :OkText="$t('msgbox.ok')"
-      :cancelText="$t('msgbox.cancel')"
-      @ok="onEditComment"
-      @cancel="showCommentMsgbox = false"
-    />
+    <EditMetadataDialog v-if="showCommentMsgbox && metadataFiles.length" :files="metadataFiles" :focus-field="metadataFocus"
+    @saved="onMetadataSaved" @cancel="showCommentMsgbox = false" />
 
   </div>
 
@@ -217,6 +207,8 @@
 
 <script setup lang="ts">
 
+import { getVisibleEditableMetadataFields } from '@/common/fileInfoFields';
+import EditMetadataDialog from "@/components/EditMetadataDialog.vue";
 import { isOriginalStorageUnavailable, isOriginalUnavailable, setAlbumAccessibility, resetFileAccessibility } from '@/common/availability';
 import { ref, watch, computed, onMounted, onUnmounted, reactive } from 'vue';
 import { getCurrentWebviewWindow } from '@/common/transport/window.js';
@@ -226,13 +218,12 @@ import { useToast } from '@/common/toast';
 import { useUIStore } from '@/stores/uiStore';
 import { useViewerSessionStore } from '@/stores/viewerSessionStore';
 import { config, libConfig } from '@/common/config';
-import { isWin, isMac, isLinux, copyFilePaths, getClipboardItemPaths, getSlideShowInterval, SCALE_VALUES } from '@/common/utils';
+import { isWin, isMac, isLinux, copyFilePaths, getClipboardItemPaths, getMediaItemSize, getSlideShowInterval, SCALE_VALUES } from '@/common/utils';
 import { matchesShortcut, ShortcutActionId, ShortcutPlatform, VIEW_BACKGROUND_SHORTCUTS } from '@/common/shortcuts';
 import { handleVideoPlaybackShortcut, handleVideoEscapeShortcut } from '@/common/video';
 import {
   checkFileAccessibility,
   copyImages,
-  editFileComment,
   getFileCollections,
   getFileInfo,
   getTagsForFile,
@@ -336,6 +327,8 @@ const visiblePanes = computed<Pane[]>(() =>
 const showTaggingDialog = ref(false);
 const showAddToCollectionDialog = ref(false);
 const showCommentMsgbox = ref(false);
+const metadataFiles = ref<any[]>([]);
+const metadataFocus = 'comments';
 const taggingFileIds = ref<number[]>([]);
 const collectionFileIds = ref<number[]>([]);
 
@@ -618,7 +611,7 @@ onUnmounted(() => {
 
 async function copyActiveFilePath() {
   try {
-    const count = await copyFilePaths([getFileInfoByPane(getActivePane())], config.settings.rawPairClipboardMode);
+    const count = await copyFilePaths([getFileInfoByPane(getActivePane())], config.settings.groupRawJpegPairs);
     if (count > 0) toast.success(t('file_info.paths_copied', { count }));
   } catch (error) {
     console.error('Failed to copy file path:', error);
@@ -634,14 +627,14 @@ async function copyActiveFiles(pane = getActiveFilePane()) {
       toast.warning(t('offline.requires_original'));
       return;
     }
-    const paths = getClipboardItemPaths(file, config.settings.rawPairClipboardMode);
+    const paths = getClipboardItemPaths(file, config.settings.groupRawJpegPairs);
     if (!paths.length) return;
     const available = await Promise.all(paths.map(path => checkFileAccessibility(path)));
     if (available.some(value => !value)) {
       toast.warning(t('offline.requires_original'));
       return;
     }
-    const count = await copyImages(paths);
+    const count = await copyImages(paths, paths.length === 2);
     if (count > 0) {
       toast.success(t('tooltip.copy_image.success', { count: count.toLocaleString() }));
       return;
@@ -667,6 +660,11 @@ function handleKeyDown(event: KeyboardEvent) {
 
   const isEditingText = event.target instanceof HTMLElement
     && (event.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName));
+  if (!isEditingText && matchesShortcut('view.toggleFullscreen', event, shortcutPlatform)) {
+    event.preventDefault();
+    if (!event.repeat) toggleNativeFullScreen();
+    return;
+  }
   if (matchesShortcut('file.copyPath', event, shortcutPlatform) && !isEditingText) {
     event.preventDefault();
     if (!event.repeat) void copyActiveFilePath();
@@ -749,15 +747,20 @@ function handleKeyDown(event: KeyboardEvent) {
     return;
   }
 
+  if (matchesShortcut('meta.edit', event, shortcutPlatform)) {
+    event.preventDefault();
+    if (!event.repeat) openCommentEditor(getActiveFilePane());
+    return;
+  }
+
   if (matchesShortcut('meta.collection', event, shortcutPlatform)) {
     event.preventDefault();
     clickAddToCollection(getActiveFilePane());
     return;
   }
 
-  if (matchesShortcut('meta.comment', event, shortcutPlatform)) {
-    event.preventDefault();
-    openCommentEditor(getActiveFilePane());
+  if (!isEditingText && matchesShortcut('view.cycleRawPreview', event, shortcutPlatform)) {
+    if (!event.repeat && getViewerRef(getActivePane())?.cycleRawPreview?.()) event.preventDefault();
     return;
   }
 
@@ -1479,10 +1482,12 @@ const clickTag = (pane: Pane = 'left') => {
 };
 
 const openCommentEditor = (pane: Pane = 'left') => {
+  if (showCommentMsgbox.value || !getVisibleEditableMetadataFields(config.infoPanel.fields).length) return;
   const currentFileId = getFileIdByPane(pane);
   if (currentFileId <= 0) return;
 
   setActivePane(pane);
+  metadataFiles.value = [activeFileInfo.value];
   showCommentMsgbox.value = true;
 };
 
@@ -1535,22 +1540,18 @@ async function handleCollectionDeleted(collectionId: number) {
   }
 }
 
-const onEditComment = async (newComment: any) => {
-  const target = activeFileInfo.value;
-  const currentFileId = activeFileId.value;
-  if (!target || currentFileId <= 0) return;
-
-  const result = await editFileComment(currentFileId, newComment);
-  if (result) {
-    applyFileMetaToPanes(currentFileId, { comments: newComment });
-    showCommentMsgbox.value = false;
-    syncFileMetaToContent(currentFileId, { comments: newComment });
+function onMetadataSaved(files: any[], changes: Record<string, string>) {
+  for (const file of files) {
+    applyFileMetaToPanes(file.id, changes);
+    syncFileMetaToContent(file.id, changes);
   }
-};
+  showCommentMsgbox.value = false;
+}
 
 async function updateFileHasTags(fileStates: Array<{ file_id: number; has_tags: boolean }>) {
   await syncTagStates(fileStates);
   showTaggingDialog.value = false;
+  void emit("tags-changed");
 }
 
 async function syncTagStates(fileStates: Array<{ file_id: number; has_tags: boolean }>) {

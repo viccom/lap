@@ -38,14 +38,14 @@
     "drop_action": "添加",
     "drop_title_hint": "拖放以添加",
     "empty_drop_hint": "将文件拖到合集中以添加。",
-    "added_toast": "已添加 {count} 个文件到合集",
-    "add_failed_toast": "无法将文件添加到 {count} 个合集",
-    "already_exists_toast": "{count} 个文件已在合集中",
+    "added_toast": "已添加 {count} 个项目到合集",
+    "add_failed_toast": "无法将项目添加到 {count} 个合集",
+    "already_exists_toast": "{count} 个项目已在合集中",
     "clear": "清空合集",
     "clear_confirm_title": "清空合集",
     "clear_confirm_message": "移除 \"{name}\" 中的所有文件？文件本身不会被删除。",
     "clear_confirm_ok": "清空",
-    "removed_toast": "已从合集移除 {count} 个文件"
+    "removed_toast": "已从合集移除 {count} 个项目"
   },
   "library": {
     "all_files": "所有文件",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "离线",
+    "download_to_open": "请先在云盘客户端中下载此照片，再打开。",
     "cloud_only": "仅在线可用",
     "cloud_only_pending": "仅在线可用 — 文件信息待补全",
     "original_unavailable": "原文件暂时无法访问",
@@ -255,7 +256,7 @@
     "section_folders": "选择文件夹",
     "section_status": "导入状态",
     "to_import": "待导入",
-    "files_progress": "{processed} / {total} 个文件（{size}）",
+    "files_progress": "{processed} / {total} 个项目（{size}）",
     "source": "来源",
     "source_placeholder": "选择来源文件夹",
     "destination": "目标",
@@ -266,7 +267,7 @@
     "layout_structure": "保留文件夹结构",
     "import": "导入",
     "preparing": "正在准备导入",
-    "importing": "正在导入文件",
+    "importing": "正在导入项目",
     "complete": "导入完成",
     "cancelled": "已取消导入",
     "continue": "继续导入",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "从新建相册开始",
-    "add_album_description": "选择一个文件夹，让 lappp 为您整理照片和视频。",
+    "add_album_description": "选择一个文件夹，让 Lap 为您整理照片和视频。",
     "smart_album_title": "智能整理照片",
     "smart_album_description": "使用规则自动归类符合条件的照片。",
     "collection_title": "将照片归入合集",
@@ -296,23 +297,6 @@
     "unknown_lens": "未知镜头",
     "semantic_matches": "视觉匹配",
     "text_matches": "文本匹配",
-    "mode": {
-      "label": "搜索模式",
-      "all": "全部",
-      "precise": "精确",
-      "semantic": "语义",
-      "single_char_hint": "单字精确检索会退回模糊匹配，可能较慢"
-    },
-    "matches_from": "命中来源",
-    "precise_matches": "精确命中",
-    "match_column": {
-      "name": "文件名",
-      "people": "人名",
-      "meta": "元数据",
-      "tags": "标签",
-      "caption": "图片描述",
-      "like": "模糊匹配"
-    },
     "index": {
       "wait_index": "排队等待扫描",
       "indexing": "正在扫描... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "跳过这个文件并继续",
         "file_label": "最后扫描的文件",
         "message": "上一次扫描没有正常退出。",
-        "message_with_file": "上一次扫描没有正常退出。\n\n最后扫描的文件：\n{file}\n\n如果继续，lappp 将跳过该文件一次并恢复扫描。"
+        "message_with_file": "上一次扫描没有正常退出。\n\n最后扫描的文件：\n{file}\n\n如果继续，Lap 将跳过该文件一次并恢复扫描。"
       }
+    },
+    "mode": {
+      "label": "搜索模式",
+      "all": "全部",
+      "precise": "精确",
+      "semantic": "语义",
+      "single_char_hint": "单字精确检索会退回模糊匹配，可能较慢"
+    },
+    "matches_from": "命中来源",
+    "precise_matches": "精确命中",
+    "match_column": {
+      "name": "文件名",
+      "people": "人名",
+      "meta": "元数据",
+      "tags": "标签",
+      "caption": "图片描述",
+      "like": "模糊匹配"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "收藏的文件夹"
   },
   "rating": {
+    "mixed": "混合",
     "title": "评分",
     "unrated": "未评分",
     "all_rated": "全部已评分",
     "rated": "已评分",
-    "mixed": "多种",
     "clear_rating": "清除评分",
     "five_stars": "5 星",
     "four_stars": "4 星",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "仅收藏",
-      "select_mode": "多选",
-      "select_files": "选择文件",
-      "show_selection_panel": "打开多选面板",
-      "hide_selection_panel": "收起多选面板",
-      "exit_select_mode": "退出多选",
+      "show_selection_panel": "打开选择面板",
+      "exit_selection_mode": "退出选择模式",
       "select_count": "已选择 {count}",
       "group_type_options": [
         "不分组",
@@ -516,14 +514,16 @@
         "仅 RAW",
         "视频"
       ],
-      "file_type_other": "其他"
+      "file_type_other": "其他",
+      "select_mode": "多选",
+      "select_files": "选择文件",
+      "hide_selection_panel": "收起多选面板",
+      "exit_select_mode": "退出多选"
     },
     "tooltip": {
       "restore": "恢复",
       "refresh": "刷新",
-      "show_info": "显示信息",
-      "hide_info": "隐藏信息",
-      "open_dedup": "查找重复和相似照片",
+      "info": "信息",
       "clear_history": "清空搜索历史",
       "index_faces": "索引人脸",
       "sort": "排序",
@@ -534,7 +534,10 @@
       "back": "返回",
       "scanning": "扫描中…",
       "scan_paused": "扫描已暂停",
-      "scan_queued": "排队等待扫描"
+      "scan_queued": "排队等待扫描",
+      "show_info": "显示信息",
+      "hide_info": "隐藏信息",
+      "open_dedup": "查找重复和相似照片"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "调整"
     ],
     "empty_title": "当前列表为空",
-    "empty_desc": "请添加文件，或更新当前筛选范围以在此显示内容。",
-    "select_hint": "未选择文件",
+    "empty_desc": "请添加项目，或更新当前筛选范围以在此显示内容。",
+    "select_hint": "未选择项目",
     "deselect": "取消选择",
-    "select_mode_entered": "已进入多选模式",
-    "selection_load_failed": "无法加载全部文件进行选择，请重试。",
+    "selection_load_failed": "无法加载全部项目进行选择，请重试。",
     "large_batch": {
       "title": "确认批量操作",
-      "content": "此操作将处理 {count} 个文件，可能需要一些时间。是否继续？",
+      "content": "此操作将处理 {count} 个项目，可能需要一些时间。是否继续？",
       "ok": "继续"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "保留",
       "unkeep_label": "取消保留",
       "delete_selected": "删除所选项",
+      "trash_all": "全部移到废纸篓",
       "delete_all": "删除全部",
       "move_selected_to_trash": "移到废纸篓（已选 {count} 项 · {size}）",
-      "no_removable_files": "没有可移至废纸篓的可删除文件",
+      "no_removable_files": "没有可移至废纸篓的可删除项目",
       "set_keep": "保留",
       "removable_copies_summary": "{count} 个可删除副本 · {size}",
+      "similar_items_summary": "{count} 个相似项 · {size}",
       "similar_photos_summary": "{count} 张相似照片 · {size}"
-    }
+    },
+    "select_mode_entered": "已进入多选模式"
   },
   "tooltip": {
     "loading": "加载中...",
@@ -694,9 +699,9 @@
       "success": "桌面壁纸已更新",
       "failed": "无法设置桌面壁纸"
     },
-    "refresh_subfolders": {
-      "success": "已刷新子文件夹",
-      "failed": "无法刷新子文件夹"
+    "refresh_folders": {
+      "success": "已刷新文件夹",
+      "failed": "无法刷新文件夹"
     },
     "copy_image": {
       "success": "已复制 {count} 个文件到剪贴板",
@@ -727,12 +732,17 @@
     },
     "album_exists": "此相册已存在",
     "album_nested": "该文件夹与其他相册重叠",
+    "refresh_subfolders": {
+      "success": "已刷新子文件夹",
+      "failed": "无法刷新子文件夹"
+    },
     "album": {
       "remove": "从相册移除"
     }
   },
   "statusbar": {
-    "files_summary": "{count} 个文件 ({size})"
+    "files_summary": "{count} 个文件 ({size})",
+    "items_summary": "{count} 项 ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "从搜索中排除",
       "remove": "移除",
       "delete_folder": "删除文件夹",
+      "refresh_folders": "刷新文件夹",
       "refresh_subfolders": "刷新子文件夹"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "在访达中显示...",
       "reveal_in_file_explorer": "在文件资源管理器中显示...",
       "refresh_file_info": "刷新文件信息",
-      "index_cloud_files": "下载、索引并释放空间",
       "set_album_cover": "设置为相册封面",
       "set_as": "设为",
       "set_desktop_wallpaper": "设为桌面壁纸",
@@ -804,6 +814,7 @@
       "xmp_save_success": "已保存 {count} 个文件的 XMP 元数据",
       "xmp_save_failed": "{count} 个文件的 XMP 保存失败",
       "comment": "描述…",
+      "index_cloud_files": "下载、索引并释放空间",
       "vl_analyze": "AI 理解（云端）",
       "vl_analyze_selected": "AI 理解（云端）"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "确定",
+    "save": "保存",
     "discard": "丢弃",
     "reset": "重置",
     "cancel": "取消",
@@ -994,42 +1006,60 @@
       "invalid": "请输入名称和正整数起始编号。",
       "success": "已重命名 {count} 个项目。"
     },
+    "file_delete": {
+      "permanent_summary": "将永久删除 {count} 个文件。",
+      "trash_summary": "将把 {count} 个文件移到废纸篓。",
+      "title": "永久删除 {count} 个文件？",
+      "confirm": "删除 {count} 个文件",
+      "irreversible": "此操作无法撤销。",
+      "mixed_hint": "仅适用于 RAW 配对，其他选中项目始终会完整删除。",
+      "trash_unavailable": "这些文件无法移到废纸篓。此磁盘可能没有可用的废纸篓。"
+    },
+    "raw_pair_delete": {
+      "scope": "要删除的 RAW 配对文件",
+      "both": "删除两者",
+      "raw": "仅删除 RAW",
+      "companion": "仅删除 JPEG / HEIC",
+      "format": "仅删除 {format}",
+      "failed": "有 {count} 项删除失败。"
+    },
+    "folder_delete_contents": "这包括其中的所有文件和子文件夹。",
     "move_to_trash": {
       "title": "移到废纸篓",
       "file_content": "文件 '{file}' 将被移到废纸篓。",
-      "files_content": "{count} 个选择的文件将被移到废纸篓。",
-      "removable_files_content": "全部 {count} 个可删除文件将被移到废纸篓。",
-      "raw_jpeg_companions_content": "还将删除 {count} 个 RAW+JPEG 配对文件。",
+      "files_content": "{count} 个所选项目将被移到废纸篓。",
+      "removable_files_content": "全部 {count} 个可删除项目将被移到废纸篓。",
       "folder_content": "文件夹 '{folder}' 将被移到废纸篓。",
       "ok": "移到废纸篓",
       "file_success": "文件 '{file}' 已移到废纸篓。",
-      "files_success": "{count} 个选择的文件已移到废纸篓。",
+      "files_success": "{count} 个所选项目已移到废纸篓。",
       "folder_success": "文件夹 '{folder}' 已移到废纸篓。",
       "file_error": "将文件移到废纸篓失败。",
-      "files_error": "将所选文件移到废纸篓失败。",
-      "folder_error": "将文件夹移到废纸篓失败。"
+      "files_error": "将所选项目移到废纸篓失败。",
+      "folder_error": "将文件夹移到废纸篓失败。",
+      "raw_jpeg_companions_content": "还将删除 {count} 个 RAW+JPEG 配对文件。"
     },
     "permanent_delete": {
       "title": "永久删除",
       "file_content": "文件 '{file}' 将被永久删除。",
-      "files_content": "{count} 个选择的文件将被永久删除。",
-      "removable_files_content": "全部 {count} 个可删除文件将被永久删除。",
+      "files_content": "{count} 个所选项目将被永久删除。",
+      "removable_files_content": "全部 {count} 个可删除项目将被永久删除。",
       "folder_content": "文件夹 '{folder}' 将被永久删除。",
-      "checkbox": "永久删除（无法撤销）",
       "ok": "删除",
       "file_success": "文件 '{file}' 已永久删除。",
-      "files_success": "{count} 个选择的文件已永久删除。",
+      "files_success": "{count} 个所选项目已永久删除。",
       "folder_success": "文件夹 '{folder}' 已永久删除。",
       "file_error": "永久删除文件失败。",
-      "files_error": "永久删除所选文件失败。",
-      "folder_error": "永久删除文件夹失败。"
+      "files_error": "永久删除所选项目失败。",
+      "folder_error": "永久删除文件夹失败。",
+      "checkbox": "永久删除（无法撤销）"
     },
     "trash_failed": {
       "title": "移到废纸篓失败",
       "file_content": "文件 '{file}' 无法移到废纸篓。\n\n是否改为永久删除？",
-      "files_content": "所选 {count} 个文件无法移到废纸篓。\n\n是否改为永久删除？",
+      "files_content": "所选 {count} 个项目无法移到废纸篓。\n\n是否改为永久删除？",
       "folder_content": "文件夹 '{folder}' 无法移到废纸篓。\n\n是否改为永久删除？\n\n此操作无法通过系统回收站撤销。",
-      "folder_partial_warning": "上一次操作可能已将部分内容移入回收站。永久删除将删除此文件夹及其剩余内容。",
+      "folder_partial_warning": "上一次操作可能已将部分内容移入回收站。",
       "ok": "永久删除"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "简短标题",
+      "e_headline": "用于发布的标题",
+      "comments": "描述内容或补充背景",
+      "e_artist": "姓名",
+      "e_artist_hint": "每行一位",
+      "e_copyright": "© {year} 姓名"
+    },
+    "edit_metadata_no_fields": "请先在「自定义字段」中勾选至少一个「整理」字段，再编辑元数据。",
+    "edit_metadata": "编辑元数据",
+    "metadata_save_failed": "无法保存元数据",
     "paths_copied": "已复制 {count} 个文件路径到剪贴板",
     "copy_path": "复制文件路径",
     "copy_path_failed": "复制路径失败",
@@ -1269,7 +1310,7 @@
     "organization": "整理",
     "file": "文件",
     "capture": "拍摄信息",
-    "source_metadata": "源文件元数据",
+    "source_metadata": "其他信息",
     "source_description": "原始描述",
     "coordinates": "坐标",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "正在准备兼容播放...",
     "failed": "视频无法播放",
     "errors": {
+      "playback_failed": "播放失败",
       "aborted": "视频加载被中止",
       "network": "网络错误导致视频下载失败",
       "decode": "视频解码错误",
       "format": "视频格式暂不支持，或者文件已损坏。",
-      "external_player_recommended": "该视频需要先做兼容转码后才能在这里播放。对于长视频，lappp 更建议直接使用外部播放器，而不是等待后台处理。",
+      "external_player_recommended": "该视频需要先做兼容转码后才能在这里播放。对于长视频，Lap 更建议直接使用外部播放器，而不是等待后台处理。",
       "unsafe_webview": "不支持播放此视频格式。",
       "open_in_external_app": "使用外部播放器打开",
       "open_in_external_app_named": "在 {app} 中打开...",
       "use_external": "若要打开不支持的格式，请在设置中配置外部播放器。",
       "use_external_generic": "请尝试使用外部播放器打开。",
       "use_external_with_app": "请尝试在 {app} 中打开。",
-      "unknown": "未知错误",
-      "playback_failed": "视频播放失败"
+      "unknown": "未知错误"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "配对文件",
-      "clipboard_both": "两个文件",
-      "clipboard_raw": "仅 RAW",
-      "clipboard_jpeg": "仅 JPEG/HEIC",
-      "clipboard_hint": "同时影响复制文件路径，不影响复制或移动文件到文件夹。",
       "pair_source": "配对时默认显示",
       "pair_source_hint": "用于配对照片的缩略图和预览",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "默认预览来源",
       "preview_source_hint": "首选来源不可用时，自动使用另一来源",
-      "rawRenderBrightness": "渲染亮度",
-      "option_embedded": "优先使用内嵌预览",
-      "option_rendered": "优先渲染 RAW",
-      "option_original": "原始曝光",
-      "option_brightened": "提亮",
-      "brightness_hint": "仅对 RAW 渲染生效",
-      "switch_to": "切换到 {source}",
+      "option_embedded": "内嵌预览",
+      "option_rendered": "渲染 RAW",
+      "option_brightened": "自动提亮",
       "show_pair": "显示配对 {format}",
-      "source_embedded": "内嵌",
-      "source_rendered": "渲染",
-      "source_brightened": "提亮",
-      "preview_mode": "RAW 预览方式"
+      "source_embedded": "内嵌预览",
+      "source_rendered": "渲染 RAW",
+      "source_brightened": "自动提亮",
+      "preview_mode": "RAW 预览方式",
+      "clipboard_both": "两个文件",
+      "clipboard_raw": "仅 RAW",
+      "clipboard_jpeg": "仅 JPEG/HEIC",
+      "clipboard_hint": "同时影响复制文件路径，不影响复制或移动文件到文件夹。",
+      "rawRenderBrightness": "渲染亮度",
+      "option_original": "原始曝光",
+      "brightness_hint": "仅对 RAW 渲染生效",
+      "switch_to": "切换到 {source}"
     },
     "metadata": {
       "title": "元数据",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "多语言照片搜索模型尚未安装。下载后可支持 50+ 语言搜索。",
       "download": "下载",
       "downloading_multilingual_model": "正在下载多语言模型",
-      "multilingual_model_download_success": "多语言搜索模型已就绪。重启 lappp 后生效。",
+      "multilingual_model_download_success": "多语言搜索模型已就绪。重启 Lap 后生效。",
       "multilingual_model_download_failed": "多语言搜索模型下载失败",
       "similarity": "搜索相似度",
       "similarity_hint": "控制关键词搜索中的视觉匹配",
@@ -1680,6 +1721,7 @@
         "zoom_in": "放大",
         "zoom_out": "缩小",
         "zoom_fit": "切换实际大小/适应窗口",
+        "cycle_raw_preview": "切换 RAW 预览模式",
         "toggle_af_areas": "显示／隐藏自动对焦区域",
         "cycle_background": "切换背景",
         "open_new_window": "在新窗口中查看",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_section": "文件删除",
+      "file_delete_behavior": "删除时的行为",
+      "file_delete_trash_hint": "单个文件直接移到废纸篓",
+      "file_delete_permanent_hint": "永久删除前始终需要确认",
       "title": "高级",
       "external_app": {
         "section_external_apps": "外部应用",

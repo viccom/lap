@@ -10,7 +10,7 @@
           v-for="tab in settingsTabs"
           :key="tab.id"
           :class="[
-            'px-3 py-2 rounded-box cursor-pointer transition-all duration-200 font-medium flex items-center',
+            'px-3 py-2 rounded-box cursor-pointer transition-colors duration-200 font-medium flex items-center',
             config.settings.tabIndex === tab.id
               ? 'bg-base-100 text-primary' 
               : 'hover:text-base-content hover:bg-base-100/30'
@@ -98,29 +98,6 @@
                 <div>{{ $t('settings.general.show_status_bar') }}</div>
               </div>
               <input type="checkbox" class="toggle toggle-primary toggle-sm" v-model="config.settings.showStatusBar" />
-            </div>
-          </div>
-
-          <!-- album folder -->
-          <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
-            <div class="flex items-center gap-2 text-base-content/30">
-              <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.browse.section_album') }}</span>
-            </div>
-            <div class="flex items-center justify-between px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
-              <div class="flex flex-col gap-0.5 text-sm leading-5">
-                <div>{{ $t('settings.browse.show_subfolder_files') }}</div>
-                <div class="text-xs text-base-content/30">{{ $t('settings.browse.show_subfolder_files_hint') }}</div>
-              </div>
-              <input type="checkbox" class="toggle toggle-primary toggle-sm" v-model="config.settings.showSubfolderFiles" />
-            </div>
-            <div class="flex items-center justify-between px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
-              <div class="flex flex-col gap-0.5 text-sm leading-5">
-                <div>{{ $t('settings.browse.folder_sort') }}</div>
-                <div class="text-xs text-base-content/30">{{ $t('settings.browse.folder_sort_hint') }}</div>
-              </div>
-              <select class="select select-bordered select-sm min-w-40" v-model="config.settings.folderSort">
-                <option v-for="option in folderSortOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-              </select>
             </div>
           </div>
 
@@ -327,17 +304,6 @@
               <select id="raw-pair-source" class="select select-bordered select-sm w-40 shrink-0 max-w-full" v-model="config.settings.rawPairDisplaySource">
                 <option value="jpeg">{{ $t('settings.raw.pair_jpeg') }}</option>
                 <option value="raw">RAW</option>
-              </select>
-            </div>
-            <div v-if="config.settings.groupRawJpegPairs" class="flex items-center justify-between gap-3 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
-              <label for="raw-pair-clipboard" class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
-                <span>{{ $t('menu.file.copy') }}</span>
-                <span class="text-xs text-base-content/30">{{ $t('settings.raw.clipboard_hint') }}</span>
-              </label>
-              <select id="raw-pair-clipboard" class="select select-bordered select-sm w-40 shrink-0 max-w-full" v-model="config.settings.rawPairClipboardMode">
-                <option value="both">{{ $t('settings.raw.clipboard_both') }}</option>
-                <option value="raw">{{ $t('settings.raw.clipboard_raw') }}</option>
-                <option value="jpeg">{{ $t('settings.raw.clipboard_jpeg') }}</option>
               </select>
             </div>
           </div>
@@ -869,6 +835,20 @@
         <SettingsServer v-else-if="!isNative && config.settings.tabIndex === SERVER_SETTINGS_TAB" />
 
         <div v-else-if="config.settings.tabIndex === SETTINGS_TAB.ADVANCED" class="flex flex-col space-y-2">
+          <section class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm" aria-labelledby="file-delete-settings">
+            <h2 id="file-delete-settings" class="font-bold uppercase text-[10px] tracking-widest text-base-content/30">{{ $t('settings.advanced.file_delete_section') }}</h2>
+            <label class="flex items-start justify-between gap-4 px-1 rounded-box hover:bg-base-100/10 transition-colors duration-200">
+              <span class="min-w-0 flex flex-col gap-0.5 text-sm leading-5">
+                <span>{{ $t('settings.advanced.file_delete_behavior') }}</span>
+                <span class="text-xs text-base-content/30">{{ $t(config.settings.fileDeleteBehavior === 'permanent' ? 'settings.advanced.file_delete_permanent_hint' : 'settings.advanced.file_delete_trash_hint') }}</span>
+              </span>
+              <select v-model="config.settings.fileDeleteBehavior" class="select select-bordered select-sm w-auto min-w-36 shrink-0">
+                <option value="trash">{{ $t('msgbox.move_to_trash.title') }}</option>
+                <option value="permanent">{{ $t('msgbox.permanent_delete.title') }}</option>
+              </select>
+            </label>
+          </section>
+
 
           <!-- thumbnail cache -->
           <div class="rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
@@ -1036,7 +1016,7 @@
         </div>
 
         <!-- Shortcuts Tab -->
-        <div v-else-if="config.settings.tabIndex === SETTINGS_TAB.SHORTCUTS" class="flex flex-col space-y-2">
+        <div v-else-if="config.settings.tabIndex === SETTINGS_TAB.SHORTCUTS" class="@container flex flex-col space-y-2">
           <div
             v-for="section in shortcutSections"
             :key="section.key"
@@ -1045,22 +1025,40 @@
             <div class="flex items-center gap-2 text-base-content/30">
               <span class="font-bold uppercase text-[10px] tracking-widest">{{ section.title }}</span>
             </div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-x-4 gap-y-1">
-              <div v-for="item in section.items" :key="item.actionId">
+            <div class="sr-only" role="list">
+              <div v-for="item in section.items" :key="item.actionId" role="listitem">
+                <div v-for="(row, rowIndex) in item.rows" :key="rowIndex">
+                  {{ row.label }}: {{ row.keys.join(' ') }}
+                </div>
+              </div>
+            </div>
+            <div class="flex flex-col @[36rem]:flex-row @[36rem]:gap-4" aria-hidden="true">
+              <div
+                v-for="(column, columnIndex) in section.columns"
+                :key="columnIndex"
+                class="contents @[36rem]:block @[36rem]:flex-1 @[36rem]:min-w-0"
+              >
                 <div
-                  v-for="(row, rowIndex) in item.rows"
-                  :key="rowIndex"
-                  class="min-h-9 flex items-center justify-between gap-4 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200"
+                  v-for="item in column"
+                  :key="item.actionId"
+                  :style="{ order: item.order }"
+                  class="mb-1"
                 >
-                  <div class="min-w-0 text-sm leading-5">{{ row.label }}</div>
-                  <div class="shrink-0 flex items-center gap-1">
-                    <span
-                      v-for="(key, keyIndex) in row.keys"
-                      :key="keyIndex"
-                      class="min-w-7 h-7 px-2 inline-flex items-center justify-center rounded-box border border-base-content/10 bg-base-100/40 text-xs font-semibold text-base-content/30 shadow-sm"
-                    >
-                      {{ key }}
-                    </span>
+                  <div
+                    v-for="(row, rowIndex) in item.rows"
+                    :key="rowIndex"
+                    class="min-h-9 flex items-center justify-between gap-4 px-1 py-1 rounded-box hover:bg-base-100/10 transition-colors duration-200"
+                  >
+                    <div class="min-w-0 text-sm leading-5">{{ row.label }}</div>
+                    <div class="shrink-0 flex items-center gap-1">
+                      <span
+                        v-for="(key, keyIndex) in row.keys"
+                        :key="keyIndex"
+                        class="min-w-7 h-7 px-2 inline-flex items-center justify-center rounded-box border border-base-content/10 bg-base-100/40 text-xs font-semibold text-base-content/30 shadow-sm"
+                      >
+                        {{ key }}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1669,8 +1667,7 @@ watch(() => config.settings.tabIndex, (tabIndex) => {
   syncVlRunsPolling();
 });
 const rawPreviewFields = [
-  { key: 'rawPreviewSource', hint: 'preview_source_hint', options: ['embedded', 'rendered'] },
-  { key: 'rawRenderBrightness', hint: 'brightness_hint', options: ['original', 'brightened'] },
+  { key: 'rawPreviewSource', hint: 'preview_source_hint', options: ['embedded', 'rendered', 'brightened'] },
 ];
 
 const appWindow = getCurrentWebviewWindow()
@@ -1785,17 +1782,6 @@ const scaleOptions = computed(() => {
     value,
     label: options[index] ?? String(value),
   }));
-});
-
-const folderSortOptions = computed(() => {
-  const options = localeMsg.value.settings.browse.folder_sort_options || [];
-  const result = [];
-
-  for (let i = 0; i < options.length; i++) {
-    result.push({ label: options[i], value: i });
-  }
-
-  return result;
 });
 
 const dateTimeFormatOptions = computed(() => {
@@ -2088,6 +2074,7 @@ const shortcutDisplaySections: Array<{ key: string; items: ShortcutDisplayItem[]
       { actionId: 'file.openExternalApp', labelKey: 'open_external_app' },
       { actionId: 'file.editImage', labelKey: 'edit_image' },
       { actionId: 'file.searchSimilar', labelKey: 'search_similar' },
+      { actionId: 'meta.info', labelKey: 'show_info' },
     ],
   },
   {
@@ -2096,9 +2083,13 @@ const shortcutDisplaySections: Array<{ key: string; items: ShortcutDisplayItem[]
       { actionId: 'view.zoomIn', labelKey: 'zoom_in' },
       { actionId: 'view.zoomOut', labelKey: 'zoom_out' },
       { actionId: 'view.zoomFit', labelKey: 'zoom_fit' },
+      { actionId: 'meta.rotate', labelKey: 'rotate' },
+      { actionId: 'meta.rotateCounterclockwise', labelKey: 'rotate_counterclockwise' },
       { actionId: 'view.toggleAfAreas', labelKey: 'toggle_af_areas' },
       { actionId: 'view.togglePlayback', labelKey: 'toggle_playback' },
       { actionId: 'view.cycleBackground', labelKey: 'cycle_background' },
+      { actionId: 'view.cycleRawPreview', labelKey: 'cycle_raw_preview' },
+      { actionId: 'view.toggleFullscreen', labelKey: 'fullscreen' },
     ],
   },
   {
@@ -2107,12 +2098,12 @@ const shortcutDisplaySections: Array<{ key: string; items: ShortcutDisplayItem[]
 
       { actionId: 'file.rename', labelKey: 'rename_file' },
       { actionId: 'file.moveTo', labelKey: 'move_within_library' },
-      { actionId: 'file.moveToFolder', labelKey: 'move_to_folder' },
       { actionId: 'file.copy', labelKey: 'copy_file' },
       { actionId: 'file.copyPath', labelKey: 'copy_file_path' },
       { actionId: 'file.paste', labelKey: 'paste_file' },
       { actionId: 'file.reveal', labelKey: 'reveal_in_file_manager' },
       { actionId: 'file.trash', labelKey: 'move_to_trash' },
+      { actionId: 'file.deletePermanently', labelKey: 'delete_permanently' },
     ],
   },
   {
@@ -2133,24 +2124,23 @@ const shortcutDisplaySections: Array<{ key: string; items: ShortcutDisplayItem[]
       { actionId: 'meta.culling.unreviewed', labelKey: 'mark_unreviewed', advanceLabelKey: 'mark_unreviewed_and_next' },
       { actionId: 'meta.tag', labelKey: 'edit_tags' },
       { actionId: 'meta.collection', labelKey: 'edit_collections' },
-      { actionId: 'meta.comment', labelKey: 'edit_comment' },
-      { actionId: 'meta.rotate', labelKey: 'rotate' },
-      { actionId: 'meta.rotateCounterclockwise', labelKey: 'rotate_counterclockwise' },
-      { actionId: 'meta.info', labelKey: 'show_info' },
+      { actionId: 'meta.edit', labelKey: 'edit_metadata' },
     ],
   },
 ];
 
 const shortcutSections = computed(() => {
   const shortcutMessages = localeMsg.value.settings.shortcuts;
-  return shortcutDisplaySections.map((section) => ({
-    key: section.key,
-    title: shortcutMessages.sections[section.key],
-    items: section.items
-      .map((item) => {
+  const translatedActionLabels: Partial<Record<ShortcutActionId, string>> = {
+    'meta.edit': localeMsg.value.file_info.edit_metadata,
+    'view.toggleFullscreen': localeMsg.value.image_viewer.toolbar.fullscreen,
+  };
+  return shortcutDisplaySections.map((section) => {
+    const items = section.items
+      .map((item, order) => {
         const keys = item.keys ?? getDisplayShortcutKeys(item.actionId);
         const label = item.backgroundValue === undefined
-          ? shortcutMessages.actions[getShortcutActionLabelKey(item)]
+          ? translatedActionLabels[item.actionId] ?? shortcutMessages.actions[getShortcutActionLabelKey(item)]
           : `${localeMsg.value.settings.image_view.view_background}: ${localeMsg.value.settings.image_view.view_background_options[item.backgroundValue]}`;
         const rows = [{ label, keys }];
         if (item.advanceLabelKey) {
@@ -2159,10 +2149,19 @@ const shortcutSections = computed(() => {
             keys: [shortcutPlatform === 'mac' ? '⇧' : 'Shift', ...keys],
           });
         }
-        return { actionId: item.actionId, rows };
+        return { actionId: item.actionId, rows, order };
       })
-      .filter((item) => item.rows[0].keys.length > 0),
-  }));
+      .filter((item) => item.rows[0].keys.length > 0);
+    return {
+      key: section.key,
+      title: shortcutMessages.sections[section.key],
+      items,
+      columns: [
+        items.filter((_, index) => index % 2 === 0),
+        items.filter((_, index) => index % 2 === 1),
+      ],
+    };
+  });
 });
 
 function getShortcutActionLabelKey(item: ShortcutDisplayItem): string {
@@ -2419,6 +2418,9 @@ function changeLanguage(language: string) {
   void emit('settings-language-changed', language);
   void config.setLanguage(language, { fromUser: true });
 }
+watch(() => config.settings.fileDeleteBehavior, (behavior) => {
+  void emit('settings-fileDeleteBehavior-changed', behavior);
+});
 watch(() => config.settings.showToolTip, (newValue) => {
   emit('settings-showToolTip-changed', newValue);
 });
@@ -2434,31 +2436,19 @@ watch(() => config.settings.autoCheckUpdates, (newValue) => {
 watch(() => config.settings.debugMode, (newValue) => {
   emit('settings-debugMode-changed', newValue);
 });
-watch(() => config.settings.folderSort, (newValue) => {
-  emit('settings-folderSort-changed', newValue);
-});
 watch(() => config.settings.dateTimeFormat, (newValue) => {
   emit('settings-dateTimeFormat-changed', newValue);
-});
-watch(() => config.settings.showSubfolderFiles, (newValue) => {
-  emit('settings-showSubfolderFiles-changed', newValue);
 });
 watch(() => config.settings.groupRawJpegPairs, (newValue) => {
   emit('settings-groupRawJpegPairs-changed', newValue);
 });
 
-watch(() => config.settings.rawPairClipboardMode, (newValue) => {
-  emit('settings-rawPairClipboardMode-changed', newValue);
-});
 
 watch(() => config.settings.rawPairDisplaySource, (newValue) => {
   emit('settings-rawPairDisplaySource-changed', newValue);
 });
 watch(() => config.settings.rawPreviewSource, (newValue) => {
   emit('settings-rawPreviewSource-changed', newValue);
-});
-watch(() => config.settings.rawRenderBrightness, (newValue) => {
-  emit('settings-rawRenderBrightness-changed', newValue);
 });
 
 // grid view settings

@@ -4,6 +4,7 @@
 
 const SOURCES: &[&str] = &[
     include_str!("t_af_area.rs"),
+    include_str!("t_affinity.rs"),
     include_str!("t_ai.rs"),
     include_str!("t_ai_png.rs"),
     include_str!("t_batch_rename.rs"),
@@ -61,6 +62,7 @@ const SOURCES: &[&str] = &[
 
 const NAMES: &[&str] = &[
     "t_af_area.rs",
+    "t_affinity.rs",
     "t_ai.rs",
     "t_ai_png.rs",
     "t_batch_rename.rs",

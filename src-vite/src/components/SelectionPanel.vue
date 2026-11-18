@@ -3,7 +3,7 @@
     <div class="my-2 px-2 flex items-center w-full shrink-0">
       <div class="min-w-0 pl-1">
         <span class="text-sm font-semibold text-primary/70">
-          {{ $t('toolbar.filter.select_mode') }}
+          {{ $t('info_panel.select_title') }}
         </span>
       </div>
       <span class="ml-auto min-w-0 truncate pl-2 text-xs text-base-content/70" :title="selectionSummaryText" aria-live="polite">
@@ -21,11 +21,6 @@
 
     <div class="mb-2 px-2 flex-1 overflow-y-auto overflow-x-hidden flex flex-col">
       <div class="border-t border-base-content/5 px-1 py-3 space-y-3">
-        <div class="flex items-center gap-2">
-          <span class="text-[10px] uppercase tracking-widest font-bold text-base-content/30">
-            {{ $t('info_panel.select_title') }}
-          </span>
-        </div>
         <div class="flex flex-wrap items-center gap-1">
           <PanelActionButton
             :icon="IconSelectAll"
@@ -121,20 +116,6 @@
           >
             {{ $t('menu.meta.collection') }}
           </PanelActionButton>
-          <PanelActionButton
-            :icon="IconComment"
-            :disabled="selectedCount === 0"
-            @click="$emit('commentAll')"
-          >
-            {{ $t('menu.meta.comment') }}
-          </PanelActionButton>
-          <PanelActionButton
-            :icon="IconRotate"
-            :disabled="selectedCount === 0"
-            @click="$emit('rotateAll')"
-          >
-            {{ rotateDisplayLabel }}
-          </PanelActionButton>
         </div>
       </div>
 
@@ -144,6 +125,20 @@
           {{ $t('info_panel.file_actions') }}
         </div>
         <div class="flex flex-wrap items-center gap-1">
+          <PanelActionButton
+            :icon="IconRename"
+            :disabled="selectedCount === 0 || originalsUnavailable"
+            @click="$emit('rename')"
+          >
+            {{ $t('menu.file.rename') }}
+          </PanelActionButton>
+          <PanelActionButton
+            :icon="IconCopy"
+            :disabled="selectedCount === 0 || clipboardUnavailable"
+            @click="$emit('copyToClipboard')"
+          >
+            {{ $t('menu.file.copy') }}
+          </PanelActionButton>
           <PanelActionButton
             :icon="IconFileArrowRight"
             :disabled="selectedCount === 0 || originalsUnavailable"
@@ -164,19 +159,12 @@
             {{ $t('menu.file.copy_to_folder') }}
           </PanelActionButton>
           <PanelActionButton
-            :icon="IconRename"
-            :disabled="selectedCount === 0 || originalsUnavailable"
-            @click="$emit('rename')"
-          >
-            {{ $t('menu.file.rename') }}
-          </PanelActionButton>
-          <PanelActionButton
             :icon="IconTrash"
             :disabled="selectedCount === 0 || originalsUnavailable"
             danger
             @click="$emit('trash')"
           >
-            {{ $t('menu.file.delete') }}
+            {{ $t(config.settings.fileDeleteBehavior === 'permanent' ? 'menu.file.delete' : 'msgbox.move_to_trash.title') }}
           </PanelActionButton>
         </div>
 
@@ -212,6 +200,7 @@
 </template>
 
 <script setup lang="ts">
+import { config } from '@/common/config';
 import { SELECTED_THUMBNAIL_LIMIT } from '@/common/constants';
 import { computed, type CSSProperties } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -220,9 +209,8 @@ import {
   IconSelectAll,
   IconDeselect,
   IconClose,
-  IconComment,
+  IconCopy,
   IconFileArrowRight,
-  IconRotate,
   IconTag,
   IconTrash,
   IconRename,
@@ -241,6 +229,7 @@ const props = defineProps({
     type: Number,
     default: 0,
   },
+  clipboardUnavailable: { type: Boolean, default: false },
   originalsUnavailable: { type: Boolean, default: false },
   selectedCount: {
     type: Number,
@@ -276,8 +265,7 @@ const emit = defineEmits([
   'setCullingAll',
   'tagAll',
   'addToCollection',
-  'commentAll',
-  'rotateAll',
+  'copyToClipboard',
   'removeFromCollection',
   'unselectFile',
   'moreAction',
@@ -339,25 +327,6 @@ const multiSelectCulling = computed(() => {
   const cullingFlags = props.selectedFiles.map((file: any) => Number(file.culling_flag ?? file.cullingFlag ?? 0));
   const first = cullingFlags[0];
   return cullingFlags.every((cullingFlag: number) => cullingFlag === first) ? first : null;
-});
-
-const multiSelectRotate = computed(() => {
-  if (!props.selectedFiles.length) return 0;
-  const normalizeRotate = (rotate: number) => {
-    const normalized = rotate % 360;
-    return normalized < 0 ? normalized + 360 : normalized;
-  };
-  const rotates = props.selectedFiles.map((f: any) => normalizeRotate(Number(f.rotate || 0)));
-  const first = rotates[0];
-  return rotates.every((rotate: number) => rotate === first) ? first : null;
-});
-
-const rotateDisplayLabel = computed(() => {
-  const rotateText = localeMsg.value.menu.meta.rotate;
-  if (multiSelectRotate.value === null || multiSelectRotate.value === 0) {
-    return rotateText;
-  }
-  return `${rotateText} (${multiSelectRotate.value}°)`;
 });
 
 const visibleMoreActions = computed(() =>

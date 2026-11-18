@@ -54,6 +54,8 @@ pub struct DedupDeletePreview {
     pub token: String,
     pub item_count: usize,
     pub raw_companion_count: usize,
+    pub file_count: usize,
+    pub preview_file_ids: Vec<i64>,
     pub bytes: i64,
 }
 
@@ -85,6 +87,18 @@ struct KeepCandidate {
     is_raw_pair: bool,
     taken_date: i64,
     created_at: i64,
+}
+
+const LIVE_PHOTO_MEMBER_SQL: &str = "(a.media_subtype IS 'live_photo' AND a.live_photo_video_id IS NOT NULL)
+    OR EXISTS (SELECT 1 FROM afiles still WHERE still.media_subtype = 'live_photo'
+               AND still.live_photo_video_id = a.id)";
+
+fn pair_member_sql(group_raw_pairs: bool) -> String {
+    if group_raw_pairs {
+        format!("({LIVE_PHOTO_MEMBER_SQL}) OR ({RAW_PAIR_MEMBER_SQL})")
+    } else {
+        LIVE_PHOTO_MEMBER_SQL.to_owned()
+    }
 }
 
 const RAW_PAIR_MEMBER_SQL: &str = "(a.media_subtype IS 'raw_jpeg_pair' AND EXISTS
@@ -200,18 +214,15 @@ fn scan_and_hash_files(
     } else if let Some(params) = query_params.as_ref() {
         get_files_by_query(params)?
     } else {
-        get_files_by_sizes(&conn, group_raw_pairs)?
+        get_files_by_sizes(&conn)?
     };
 
-    if group_raw_pairs && has_scope {
-        let companion_ids = files_to_check
-            .iter()
-            .filter_map(|file| {
-                (file.media_subtype.as_deref() == Some("raw_jpeg_pair"))
-                    .then_some(file.live_photo_video_id)
-                    .flatten()
-            })
-            .collect::<Vec<_>>();
+    if has_scope {
+        let companion_ids = files_to_check.iter().filter_map(|file| {
+            let subtype = file.media_subtype.as_deref();
+            (subtype == Some("live_photo") || (group_raw_pairs && subtype == Some("raw_jpeg_pair")))
+                .then_some(file.live_photo_video_id).flatten()
+        }).collect::<Vec<_>>();
         let mut seen_ids: HashSet<_> = files_to_check.iter().filter_map(|file| file.id).collect();
         files_to_check.extend(
             AFile::get_files_by_ids(&companion_ids)?
@@ -220,7 +231,7 @@ fn scan_and_hash_files(
         );
     }
     let files_to_check = filter_suspicious_files(files_to_check);
-    let scoped_file_ids = if has_scope || group_raw_pairs {
+    let scoped_file_ids = if has_scope {
         Some(
             files_to_check
                 .iter()
@@ -351,7 +362,7 @@ fn get_db_conn() -> Result<crate::t_sqlite::PooledConn, String> {
     crate::t_sqlite::open_conn()
 }
 
-fn get_files_by_sizes(conn: &Connection, group_raw_pairs: bool) -> Result<Vec<AFile>, String> {
+fn get_files_by_sizes(conn: &Connection) -> Result<Vec<AFile>, String> {
     let mut stmt = conn.prepare(
         "SELECT a.id, a.folder_id,
                 a.name, a.name_pinyin, a.size, a.file_type, a.format_label, a.created_at, a.modified_at, a.inode, a.taken_date,
@@ -366,16 +377,8 @@ fn get_files_by_sizes(conn: &Connection, group_raw_pairs: bool) -> Result<Vec<AF
                 f.path || '/' || a.name as file_path
          FROM afiles a
          JOIN afolders f ON a.folder_id = f.id
-         WHERE a.id NOT IN (
-             SELECT live_photo_video_id FROM afiles WHERE live_photo_video_id IS NOT NULL
-               AND (NOT ?1 OR media_subtype IS NOT 'raw_jpeg_pair')
-         )
-         AND a.size IN (
+         WHERE a.size IN (
              SELECT size FROM afiles
-             WHERE id NOT IN (
-                 SELECT live_photo_video_id FROM afiles WHERE live_photo_video_id IS NOT NULL
-               AND (NOT ?1 OR media_subtype IS NOT 'raw_jpeg_pair')
-             )
              GROUP BY size
              HAVING COUNT(size) > 1 AND size > 0
          )
@@ -383,7 +386,7 @@ fn get_files_by_sizes(conn: &Connection, group_raw_pairs: bool) -> Result<Vec<AF
     ).map_err(|e| e.to_string())?;
 
     let iter = stmt
-        .query_map([group_raw_pairs], |row| {
+        .query_map([], |row| {
             Ok(AFile {
                 id: row.get(0)?,
                 folder_id: row.get(1)?,
@@ -391,6 +394,7 @@ fn get_files_by_sizes(conn: &Connection, group_raw_pairs: bool) -> Result<Vec<AF
                 name: row.get(2)?,
                 name_pinyin: row.get(3)?,
                 size: row.get(4)?,
+                companion_size: 0,
                 file_type: row.get(5)?,
                 format_label: row.get(6)?,
                 created_at: row.get(7)?,
@@ -581,6 +585,12 @@ fn rebuild_duplicate_groups(
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // Remove existing items and groups to rebuild clean
+    tx.execute_batch(
+        "CREATE TABLE IF NOT EXISTS dedup_component_matches (
+             file_id INTEGER PRIMARY KEY REFERENCES afiles(id) ON DELETE CASCADE
+         );
+         DELETE FROM dedup_component_matches;",
+    ).map_err(|error| error.to_string())?;
     tx.execute("DELETE FROM duplicate_group_items", [])
         .map_err(|e| e.to_string())?;
     tx.execute("DELETE FROM duplicate_groups", [])
@@ -649,11 +659,7 @@ fn rebuild_duplicate_groups(
     } else {
         ""
     };
-    let pair_sql = if group_raw_pairs {
-        RAW_PAIR_MEMBER_SQL
-    } else {
-        "0"
-    };
+    let pair_sql = pair_member_sql(group_raw_pairs);
     let item_query = format!(
         "SELECT a.id, a.taken_date, a.created_at, {pair_sql}
          FROM file_hashes fh
@@ -716,67 +722,60 @@ fn rebuild_duplicate_groups(
     drop(f_stmt);
     drop(stmt);
 
-    if group_raw_pairs {
-        split_raw_pair_groups(&tx)?;
-    }
+    // Keep the component match visible after splitting groups into safe deletion sets.
+    tx.execute(&format!(
+        "INSERT OR IGNORE INTO dedup_component_matches(file_id)
+         SELECT i.file_id FROM duplicate_group_items i WHERE i.group_id IN (
+             SELECT member.group_id FROM duplicate_group_items member
+             JOIN afiles a ON a.id = member.file_id WHERE {pair_sql}
+         )",
+    ), []).map_err(|error| error.to_string())?;
+    let pair_types = if group_raw_pairs { "'live_photo', 'raw_jpeg_pair'" } else { "'live_photo'" };
+    split_pair_groups(&tx, pair_types)?;
     if let Some(rules) = keep_rules {
         apply_keep_rules(&tx, None, rules, group_raw_pairs)?;
     }
-    if group_raw_pairs {
-        retain_jpeg_group_keeper(&tx)?;
-    }
+    retain_companion_group_keeper(&tx, pair_types)?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// RAW matches with different (or unverified) companion content are separate
-/// sets. A standalone RAW can be removed through any of those sets.
-fn split_raw_pair_groups(conn: &Connection) -> Result<(), String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT i.group_id, i.file_id, companion.id, h.hash
+/// Split primary-file matches by the type and verified content of their companions.
+fn split_pair_groups(conn: &Connection, pair_types: &str) -> Result<(), String> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT i.group_id, i.file_id, companion.id, h.hash, a.media_subtype
          FROM duplicate_group_items i
          JOIN afiles a ON a.id = i.file_id
-         LEFT JOIN afiles companion ON a.media_subtype = 'raw_jpeg_pair'
+         LEFT JOIN afiles companion ON a.media_subtype IN ({pair_types})
              AND companion.id = a.live_photo_video_id
          LEFT JOIN file_hashes h ON h.file_id = companion.id
              AND h.file_size = companion.size AND h.mtime = COALESCE(companion.modified_at, 0)
          WHERE EXISTS (
              SELECT 1 FROM duplicate_group_items p JOIN afiles raw ON raw.id = p.file_id
-             WHERE p.group_id = i.group_id AND raw.media_subtype = 'raw_jpeg_pair'
+             WHERE p.group_id = i.group_id AND raw.media_subtype IN ({pair_types})
          )
          ORDER BY i.group_id, i.score DESC",
-        )
-        .map_err(|e| e.to_string())?;
+    )).map_err(|e| e.to_string())?;
     let mut groups = std::collections::BTreeMap::<i64, Vec<_>>::new();
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, Option<i64>>(2)?,
-                row.get::<_, Option<String>>(3)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |row| Ok((
+        row.get::<_, i64>(0)?, row.get::<_, i64>(1)?,
+        row.get::<_, Option<i64>>(2)?, row.get::<_, Option<String>>(3)?, row.get::<_, Option<String>>(4)?,
+    ))).map_err(|e| e.to_string())?;
     for row in rows {
-        let (group, file, companion, hash) = row.map_err(|e| e.to_string())?;
-        groups
-            .entry(group)
-            .or_default()
-            .push((file, companion, hash));
+        let (group, file, companion, hash, subtype) = row.map_err(|e| e.to_string())?;
+        groups.entry(group).or_default().push((file, companion, hash, subtype));
     }
     for (group, members) in groups {
         let mut partitions = Vec::<Vec<i64>>::new();
         let mut by_hash = HashMap::new();
         let mut standalone = Vec::new();
-        for (file, companion, hash) in members {
+        for (file, companion, hash, subtype) in members {
             if companion.is_none() {
                 standalone.push(file);
                 continue;
             }
             let index = match hash {
-                Some(hash) => *by_hash.entry(hash).or_insert(partitions.len()),
+                Some(hash) => *by_hash.entry((subtype, hash)).or_insert(partitions.len()),
                 None => partitions.len(),
             };
             if index == partitions.len() {
@@ -810,28 +809,27 @@ fn split_raw_pair_groups(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
-/// A JPEG match can protect a full pair, but never authorizes its removal.
-/// Keep one surviving companion in each JPEG group and show standalone copies.
-fn retain_jpeg_group_keeper(conn: &Connection) -> Result<(), String> {
-    conn.execute_batch(
-        "DROP TABLE IF EXISTS temp_dedup_jpeg_keepers;
-         CREATE TEMP TABLE temp_dedup_jpeg_keepers AS
+/// Keep one surviving companion as a reference for independently removable copies.
+fn retain_companion_group_keeper(conn: &Connection, pair_types: &str) -> Result<(), String> {
+    conn.execute_batch(&format!(
+        "DROP TABLE IF EXISTS temp_dedup_companion_keepers;
+         CREATE TEMP TABLE temp_dedup_companion_keepers AS
          SELECT group_id, file_id FROM (
              SELECT i.group_id, i.file_id,
                  ROW_NUMBER() OVER (PARTITION BY i.group_id ORDER BY i.is_keep DESC, i.score DESC, i.file_id) AS rank
              FROM duplicate_group_items i
-             JOIN afiles raw ON raw.live_photo_video_id = i.file_id AND raw.media_subtype = 'raw_jpeg_pair'
+             JOIN afiles raw ON raw.live_photo_video_id = i.file_id AND raw.media_subtype IN ({pair_types})
              WHERE NOT EXISTS (SELECT 1 FROM duplicate_group_items r WHERE r.file_id = raw.id AND r.is_keep = 0)
          ) WHERE rank = 1;
          DELETE FROM duplicate_group_items AS i
          WHERE EXISTS (SELECT 1 FROM afiles raw WHERE raw.live_photo_video_id = i.file_id
-                       AND raw.media_subtype = 'raw_jpeg_pair')
-           AND NOT EXISTS (SELECT 1 FROM temp_dedup_jpeg_keepers k
+                       AND raw.media_subtype IN ({pair_types}))
+           AND NOT EXISTS (SELECT 1 FROM temp_dedup_companion_keepers k
                            WHERE k.group_id = i.group_id AND k.file_id = i.file_id);
          UPDATE duplicate_group_items AS i
-         SET is_keep = EXISTS (SELECT 1 FROM temp_dedup_jpeg_keepers k
+         SET is_keep = EXISTS (SELECT 1 FROM temp_dedup_companion_keepers k
                                WHERE k.group_id = i.group_id AND k.file_id = i.file_id)
-         WHERE EXISTS (SELECT 1 FROM temp_dedup_jpeg_keepers k WHERE k.group_id = i.group_id);
+         WHERE EXISTS (SELECT 1 FROM temp_dedup_companion_keepers k WHERE k.group_id = i.group_id);
          UPDATE duplicate_group_items
          SET is_keep = 1 WHERE (group_id, file_id) IN (
              SELECT group_id, MIN(file_id) FROM duplicate_group_items
@@ -841,8 +839,8 @@ fn retain_jpeg_group_keeper(conn: &Connection) -> Result<(), String> {
              SELECT group_id FROM duplicate_group_items GROUP BY group_id HAVING COUNT(*) = 1
          );
          DELETE FROM duplicate_groups WHERE id NOT IN (SELECT group_id FROM duplicate_group_items);
-         DROP TABLE temp_dedup_jpeg_keepers;",
-    ).map_err(|e| e.to_string())
+         DROP TABLE temp_dedup_companion_keepers;",
+    )).map_err(|e| e.to_string())
 }
 
 fn compare_best_quality(a: &KeepCandidate, b: &KeepCandidate) -> std::cmp::Ordering {
@@ -877,6 +875,9 @@ pub struct DedupGroupItem {
     pub is_selected: i32,
     pub score: f64,
     pub can_set_keep: bool,
+    pub can_delete: bool,
+    pub is_live_photo_companion: bool,
+    pub raw_pair_primary_id: Option<i64>,
     pub file: Option<AFile>,
 }
 
@@ -885,33 +886,73 @@ pub struct DedupOverview {
     pub total_groups: i64,
     pub total_files: i64,
     pub total_reclaimable_bytes: i64,
+    pub pair_match_ids: Vec<i64>,
 }
 
-pub fn get_overview() -> Result<DedupOverview, String> {
+pub fn get_overview(group_raw_pairs: bool) -> Result<DedupOverview, String> {
     let conn = get_db_conn()?;
-    let (total_groups, total_files, total_reclaimable_bytes) = conn
-        .query_row(
-            "SELECT 
-                COALESCE(COUNT(*), 0),
-                COALESCE(SUM(current_file_count - 1), 0),
-                COALESCE(SUM((current_file_count - 1) * file_size), 0)
-             FROM (
-                SELECT file_size,
-                       (SELECT COUNT(*)
-                        FROM duplicate_group_items
-                        WHERE group_id = duplicate_groups.id) AS current_file_count
-                FROM duplicate_groups
-             )
-             WHERE current_file_count > 1",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|error| error.to_string())?;
+    let conn = &tx;
+    let total_groups = conn.query_row(
+        "SELECT COUNT(*) FROM (
+            SELECT group_id FROM duplicate_group_items GROUP BY group_id HAVING COUNT(*) > 1
+        )",
+        [],
+        |row| row.get(0),
+    ).map_err(|error| error.to_string())?;
+    let candidates = bulk_duplicate_candidates(conn)?;
+    let files = safe_dedup_delete_candidates(conn, candidates, group_raw_pairs, false)?;
+    let total_files = files.len() as i64;
+    let ids = files.into_iter().map(|file| file.file_id).collect::<Vec<_>>();
+    let ids = serde_json::to_string(&ids).map_err(|error| error.to_string())?;
+    let total_reclaimable_bytes = conn.query_row(
+        "WITH selected AS (SELECT value AS id FROM json_each(?1)),
+         physical AS (
+             SELECT id FROM selected
+             UNION
+             SELECT c.id FROM selected s JOIN afiles a ON a.id = s.id
+             JOIN afiles c ON c.id = a.live_photo_video_id
+             JOIN afolders f ON f.id = c.folder_id
+             WHERE ?2 OR a.media_subtype IS NOT 'raw_jpeg_pair'
+         )
+         SELECT COALESCE(SUM(a.size), 0) FROM physical p JOIN afiles a ON a.id = p.id",
+        params![ids, group_raw_pairs],
+        |row| row.get(0),
+    ).map_err(|error| error.to_string())?;
 
+    let has_pair_matches: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'dedup_component_matches')",
+        [],
+        |row| row.get(0),
+    ).map_err(|error| error.to_string())?;
+    let pair_match_ids = if has_pair_matches {
+        let mut stmt = conn.prepare(
+            "WITH eligible AS (
+                 SELECT m.file_id, h.hash, h.file_size FROM dedup_component_matches m
+                 JOIN afiles f ON f.id = m.file_id
+                 JOIN file_hashes h ON h.file_id = f.id
+                     AND h.file_size = f.size AND h.mtime = COALESCE(f.modified_at, 0)
+             ), matched AS (
+                 SELECT e.file_id FROM eligible e
+                 JOIN (SELECT hash, file_size FROM eligible GROUP BY hash, file_size HAVING COUNT(*) > 1) g
+                 ON e.hash = g.hash AND e.file_size = g.file_size
+             )
+             SELECT a.id FROM matched m JOIN afiles a ON a.id = m.file_id
+             WHERE a.live_photo_video_id IS NOT NULL AND a.media_subtype IN ('live_photo', 'raw_jpeg_pair')
+             UNION
+             SELECT a.id FROM matched m JOIN afiles a ON a.live_photo_video_id = m.file_id
+             WHERE a.media_subtype IN ('live_photo', 'raw_jpeg_pair')",
+        ).map_err(|error| error.to_string())?;
+        let rows = stmt.query_map([], |row| row.get(0)).map_err(|error| error.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?
+    } else {
+        Vec::new()
+    };
     Ok(DedupOverview {
         total_groups,
         total_files,
         total_reclaimable_bytes,
+        pair_match_ids,
     })
 }
 
@@ -920,6 +961,7 @@ pub fn list_groups(
     page_size: u32,
     sort_by: &str,
     filter: &str,
+    group_raw_pairs: bool,
 ) -> Result<Vec<DedupGroup>, String> {
     let conn = get_db_conn()?;
     let offset = (page.saturating_sub(1)) * page_size;
@@ -979,11 +1021,12 @@ pub fn list_groups(
         })
         .map_err(|e| e.to_string())?;
 
+    let protected_ids = protected_pair_delete_ids(&conn, group_raw_pairs)?;
     let mut groups = Vec::new();
     for g in groups_iter {
         if let Ok(mut group) = g {
             // Fetch items
-            group.items = get_group_items(&conn, group.id)?;
+            group.items = get_group_items(&conn, group.id, group_raw_pairs, &protected_ids)?;
             groups.push(group);
         }
     }
@@ -991,12 +1034,27 @@ pub fn list_groups(
     Ok(groups)
 }
 
-fn get_group_items(conn: &Connection, group_id: i64) -> Result<Vec<DedupGroupItem>, String> {
-    let keep_locked = pair_keep_locked(conn, group_id)?;
+pub fn group_items(group_id: i64, group_raw_pairs: bool) -> Result<Vec<DedupGroupItem>, String> {
+    let conn = get_db_conn()?;
+    let protected_ids = protected_pair_delete_ids(&conn, group_raw_pairs)?;
+    get_group_items(&conn, group_id, group_raw_pairs, &protected_ids)
+}
+
+fn get_group_items(
+    conn: &Connection,
+    group_id: i64,
+    group_raw_pairs: bool,
+    protected_ids: &HashSet<i64>,
+) -> Result<Vec<DedupGroupItem>, String> {
+    let keep_locked = pair_keep_locked(conn, group_id, group_raw_pairs)?;
     let mut stmt = conn
         .prepare(
-            "SELECT group_id, file_id, is_keep, is_selected, score
-         FROM duplicate_group_items
+            "SELECT group_id, file_id, is_keep, is_selected, score,
+                    EXISTS (SELECT 1 FROM afiles still WHERE still.media_subtype = 'live_photo'
+                            AND still.live_photo_video_id = item.file_id),
+                    (SELECT raw.id FROM afiles raw WHERE raw.media_subtype = 'raw_jpeg_pair'
+                            AND raw.live_photo_video_id = item.file_id ORDER BY raw.id LIMIT 1)
+         FROM duplicate_group_items item
          WHERE group_id = ?1
          ORDER BY is_keep DESC, score DESC",
         )
@@ -1011,6 +1069,9 @@ fn get_group_items(conn: &Connection, group_id: i64) -> Result<Vec<DedupGroupIte
                 is_selected: row.get(3)?,
                 score: row.get(4)?,
                 can_set_keep: !keep_locked,
+                can_delete: false,
+                is_live_photo_companion: row.get(5)?,
+                raw_pair_primary_id: row.get(6)?,
                 file: None, // Will populate shortly
             })
         })
@@ -1020,6 +1081,14 @@ fn get_group_items(conn: &Connection, group_id: i64) -> Result<Vec<DedupGroupIte
     for it in iter {
         if let Ok(mut item) = it {
             if let Ok(Some(file_info)) = AFile::get_file_info(item.file_id) {
+                let subtype = file_info.media_subtype.as_deref();
+                let grouped = subtype == Some("live_photo")
+                    || (group_raw_pairs && subtype == Some("raw_jpeg_pair"));
+                item.can_delete = !protected_ids.contains(&item.file_id)
+                    && (!grouped || pair_has_exact_keep(conn, item.file_id, group_raw_pairs, false)?);
+                if keep_locked && grouped {
+                    item.can_set_keep = pair_can_replace_keep(conn, group_id, item.file_id, group_raw_pairs)?;
+                }
                 item.file = Some(file_info);
             }
             items.push(item);
@@ -1162,15 +1231,16 @@ fn folder_contains_file(folder: &str, path: &str) -> bool {
 }
 
 /// Re-select KEEP within existing groups only; no file or catalog metadata changes.
-pub(crate) fn apply_keep_rules_on(
+#[cfg(test)]
+fn apply_keep_rules_on(
     conn: &Connection,
     similar_scope: Option<&str>,
     rules: KeepRules,
 ) -> Result<usize, String> {
-    apply_keep_rules(conn, similar_scope, rules, true)
+    apply_keep_rules(conn, similar_scope, rules, similar_scope.is_none())
 }
 
-fn apply_keep_rules(
+pub(crate) fn apply_keep_rules(
     conn: &Connection,
     similar_scope: Option<&str>,
     rules: KeepRules,
@@ -1207,11 +1277,7 @@ fn apply_keep_rules(
             " WHERE ?1 = ''",
         )
     };
-    let pair_sql = if group_raw_pairs && similar_scope.is_none() {
-        RAW_PAIR_MEMBER_SQL
-    } else {
-        "0"
-    };
+    let pair_sql = pair_member_sql(group_raw_pairs);
     let sql = format!(
         "SELECT i.group_id, i.file_id, i.is_keep, f.path || '/' || a.name, a.file_type, COALESCE(a.width,0), COALESCE(a.height,0), COALESCE(a.created_at,0), ({pair_sql}), a.format_label, COALESCE(a.modified_at,0), COALESCE(a.size,0) FROM {items} i JOIN {groups} g ON g.id=i.group_id JOIN afiles a ON a.id=i.file_id JOIN afolders f ON f.id=a.folder_id{scope} ORDER BY i.group_id, i.file_id"
     );
@@ -1306,23 +1372,22 @@ fn apply_keep_rules(
     Ok(changed)
 }
 
-fn pair_keep_locked(conn: &Connection, group_id: i64) -> Result<bool, String> {
-    conn.query_row(
-        &format!(
-            "SELECT EXISTS (SELECT 1 FROM duplicate_group_items i JOIN afiles a ON a.id = i.file_id
-         WHERE i.group_id = ?1 AND i.is_keep = 1 AND ({RAW_PAIR_MEMBER_SQL}))"
-        ),
-        [group_id],
-        |row| row.get(0),
-    )
-    .map_err(|e| e.to_string())
+fn pair_keep_locked(conn: &Connection, group_id: i64, group_raw_pairs: bool) -> Result<bool, String> {
+    conn.query_row(&format!(
+        "SELECT EXISTS (SELECT 1 FROM duplicate_group_items i JOIN afiles a ON a.id = i.file_id
+         WHERE i.group_id = ?1 AND i.is_keep = 1 AND (({LIVE_PHOTO_MEMBER_SQL})
+            OR (?2 AND a.media_subtype IS 'raw_jpeg_pair' AND EXISTS
+                (SELECT 1 FROM afiles jpeg WHERE jpeg.id = a.live_photo_video_id))))"
+    ), params![group_id, group_raw_pairs], |row| row.get(0)).map_err(|e| e.to_string())
 }
 
 pub fn set_keep(group_id: i64, file_id: i64, group_raw_pairs: bool) -> Result<(), String> {
     let mut conn = get_db_conn()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    if group_raw_pairs && pair_keep_locked(&tx, group_id)? {
+    if pair_keep_locked(&tx, group_id, group_raw_pairs)?
+        && !pair_can_replace_keep(&tx, group_id, file_id, group_raw_pairs)?
+    {
         return Err("The complete RAW pair must be kept".into());
     }
 
@@ -1366,7 +1431,10 @@ fn raw_pair_protected_delete_ids(conn: &Connection) -> Result<HashSet<i64>, Stri
              UNION
              SELECT raw.id FROM afiles raw
              JOIN duplicate_group_items keep ON keep.file_id = raw.live_photo_video_id
-             WHERE raw.media_subtype = 'raw_jpeg_pair' AND keep.is_keep = 1",
+             WHERE raw.media_subtype = 'raw_jpeg_pair' AND keep.is_keep = 1
+             UNION
+             SELECT raw.id FROM afiles raw JOIN afiles still ON still.id = raw.live_photo_video_id
+             WHERE raw.media_subtype = 'raw_jpeg_pair' AND still.media_subtype = 'live_photo'",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
@@ -1376,16 +1444,51 @@ fn raw_pair_protected_delete_ids(conn: &Connection) -> Result<HashSet<i64>, Stri
         .map_err(|e| e.to_string())
 }
 
-fn raw_pair_has_exact_keep(conn: &Connection, file_id: i64) -> Result<bool, String> {
+fn protected_pair_delete_ids(conn: &Connection, group_raw_pairs: bool) -> Result<HashSet<i64>, String> {
+    let mut protected_ids = if group_raw_pairs {
+        raw_pair_protected_delete_ids(conn)?
+    } else {
+        HashSet::new()
+    };
+    {
+        let mut stmt = conn.prepare(
+            "SELECT live_photo_video_id FROM afiles
+             WHERE media_subtype = 'live_photo' AND live_photo_video_id IS NOT NULL",
+        ).map_err(|error| error.to_string())?;
+        let rows = stmt.query_map([], |row| row.get::<_, i64>(0))
+            .map_err(|error| error.to_string())?;
+        for id in rows {
+            protected_ids.insert(id.map_err(|error| error.to_string())?);
+        }
+    }
+    Ok(protected_ids)
+}
+
+fn pair_has_exact_keep(conn: &Connection, file_id: i64, raw_pairs: bool, similar: bool) -> Result<bool, String> {
+    pair_has_exact_keep_in_group(conn, file_id, raw_pairs, similar, None)
+}
+
+fn pair_can_replace_keep(conn: &Connection, group_id: i64, file_id: i64, raw_pairs: bool) -> Result<bool, String> {
+    let complete_pair: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM afiles a JOIN afiles companion ON companion.id=a.live_photo_video_id
+          WHERE a.id=?1 AND (a.media_subtype='live_photo' OR (?2 AND a.media_subtype='raw_jpeg_pair')))",
+        params![file_id, raw_pairs], |row| row.get(0),
+    ).map_err(|e| e.to_string())?;
+    Ok(complete_pair && pair_has_exact_keep_in_group(conn, file_id, raw_pairs, false, Some(group_id))?)
+}
+
+fn pair_has_exact_keep_in_group(
+    conn: &Connection, file_id: i64, raw_pairs: bool, similar: bool, group_id: Option<i64>,
+) -> Result<bool, String> {
     let mut stmt = conn.prepare_cached(
         "SELECT NOT EXISTS (
              SELECT 1 FROM afiles raw
              JOIN afiles jpeg ON jpeg.id = raw.live_photo_video_id
-             WHERE raw.id = ?1 AND raw.media_subtype = 'raw_jpeg_pair'
+             WHERE raw.id = ?1 AND (raw.media_subtype = 'live_photo' OR (?2 AND NOT ?3 AND raw.media_subtype = 'raw_jpeg_pair'))
                AND NOT EXISTS (
                    SELECT 1 FROM duplicate_group_items dup
                    JOIN duplicate_group_items keep ON keep.group_id = dup.group_id AND keep.is_keep = 1
-                   JOIN afiles kept_raw ON kept_raw.id = keep.file_id AND kept_raw.media_subtype = 'raw_jpeg_pair'
+                   JOIN afiles kept_raw ON kept_raw.id = keep.file_id AND kept_raw.media_subtype = raw.media_subtype
                    JOIN afiles kept_jpeg ON kept_jpeg.id = kept_raw.live_photo_video_id
                    JOIN file_hashes h ON h.file_id = jpeg.id AND h.file_size = jpeg.size
                        AND h.mtime = COALESCE(jpeg.modified_at, 0)
@@ -1395,13 +1498,65 @@ fn raw_pair_has_exact_keep(conn: &Connection, file_id: i64) -> Result<bool, Stri
                        AND r.mtime = COALESCE(raw.modified_at, 0)
                    JOIN file_hashes kr ON kr.file_id = kept_raw.id AND kr.file_size = kept_raw.size
                        AND kr.mtime = COALESCE(kept_raw.modified_at, 0)
-                   WHERE dup.file_id = raw.id AND h.hash = kh.hash AND h.file_size = kh.file_size
+                   WHERE dup.file_id = raw.id AND (?4 IS NULL OR dup.group_id = ?4)
+                     AND h.hash = kh.hash AND h.file_size = kh.file_size
                      AND r.hash = kr.hash AND r.file_size = kr.file_size
                )
          )",
     ).map_err(|e| e.to_string())?;
-    stmt.query_row([file_id], |row| row.get(0))
-        .map_err(|e| e.to_string())
+    stmt.query_row(params![file_id, raw_pairs, similar, group_id], |row| row.get(0)).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+fn raw_pair_has_exact_keep(conn: &Connection, file_id: i64) -> Result<bool, String> {
+    pair_has_exact_keep(conn, file_id, true, false)
+}
+
+fn bulk_duplicate_candidates(conn: &Connection) -> Result<Vec<crate::t_cmds::BatchDeleteFile>, String> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, f.path || '/' || a.name
+         FROM duplicate_group_items dgi
+         JOIN afiles a ON dgi.file_id = a.id
+         JOIN afolders f ON a.folder_id = f.id
+         WHERE dgi.is_keep = 0
+           AND EXISTS (SELECT 1 FROM duplicate_group_items k
+                       WHERE k.group_id = dgi.group_id AND k.is_keep = 1)",
+    ).map_err(|error| error.to_string())?;
+    let rows = stmt.query_map([], |row| Ok(crate::t_cmds::BatchDeleteFile {
+        file_id: row.get(0)?,
+        file_path: row.get(1)?,
+    })).map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+}
+
+pub(crate) fn safe_dedup_delete_candidates(
+    conn: &Connection,
+    mut files: Vec<crate::t_cmds::BatchDeleteFile>,
+    group_raw_pairs: bool,
+    similar: bool,
+) -> Result<Vec<crate::t_cmds::BatchDeleteFile>, String> {
+    files.sort_unstable_by_key(|file| file.file_id);
+    files.dedup_by_key(|file| file.file_id);
+    if files.is_empty() { return Ok(files); }
+    let protected_ids = protected_pair_delete_ids(conn, group_raw_pairs)?;
+    let ids = files.iter().map(|file| file.file_id).collect::<Vec<_>>();
+    let ids = serde_json::to_string(&ids).map_err(|error| error.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT a.id FROM json_each(?1) s JOIN afiles a ON a.id = s.value
+         WHERE a.media_subtype = 'live_photo' OR (?2 AND NOT ?3 AND a.media_subtype = 'raw_jpeg_pair')",
+    ).map_err(|error| error.to_string())?;
+    let rows = stmt.query_map(params![ids, group_raw_pairs, similar], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?;
+    let primaries = rows.collect::<Result<HashSet<_>, _>>().map_err(|error| error.to_string())?;
+    let mut safe = Vec::with_capacity(files.len());
+    for file in files {
+        if !protected_ids.contains(&file.file_id) && (!primaries.contains(&file.file_id)
+            || pair_has_exact_keep(conn, file.file_id, group_raw_pairs, similar)?)
+        {
+            safe.push(file);
+        }
+    }
+    Ok(safe)
 }
 
 fn delete_preview(
@@ -1458,18 +1613,17 @@ fn delete_preview(
             }
         }
     }
-    Ok((
-        DedupDeletePreview {
-            token: hasher.finalize().to_hex().to_string(),
-            item_count: files.len(),
-            raw_companion_count,
-            bytes,
-        },
-        components,
-    ))
+    Ok((DedupDeletePreview {
+        token: hasher.finalize().to_hex().to_string(),
+        item_count: files.len(),
+        raw_companion_count,
+        file_count: files.len() + components.values().map(Vec::len).sum::<usize>(),
+        preview_file_ids: files.iter().take(5).map(|file| file.file_id).collect(),
+        bytes,
+    }, components))
 }
 
-fn similar_delete_candidates(
+pub(crate) fn similar_delete_candidates(
     conn: &Connection,
     group_id: i64,
     ids: &[i64],
@@ -1531,26 +1685,7 @@ pub fn delete(request: DedupDeleteRequest) -> Result<DedupDeleteResult, String> 
         similar_requested_count = Some(ids.iter().collect::<HashSet<_>>().len());
         files_to_delete = similar_delete_candidates(&tx, group_id, ids, request.group_raw_pairs)?;
     } else if request.delete_all {
-        // Guard against a corrupted group where every item has is_keep = 0:
-        // only delete non-keep items from groups that still have a keep item.
-        let mut stmt = tx
-            .prepare(
-                "SELECT a.id, f.path || '/' || a.name
-                 FROM duplicate_group_items dgi
-                 JOIN afiles a ON dgi.file_id = a.id
-                 JOIN afolders f ON a.folder_id = f.id
-                 WHERE dgi.is_keep = 0
-                   AND EXISTS (SELECT 1 FROM duplicate_group_items k
-                               WHERE k.group_id = dgi.group_id AND k.is_keep = 1)",
-            )
-            .map_err(|e| e.to_string())?;
-        let mut iter = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-            .map_err(|e| e.to_string())?;
-        for row in &mut iter {
-            let (file_id, file_path) = row.map_err(|e| e.to_string())?;
-            files_to_delete.push(crate::t_cmds::BatchDeleteFile { file_id, file_path });
-        }
+        files_to_delete = bulk_duplicate_candidates(&tx)?;
     } else if let Some(ids) = request.file_ids {
         let mut stmt = tx
             .prepare(
@@ -1614,19 +1749,9 @@ pub fn delete(request: DedupDeleteRequest) -> Result<DedupDeleteResult, String> 
     files_to_delete.sort_unstable_by_key(|file| file.file_id);
     files_to_delete.dedup_by_key(|file| file.file_id);
     let requested_count = similar_requested_count.unwrap_or(files_to_delete.len());
-    if request.group_raw_pairs {
-        let protected_ids = raw_pair_protected_delete_ids(&tx)?;
-        let mut safe_files = Vec::new();
-        for file in files_to_delete {
-            if !protected_ids.contains(&file.file_id)
-                && (request.similar_group_id.is_some()
-                    || raw_pair_has_exact_keep(&tx, file.file_id)?)
-            {
-                safe_files.push(file);
-            }
-        }
-        files_to_delete = safe_files;
-    }
+    let files_to_delete = safe_dedup_delete_candidates(
+        &tx, files_to_delete, request.group_raw_pairs, request.similar_group_id.is_some(),
+    )?;
     let skipped_count = requested_count - files_to_delete.len();
     let (preview, components) = delete_preview(&tx, &files_to_delete, request.group_raw_pairs)?;
     if request.preview {
@@ -1657,6 +1782,7 @@ pub fn delete(request: DedupDeleteRequest) -> Result<DedupDeleteResult, String> 
     let delete_result = crate::t_cmds::delete_files_with_components(
         files_to_delete,
         request.permanently,
+        request.group_raw_pairs,
         Some(components),
     )?;
     let deleted_ids: HashSet<i64> = delete_result.deleted_file_ids.iter().copied().collect();
@@ -1753,6 +1879,53 @@ mod keep_rules_tests {
     }
 
     #[test]
+    fn live_photo_duplicate_sets_require_matching_movies_even_without_raw_grouping() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE afiles(id INTEGER PRIMARY KEY, media_subtype TEXT,
+                                  live_photo_video_id INTEGER, size INTEGER, modified_at INTEGER);
+             INSERT INTO afiles VALUES
+                (1,'live_photo',2,100,1),(2,NULL,NULL,200,1),
+                (3,'live_photo',4,100,1),(4,NULL,NULL,200,1),
+                (5,'live_photo',6,100,1),(6,NULL,NULL,200,1);
+             CREATE TABLE duplicate_groups(id INTEGER PRIMARY KEY, hash TEXT, file_size INTEGER,
+                                          file_count INTEGER, total_size INTEGER, updated_at INTEGER);
+             INSERT INTO duplicate_groups VALUES (1,'still',100,3,300,0),(2,'movie',200,2,400,0);
+             CREATE TABLE duplicate_group_items(group_id INTEGER, file_id INTEGER, is_keep INTEGER, score REAL);
+             INSERT INTO duplicate_group_items VALUES (1,1,1,3),(1,3,0,2),(1,5,0,1),(2,2,1,1),(2,4,0,0);
+             CREATE TABLE file_hashes(file_id INTEGER, hash TEXT, file_size INTEGER, mtime INTEGER);
+             INSERT INTO file_hashes VALUES (2,'movie',200,1),(4,'movie',200,1),(6,'different',200,1);",
+        ).unwrap();
+        split_pair_groups(&conn, "'live_photo'").unwrap();
+        retain_companion_group_keeper(&conn, "'live_photo'").unwrap();
+        let mut stmt = conn.prepare("SELECT file_id FROM duplicate_group_items ORDER BY file_id").unwrap();
+        let files = stmt.query_map([], |row| row.get::<_, i64>(0)).unwrap()
+            .collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(files, [1, 3]);
+    }
+
+    #[test]
+    fn exact_delete_requires_both_live_photo_components_to_match() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE afiles(id INTEGER PRIMARY KEY, media_subtype TEXT,
+                                  live_photo_video_id INTEGER, size INTEGER, modified_at INTEGER);
+             INSERT INTO afiles VALUES
+                (1,'live_photo',2,100,1),(2,NULL,NULL,200,1),
+                (3,'live_photo',4,100,1),(4,NULL,NULL,200,1);
+             CREATE TABLE duplicate_group_items(group_id INTEGER, file_id INTEGER, is_keep INTEGER);
+             INSERT INTO duplicate_group_items VALUES (1,1,1),(1,3,0);
+             CREATE TABLE file_hashes(file_id INTEGER, hash TEXT, file_size INTEGER, mtime INTEGER);
+             INSERT INTO file_hashes VALUES
+                (1,'still',100,1),(2,'video-a',200,1),(3,'still',100,1),(4,'video-b',200,1);",
+        ).unwrap();
+        assert!(!pair_has_exact_keep(&conn, 3, false, false).unwrap());
+        assert!(!pair_has_exact_keep(&conn, 3, false, true).unwrap());
+        conn.execute("UPDATE file_hashes SET hash='video-a' WHERE file_id=4", []).unwrap();
+        assert!(pair_has_exact_keep(&conn, 3, false, false).unwrap());
+    }
+
+    #[test]
     fn exact_scan_keeps_pair_for_either_match_and_only_removes_identical_pairs() {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
@@ -1808,6 +1981,14 @@ mod keep_rules_tests {
         );
         assert!(raw_pair_has_exact_keep(&conn, 5).unwrap());
         assert!(!raw_pair_has_exact_keep(&conn, 3).unwrap());
+        let group = conn.query_row("SELECT group_id FROM duplicate_group_items WHERE file_id=5", [], |row| row.get(0)).unwrap();
+        assert!(pair_keep_locked(&conn, group, true).unwrap());
+        assert!(pair_can_replace_keep(&conn, group, 5, true).unwrap());
+        let jpeg_group = conn.query_row("SELECT group_id FROM duplicate_group_items WHERE file_id=2", [], |row| row.get(0)).unwrap();
+        assert!(!pair_keep_locked(&conn, jpeg_group, true).unwrap());
+        assert!(raw_pair_protected_delete_ids(&conn).unwrap().contains(&2));
+        assert!(!pair_can_replace_keep(&conn, group, 7, true).unwrap());
+        assert!(!pair_can_replace_keep(&conn, group, 11, true).unwrap());
 
         let files = [crate::t_cmds::BatchDeleteFile {
             file_id: 5,
@@ -2395,6 +2576,9 @@ mod keep_rules_tests {
                 .flat_map(|(&primary, members)| members.iter().map(move |(id, _)| (primary, *id)))
                 .collect::<Vec<_>>();
             component_ids.sort_unstable();
+            assert_eq!(preview.file_count, removed.len() + component_ids.len(), "{}", case.name);
+            assert_eq!(preview.preview_file_ids,
+                removed.iter().take(5).map(|file| file.file_id).collect::<Vec<_>>(), "{}", case.name);
             assert_eq!(
                 preview.item_count,
                 removed.len(),

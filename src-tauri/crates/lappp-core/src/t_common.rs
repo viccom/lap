@@ -8,6 +8,8 @@ pub const NORMAL_IMGS: &[&str] = &[
     "hif", "jxl",
 ];
 
+pub const AFFINITY_IMGS: &[&str] = &["af", "afphoto", "afdesign", "afpub"];
+
 // Image formats decoded through the bundled FFmpeg sidecar.
 pub const FFMPEG_BACKED_IMGS: &[&str] = &[
     "psd", // Photoshop native format; preview only (merged composite), no edit support
@@ -45,7 +47,7 @@ pub const RAW_IMGS: &[&str] = &[
 
 // Video support
 pub const VIDEOS: &[&str] = &[
-    "mpg", "mpeg", "mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "3gp", "m4v", "hevc", "asf",
+    "mpg", "mpeg", "vob", "mp4", "mkv", "avi", "mov", "webm", "flv", "wmv", "3gp", "m4v", "hevc", "asf",
     "mts", "m2ts", "mod", "tod", "ts",
 ];
 // pub const AUDIOS: &[&str] = &[
@@ -107,6 +109,7 @@ pub(crate) fn extension_description(ext: &str) -> &'static str {
         "orf" => "Olympus RAW Format",
         "pef" => "Pentax Electronic File",
         "png" => "Portable Network Graphics",
+        "af" | "afphoto" | "afdesign" | "afpub" => "Affinity Document",
         "psd" => "Photoshop Document",
         "qoi" => "Quite OK Image",
         "raf" => "Fujifilm RAW",
@@ -122,6 +125,7 @@ pub(crate) fn extension_description(ext: &str) -> &'static str {
         "tiff" => "Tagged Image File Format",
         "tod" => "JVC HD Camcorder Video",
         "ts" => "MPEG Transport Stream",
+        "vob" => "DVD Video Object",
         "webm" => "WebM Video",
         "webp" => "Web Picture Format",
         "wmv" => "Windows Media Video",

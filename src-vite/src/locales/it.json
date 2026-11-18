@@ -38,14 +38,14 @@
     "drop_action": "Aggiungi",
     "drop_title_hint": "Trascina per aggiungere",
     "empty_drop_hint": "Trascina gli elementi sulla raccolta qui sopra per aggiungerli.",
-    "added_toast": "{count} file aggiunti alla raccolta",
-    "add_failed_toast": "Impossibile aggiungere file a {count} raccolte",
-    "already_exists_toast": "{count} file già presenti nella raccolta",
+    "added_toast": "{count} elementi aggiunti alla raccolta",
+    "add_failed_toast": "Impossibile aggiungere elementi a {count} raccolte",
+    "already_exists_toast": "{count} elementi già presenti nella raccolta",
     "clear": "Svuota raccolta",
     "clear_confirm_title": "Svuota raccolta",
     "clear_confirm_message": "Rimuovere tutti i file da \"{name}\"? I file non verranno eliminati.",
     "clear_confirm_ok": "Svuota",
-    "removed_toast": "{count} file rimossi dalla raccolta"
+    "removed_toast": "{count} elementi rimossi dalla raccolta"
   },
   "library": {
     "all_files": "Tutti i file",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Offline",
+    "download_to_open": "Scarica questa foto nell’app del servizio di archiviazione cloud prima di aprirla.",
     "cloud_only": "Disponibile solo online",
     "cloud_only_pending": "Disponibile solo online — informazioni incomplete",
     "original_unavailable": "Il file originale non è disponibile",
@@ -255,7 +256,7 @@
     "section_folders": "Seleziona cartella",
     "section_status": "Stato importazione",
     "to_import": "Da importare",
-    "files_progress": "{processed} / {total} file ({size})",
+    "files_progress": "{processed} / {total} elementi ({size})",
     "source": "Origine",
     "source_placeholder": "Seleziona una cartella di origine",
     "destination": "Destinazione",
@@ -266,7 +267,7 @@
     "layout_structure": "Mantieni la struttura delle cartelle",
     "import": "Importa",
     "preparing": "Preparazione importazione",
-    "importing": "Importazione dei file",
+    "importing": "Importazione elementi",
     "complete": "Importazione completata",
     "cancelled": "Importazione annullata",
     "continue": "Continua",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Inizia con un nuovo album",
-    "add_album_description": "Seleziona una cartella e lascia che lappp organizzi le tue foto e i tuoi video.",
+    "add_album_description": "Seleziona una cartella e lascia che Lap organizzi le tue foto e i tuoi video.",
     "smart_album_title": "Organizza con album intelligenti",
     "smart_album_description": "Usa le regole per raggruppare automaticamente le foto che corrispondono ai tuoi criteri.",
     "collection_title": "Raggruppa le foto in raccolte",
@@ -296,23 +297,6 @@
     "unknown_lens": "Obiettivo sconosciuto",
     "semantic_matches": "Corrispondenze visive",
     "text_matches": "Corrispondenze di testo",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "In coda per la scansione",
       "indexing": "Scansione... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Ignora questo file e continua",
         "file_label": "Ultimo file scansionato",
         "message": "La scansione precedente non si è chiusa normalmente.",
-        "message_with_file": "L'attività di scansione precedente non si è interrotta correttamente.\n\nUltimo file scansionato:\n{file}\n\nSe continui, lappp ignorerà questo file una volta e riprenderà la scansione."
+        "message_with_file": "L'attività di scansione precedente non si è interrotta correttamente.\n\nUltimo file scansionato:\n{file}\n\nSe continui, Lap ignorerà questo file una volta e riprenderà la scansione."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Cartelle preferite"
   },
   "rating": {
+    "mixed": "Misto",
     "title": "Valutazioni",
     "unrated": "Senza valutazione",
     "all_rated": "Tutte valutate",
     "rated": "Valutate",
-    "mixed": "Varie",
     "clear_rating": "Azzera valutazione",
     "five_stars": "5 stelle",
     "four_stars": "4 stelle",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Solo preferiti",
-      "select_mode": "Selezione multipla",
-      "select_files": "Seleziona file",
-      "show_selection_panel": "Apri il pannello di selezione multipla",
-      "hide_selection_panel": "Comprimi il pannello di selezione multipla",
-      "exit_select_mode": "Esci dalla selezione multipla",
+      "show_selection_panel": "Apri il pannello di selezione",
+      "exit_selection_mode": "Esci dalla modalità di selezione",
       "select_count": "{count} selezionati",
       "group_type_options": [
         "Nessuno",
@@ -516,14 +514,16 @@
         "Solo RAW",
         "Video"
       ],
-      "file_type_other": "Altro"
+      "file_type_other": "Altro",
+      "select_mode": "Selezione multipla",
+      "select_files": "Seleziona file",
+      "hide_selection_panel": "Comprimi il pannello di selezione multipla",
+      "exit_select_mode": "Esci dalla selezione multipla"
     },
     "tooltip": {
       "restore": "Ripristina",
       "refresh": "Aggiorna",
-      "show_info": "Mostra informazioni",
-      "hide_info": "Nascondi informazioni",
-      "open_dedup": "Trova duplicati e simili",
+      "info": "Informazioni",
       "clear_history": "Cancella cronologia ricerche",
       "index_faces": "Indicizza i volti",
       "sort": "Ordina",
@@ -534,7 +534,10 @@
       "back": "Indietro",
       "scanning": "Scansione…",
       "scan_paused": "Scansione in pausa",
-      "scan_queued": "In coda per la scansione"
+      "scan_queued": "In coda per la scansione",
+      "show_info": "Mostra informazioni",
+      "hide_info": "Nascondi informazioni",
+      "open_dedup": "Trova duplicati e simili"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Regola"
     ],
     "empty_title": "Questo elenco è vuoto",
-    "empty_desc": "Aggiungi file o aggiorna il filtro corrente per mostrare qui gli elementi.",
-    "select_hint": "Nessun file selezionato",
+    "empty_desc": "Aggiungi elementi o aggiorna il filtro corrente per mostrarli qui.",
+    "select_hint": "Nessun elemento selezionato",
     "deselect": "Deseleziona",
-    "select_mode_entered": "La modalità selezione multipla è attiva",
-    "selection_load_failed": "Impossibile caricare tutti i file per la selezione. Riprova.",
+    "selection_load_failed": "Impossibile caricare tutti gli elementi per la selezione. Riprova.",
     "large_batch": {
       "title": "Conferma operazione in blocco",
-      "content": "Questa operazione elaborerà {count} file e potrebbe richiedere del tempo. Continuare?",
+      "content": "Questa operazione elaborerà {count} elementi e potrebbe richiedere del tempo. Continuare?",
       "ok": "Continua"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Mantieni",
       "unkeep_label": "Non mantenere",
       "delete_selected": "Elimina selezionati",
+      "trash_all": "Sposta tutto nel cestino",
       "delete_all": "Elimina tutti",
       "move_selected_to_trash": "Sposta nel cestino ({count} selezionati · {size})",
-      "no_removable_files": "Nessun file rimovibile da spostare nel cestino",
+      "no_removable_files": "Nessun elemento rimovibile da spostare nel cestino",
       "set_keep": "Mantieni",
       "removable_copies_summary": "{count} copie rimovibili · {size}",
+      "similar_items_summary": "{count} elementi simili · {size}",
       "similar_photos_summary": "{count} foto simili · {size}"
-    }
+    },
+    "select_mode_entered": "La modalità selezione multipla è attiva"
   },
   "tooltip": {
     "loading": "Caricamento...",
@@ -694,9 +699,9 @@
       "success": "Sfondo del desktop aggiornato",
       "failed": "Impossibile impostare lo sfondo del desktop"
     },
-    "refresh_subfolders": {
-      "success": "Sottocartelle aggiornate",
-      "failed": "Impossibile aggiornare le sottocartelle"
+    "refresh_folders": {
+      "success": "Cartelle aggiornate",
+      "failed": "Impossibile aggiornare le cartelle"
     },
     "copy_image": {
       "success": "{count} file copiati negli appunti",
@@ -727,12 +732,17 @@
     },
     "album_exists": "Questo album esiste già",
     "album_nested": "Questa cartella si sovrappone a un altro album",
+    "refresh_subfolders": {
+      "success": "Sottocartelle aggiornate",
+      "failed": "Impossibile aggiornare le sottocartelle"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "{count} file ({size})"
+    "files_summary": "{count} file ({size})",
+    "items_summary": "{count} elementi ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Escludi dalla ricerca",
       "remove": "Rimuovi",
       "delete_folder": "Elimina cartella",
+      "refresh_folders": "Aggiorna cartelle",
       "refresh_subfolders": "Aggiorna sottocartelle"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Mostra nel Finder...",
       "reveal_in_file_explorer": "Mostra in Esplora file...",
       "refresh_file_info": "Aggiorna informazioni file",
-      "index_cloud_files": "Scarica, indicizza e libera spazio",
       "set_album_cover": "Imposta come copertina album",
       "set_as": "Imposta come",
       "set_desktop_wallpaper": "Imposta come sfondo del desktop",
@@ -804,6 +814,7 @@
       "xmp_save_success": "Metadati XMP salvati per {count} file",
       "xmp_save_failed": "Salvataggio XMP non riuscito per {count} file",
       "comment": "Descrizione…",
+      "index_cloud_files": "Scarica, indicizza e libera spazio",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "OK",
+    "save": "Salva",
     "discard": "Scarta",
     "reset": "Reimposta",
     "cancel": "Annulla",
@@ -994,42 +1006,60 @@
       "invalid": "Inserisci un nome e un numero iniziale intero positivo.",
       "success": "{count} elementi rinominati."
     },
+    "file_delete": {
+      "permanent_summary": "Verrà eliminato definitivamente 1 file. | Verranno eliminati definitivamente {count} file.",
+      "trash_summary": "Verrà spostato nel cestino 1 file. | Verranno spostati nel cestino {count} file.",
+      "title": "Eliminare definitivamente {count} file?",
+      "confirm": "Elimina {count} file",
+      "irreversible": "Questa operazione non può essere annullata.",
+      "mixed_hint": "Si applica solo alle coppie RAW. Gli altri elementi selezionati vengono sempre eliminati completamente.",
+      "trash_unavailable": "Impossibile spostare i file nel cestino. Il cestino potrebbe non essere disponibile su questa unità."
+    },
+    "raw_pair_delete": {
+      "scope": "File delle coppie RAW da eliminare",
+      "both": "Entrambi i file",
+      "raw": "Solo RAW",
+      "companion": "Solo JPEG / HEIC",
+      "format": "Solo {format}",
+      "failed": "Eliminazioni non riuscite: {count}."
+    },
+    "folder_delete_contents": "Sono inclusi tutti i file e le sottocartelle.",
     "move_to_trash": {
       "title": "Sposta nel cestino",
       "file_content": "Il file '{file}' verrà spostato nel cestino.",
-      "files_content": "{count} file selezionati verranno spostati nel cestino.",
-      "removable_files_content": "Tutti i {count} file rimovibili verranno spostati nel cestino.",
-      "raw_jpeg_companions_content": "Verranno eliminati anche {count} file complementari RAW+JPEG.",
+      "files_content": "{count} elementi selezionati verranno spostati nel cestino.",
+      "removable_files_content": "Tutti i {count} elementi rimovibili verranno spostati nel cestino.",
       "folder_content": "La cartella '{folder}' verrà spostata nel cestino.",
       "ok": "Cestino",
       "file_success": "Il file '{file}' è stato spostato nel cestino.",
-      "files_success": "{count} file selezionati sono stati spostati nel cestino.",
+      "files_success": "{count} elementi selezionati sono stati spostati nel cestino.",
       "folder_success": "La cartella '{folder}' è stata spostata nel cestino.",
       "file_error": "Impossibile spostare il file nel cestino.",
-      "files_error": "Impossibile spostare i file selezionati nel cestino.",
-      "folder_error": "Impossibile spostare la cartella nel cestino."
+      "files_error": "Impossibile spostare gli elementi selezionati nel cestino.",
+      "folder_error": "Impossibile spostare la cartella nel cestino.",
+      "raw_jpeg_companions_content": "Verranno eliminati anche {count} file complementari RAW+JPEG."
     },
     "permanent_delete": {
       "title": "Elimina definitivamente",
       "file_content": "Il file '{file}' verrà eliminato definitivamente.",
-      "files_content": "{count} file selezionati verranno eliminati definitivamente.",
-      "removable_files_content": "Tutti i {count} file rimovibili verranno eliminati definitivamente.",
+      "files_content": "{count} elementi selezionati verranno eliminati definitivamente.",
+      "removable_files_content": "Tutti i {count} elementi rimovibili verranno eliminati definitivamente.",
       "folder_content": "La cartella '{folder}' verrà eliminata definitivamente.",
-      "checkbox": "Elimina definitivamente (operazione non annullabile)",
       "ok": "Elimina",
       "file_success": "Il file '{file}' è stato eliminato definitivamente.",
-      "files_success": "{count} file selezionati sono stati eliminati definitivamente.",
+      "files_success": "{count} elementi selezionati sono stati eliminati definitivamente.",
       "folder_success": "La cartella '{folder}' è stata eliminata definitivamente.",
       "file_error": "Impossibile eliminare definitivamente il file.",
-      "files_error": "Impossibile eliminare definitivamente i file selezionati.",
-      "folder_error": "Impossibile eliminare definitivamente la cartella."
+      "files_error": "Impossibile eliminare definitivamente gli elementi selezionati.",
+      "folder_error": "Impossibile eliminare definitivamente la cartella.",
+      "checkbox": "Elimina definitivamente (operazione non annullabile)"
     },
     "trash_failed": {
       "title": "Spostamento nel cestino non riuscito",
       "file_content": "Impossibile spostare nel cestino il file '{file}'.\n\nVuoi eliminarlo definitivamente?",
-      "files_content": "Impossibile spostare nel cestino {count} file selezionati.\n\nVuoi eliminarli definitivamente?",
+      "files_content": "Impossibile spostare nel cestino {count} elementi selezionati.\n\nVuoi eliminarli definitivamente?",
       "folder_content": "Impossibile spostare nel cestino la cartella '{folder}'.\n\nVuoi eliminarla definitivamente?\n\nQuesta operazione non può essere annullata tramite il cestino di sistema.",
-      "folder_partial_warning": "Il tentativo precedente potrebbe aver spostato parte del contenuto nel cestino. L’eliminazione permanente rimuoverà questa cartella e il contenuto rimanente.",
+      "folder_partial_warning": "Il tentativo precedente potrebbe aver spostato parte del contenuto nel cestino.",
       "ok": "Elimina definitivamente"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Titolo breve",
+      "e_headline": "Titolo per la pubblicazione",
+      "comments": "Descrivi il contenuto o aggiungi contesto",
+      "e_artist": "Nome",
+      "e_artist_hint": "Uno per riga",
+      "e_copyright": "© {year} Nome"
+    },
+    "edit_metadata_no_fields": "Prima di modificare i metadati, seleziona almeno un campo della sezione Organizzazione in Personalizza campi.",
+    "edit_metadata": "Modifica metadati",
+    "metadata_save_failed": "Impossibile salvare i metadati",
     "paths_copied": "{count} percorsi di file copiati negli appunti",
     "copy_path": "Copia percorso del file",
     "copy_path_failed": "Impossibile copiare il percorso",
@@ -1269,7 +1310,7 @@
     "organization": "Organizzazione",
     "file": "File",
     "capture": "Scatto",
-    "source_metadata": "Metadati del file originale",
+    "source_metadata": "Altre informazioni",
     "source_description": "Descrizione originale",
     "coordinates": "Coordinate",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "Preparazione della riproduzione compatibile...",
     "failed": "Impossibile riprodurre il video",
     "errors": {
+      "playback_failed": "Riproduzione non riuscita",
       "aborted": "Il caricamento del video è stato annullato",
       "network": "Errore di rete durante il caricamento del video",
       "decode": "Errore di decodifica del video",
       "format": "Formato video non supportato o file danneggiato.",
-      "external_player_recommended": "Questo video richiede una transcodifica di compatibilità prima di poter essere riprodotto qui. Per i video lunghi, lappp consiglia di usare un lettore esterno invece di attendere l'elaborazione in background.",
+      "external_player_recommended": "Questo video richiede una transcodifica di compatibilità prima di poter essere riprodotto qui. Per i video lunghi, Lap consiglia di usare un lettore esterno invece di attendere l'elaborazione in background.",
       "unsafe_webview": "Questo formato video non è supportato per la riproduzione.",
       "open_in_external_app": "Apri nel lettore esterno",
       "open_in_external_app_named": "Apri video in {app}...",
       "use_external": "Per aprire i formati non supportati, configura un lettore esterno nelle Impostazioni.",
       "use_external_generic": "Prova ad aprirlo nel lettore esterno.",
       "use_external_with_app": "Prova ad aprirlo in {app}.",
-      "unknown": "Errore sconosciuto",
-      "playback_failed": "Video playback failed"
+      "unknown": "Errore sconosciuto"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "File accoppiati",
-      "clipboard_both": "Entrambi i file",
-      "clipboard_raw": "Solo RAW",
-      "clipboard_jpeg": "Solo JPEG/HEIC",
-      "clipboard_hint": "Si applica anche ai percorsi. Non influisce sulla copia o sullo spostamento nelle cartelle.",
       "pair_source": "Visualizzazione predefinita per le coppie",
       "pair_source_hint": "Usata per miniature e anteprime accoppiate",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Sorgente anteprima predefinita",
       "preview_source_hint": "Se la fonte preferita non è disponibile, usa l’altra",
-      "rawRenderBrightness": "Luminosità di elaborazione",
-      "option_embedded": "Prima quella incorporata",
-      "option_rendered": "Elabora prima il RAW",
-      "option_original": "Esposizione originale",
-      "option_brightened": "Schiarita",
-      "brightness_hint": "Si applica solo al rendering RAW",
-      "switch_to": "Passa a {source}",
+      "option_embedded": "Anteprima incorporata",
+      "option_rendered": "Elabora RAW",
+      "option_brightened": "Schiarimento automatico",
       "show_pair": "Mostra {format} accoppiato",
-      "source_embedded": "Incorporata",
-      "source_rendered": "Elaborata",
-      "source_brightened": "Schiarita",
-      "preview_mode": "Modalità anteprima RAW"
+      "source_embedded": "Anteprima incorporata",
+      "source_rendered": "Elabora RAW",
+      "source_brightened": "Schiarimento automatico",
+      "preview_mode": "Modalità anteprima RAW",
+      "clipboard_both": "Entrambi i file",
+      "clipboard_raw": "Solo RAW",
+      "clipboard_jpeg": "Solo JPEG/HEIC",
+      "clipboard_hint": "Si applica anche ai percorsi. Non influisce sulla copia o sullo spostamento nelle cartelle.",
+      "rawRenderBrightness": "Luminosità di elaborazione",
+      "option_original": "Esposizione originale",
+      "brightness_hint": "Si applica solo al rendering RAW",
+      "switch_to": "Passa a {source}"
     },
     "metadata": {
       "title": "Metadati",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "Il modello di ricerca foto multilingue non è installato. Scaricalo per abilitare la ricerca in oltre 50 lingue.",
       "download": "Scarica",
       "downloading_multilingual_model": "Download del modello multilingue",
-      "multilingual_model_download_success": "Il modello di ricerca multilingue è pronto. Riavvia lappp per usarlo.",
+      "multilingual_model_download_success": "Il modello di ricerca multilingue è pronto. Riavvia Lap per usarlo.",
       "multilingual_model_download_failed": "Impossibile scaricare il modello di ricerca multilingue",
       "similarity": "Somiglianza della ricerca",
       "similarity_hint": "Controlla le corrispondenze visive per le ricerche per parola chiave",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Ingrandisci",
         "zoom_out": "Riduci",
         "zoom_fit": "Alterna dimensioni reali / adatta alla finestra",
+        "cycle_raw_preview": "Cambia modalità di anteprima RAW",
         "toggle_af_areas": "Mostra/nascondi aree AF",
         "cycle_background": "Cambia sfondo",
         "open_new_window": "Visualizza in una nuova finestra",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "Quando elimini i file",
+      "file_delete_trash_hint": "Sposta un singolo file nel cestino senza conferma",
+      "file_delete_permanent_hint": "L’eliminazione definitiva richiede sempre conferma",
+      "file_delete_section": "Eliminazione dei file",
       "title": "Avanzate",
       "external_app": {
         "section_external_apps": "App esterne",

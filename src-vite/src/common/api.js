@@ -1115,8 +1115,17 @@ export async function syncAlbumFolderMtimes(albumId, folderId, folderPath) {
   return null;
 };
 
-export async function refreshAlbumSubfolders(albumId, folderPath) {
-  return await invoke('refresh_album_subfolders', { albumId, folderPath });
+export async function refreshAlbumFolders(albumId, folderPath, libraryId) {
+  return await invoke('refresh_album_folders', {
+    albumId,
+    folderPath,
+    libraryId,
+    groupRawJpegPairs: Boolean(config.settings.groupRawJpegPairs),
+  });
+}
+
+export async function reconcileRawJpegPairs(libraryId, enabled) {
+  return await invoke('reconcile_raw_jpeg_pairs', { libraryId, enabled });
 }
 
 // get the thumbnail count of the folder
@@ -1162,9 +1171,9 @@ export async function copyEditedImage(params) {
 }
 
 // copy up to 10 content items to clipboard (pairs contain two files)
-export async function copyImages(filePaths) {
+export async function copyImages(filePaths, filesOnly = false) {
   try {
-    return await invoke('copy_images', { filePaths });
+    return await invoke('copy_images', { filePaths, filesOnly });
   } catch (error) {
     console.error('Failed to copy files to clipboard:', error);
     return 0;
@@ -1209,7 +1218,7 @@ export async function withFileTransferBatch(action) {
 // move a file
 export async function moveFile(fileId, filePath, newFolderId, newFolderPath, conflictPolicy = 'keep_both', batchId = null) {
   try {
-    const result = await invoke('move_file', { fileId, filePath, newFolderId, newFolderPath, conflictPolicy, batchId });
+    const result = await invoke('move_file', { fileId, filePath, newFolderId, newFolderPath, conflictPolicy, batchId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
     if(result) {
       return result;
     };
@@ -1221,7 +1230,7 @@ export async function moveFile(fileId, filePath, newFolderId, newFolderPath, con
 
 export async function moveFileOutsideLibrary(fileId, filePath, newFolderPath, conflictPolicy = 'keep_both', batchId = null) {
   try {
-    return await invoke('move_file_outside_library', { fileId, filePath, newFolderPath, conflictPolicy, batchId });
+    return await invoke('move_file_outside_library', { fileId, filePath, newFolderPath, conflictPolicy, batchId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
   } catch (error) {
     console.log('Failed to move file outside library:', error);
   }
@@ -1231,7 +1240,7 @@ export async function moveFileOutsideLibrary(fileId, filePath, newFolderPath, co
 // copy a file
 export async function copyFile(filePath, newFolderPath, conflictPolicy = 'keep_both', batchId = null) {
   try {
-    const result = await invoke('copy_file', { filePath, newFolderPath, conflictPolicy, batchId });
+    const result = await invoke('copy_file', { filePath, newFolderPath, conflictPolicy, batchId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
     if(result) {
       return result;
     };
@@ -1244,7 +1253,7 @@ export async function copyFile(filePath, newFolderPath, conflictPolicy = 'keep_b
 // delete a file
 export async function deleteFile(fileId, filePath) {
   try {
-    return await invoke('delete_file', { fileId, filePath });
+    return await invoke('delete_file', { fileId, filePath, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
   } catch (error) {
     console.error('deleteFile error:', error);
     throw error;
@@ -1254,7 +1263,7 @@ export async function deleteFile(fileId, filePath) {
 // delete a file permanently
 export async function deleteFilePermanently(fileId, filePath) {
   try {
-    return await invoke('delete_file_permanently', { fileId, filePath });
+    return await invoke('delete_file_permanently', { fileId, filePath, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
   } catch (error) {
     console.error('deleteFilePermanently error:', error);
     throw error;
@@ -1270,26 +1279,17 @@ export async function deleteDbFile(fileId) {
   }
 }
 
-export async function batchDeleteFiles(files, permanently = false) {
+export async function batchDeleteFiles(files, permanently = false, selection = null) {
   try {
-    return await invoke('batch_delete_files', { files, permanently });
+    return await invoke('batch_delete_files', { files, permanently, groupRawPairs: Boolean(config.settings.groupRawJpegPairs), selection });
   } catch (error) {
     console.error('batchDeleteFiles error:', error);
     throw error;
   }
 }
 
-// edit file comment
-export async function editFileComment(fileId, comment) {
-  try {
-    const result = await invoke('edit_file_comment', { fileId, comment });
-    if(result) {
-      return result;
-    };
-  } catch (error) {
-    console.log('Failed to edit file comment:', error);
-  }
-  return null;
+export function editFileMetadata(libraryId, fileIds, changes) {
+  return invoke('edit_file_metadata', { libraryId, fileIds, changes });
 }
 
 // get file thumb
@@ -1381,6 +1381,14 @@ export async function refreshFileInfo(libraryId, fileId) {
   return null;
 }
 
+export function importFiles(filePaths, folderId, folderPath, libraryId, onProgress) {
+  const channel = new Channel(typeof onProgress === 'function' ? onProgress : () => {});
+  return invoke('import_files', {
+    filePaths, folderId, folderPath, libraryId, onProgress: channel,
+    groupRawJpegPairs: Boolean(config.settings.groupRawJpegPairs),
+  });
+}
+
 export async function importFile(filePath, folderId, folderPath, throwOnError = false, libraryId = libConfig._libraryId) {
   try {
     const result = await invoke('import_file', { filePath, folderId, folderPath, libraryId });
@@ -1393,7 +1401,10 @@ export async function importFile(filePath, folderId, folderPath, throwOnError = 
 }
 
 export async function importAndOrganize(albumId, sourcePath, destinationPath, layout, completedPaths = []) {
-  return await invoke('import_and_organize', { albumId, sourcePath, destinationPath, layout, completedPaths });
+  return await invoke('import_and_organize', {
+    albumId, sourcePath, destinationPath, layout, completedPaths,
+    groupRawJpegPairs: Boolean(config.settings.groupRawJpegPairs),
+  });
 }
 
 export async function cancelImportAndOrganize() {
@@ -1438,7 +1449,11 @@ export async function hasImportableClipboard() {
 }
 
 export async function importClipboard(folderId, folderPath) {
-  return await invoke('import_clipboard', { folderId, folderPath });
+  return await invoke('import_clipboard', {
+    folderId,
+    folderPath,
+    groupRawJpegPairs: Boolean(config.settings.groupRawJpegPairs),
+  });
 }
 
 export async function importFromDrag(folderId, folderPath) {
@@ -2033,7 +2048,7 @@ export async function dedupCancelScan() {
 // list deduplication groups
 export async function dedupListGroups(page = 1, pageSize = 0, sortBy = 'size_desc', filter = 'all') {
   try {
-    const groups = await invoke('dedup_list_groups', { page, pageSize, sortBy, filter });
+    const groups = await invoke('dedup_list_groups', { page, pageSize, sortBy, filter, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
     return groups;
   } catch (error) {
     console.error('dedupListGroups error:', error);
@@ -2043,7 +2058,7 @@ export async function dedupListGroups(page = 1, pageSize = 0, sortBy = 'size_des
 // get deduplication overview
 export async function dedupGetOverview() {
   try {
-    const overview = await invoke('dedup_get_overview');
+    const overview = await invoke('dedup_get_overview', { libraryId: libConfig._libraryId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
     return overview;
   } catch (error) {
     console.error('dedupGetOverview error:', error);
@@ -2053,6 +2068,13 @@ export async function dedupGetOverview() {
 // set keep file in duplicate group
 export async function dedupSetKeep(groupId, fileId) {
   return await invoke('dedup_set_keep', { groupId, fileId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
+}
+
+export async function dedupGetGroupItems(groupId) {
+  return await invoke('dedup_get_group_items', {
+    groupId,
+    groupRawPairs: Boolean(config.settings.groupRawJpegPairs),
+  });
 }
 
 // Delete explicitly selected duplicates or every removable duplicate.
@@ -2084,7 +2106,7 @@ export async function listenDedupScanProgress(callback) {
 }
 
 export async function similarStartScan(scopeKey, sourceVersion, similarityThreshold, params = null, collectionId = null, fileIds = null, keepRules = null) {
-  return await invoke('similar_start_scan', { scopeKey, sourceVersion, similarityThreshold, params, collectionId, fileIds, keepRules });
+  return await invoke('similar_start_scan', { scopeKey, sourceVersion, similarityThreshold, params, collectionId, fileIds, keepRules, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
 }
 
 export async function similarGetScanStatus() {
@@ -2096,14 +2118,14 @@ export async function similarCancelScan() {
 }
 
 export async function similarGetEligibleCount(params = null, collectionId = null, fileIds = null) {
-  return await invoke('similar_get_eligible_count', { params, collectionId, fileIds });
+  return await invoke('similar_get_eligible_count', { params, collectionId, fileIds, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
 }
 
 export async function similarListGroups(scopeKey, limit = 100, offset = 0) {
   return await invoke('similar_list_groups', { scopeKey, limit, offset });
 }
-export async function similarGetOverview(scopeKey) { return await invoke('similar_get_overview', { scopeKey }); }
-export async function similarGetGroup(groupId, scopeKey) { return await invoke('similar_get_group', { groupId, scopeKey }); }
+export async function similarGetOverview(scopeKey) { return await invoke('similar_get_overview', { scopeKey, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) }); }
+export async function similarGetGroup(groupId, scopeKey) { return await invoke('similar_get_group', { groupId, scopeKey, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) }); }
 export async function similarSetKeep(groupId, fileId, scopeKey) { return await invoke('similar_set_keep', { groupId, fileId, scopeKey }); }
 export async function similarHasScan(scopeKey) { return await invoke('similar_has_scan', { scopeKey }); }
 

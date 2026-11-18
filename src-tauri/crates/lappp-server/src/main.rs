@@ -256,7 +256,7 @@ mod tests {
     /// Commands deliberately NOT on the HTTP bridge, hand-pinned so a newly
     /// registered command stays red here until the generator is re-run AND
     /// someone reviews which side of the whitelist it belongs on.
-    /// B 需适配 (4): AppHandle/Channel desktop glue.
+    /// B 需适配 (5): AppHandle/Channel desktop glue.
     /// C 原生专属 (16): window, dialog, clipboard, drag, wallpaper.
     /// A 不暴露 (2): startup telemetry that only the desktop frontend calls.
     const SKIP: &[&str] = &[
@@ -264,6 +264,7 @@ mod tests {
         "add_album",
         "change_thumbnail_cache_location",
         "copy_images",
+        "import_files",
         "switch_library",
         // C
         "cancel_file_drag",
@@ -300,7 +301,7 @@ mod tests {
                 registered.push(name);
             }
         }
-        assert_eq!(registered.len(), 254, "registration count drifted");
+        assert_eq!(registered.len(), 256, "registration count drifted");
 
         let bridged: std::collections::HashSet<_> = bridge_gen::COMMANDS.iter().copied().collect();
         let skip: std::collections::HashSet<_> = SKIP.iter().copied().collect();

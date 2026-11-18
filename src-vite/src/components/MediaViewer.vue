@@ -92,6 +92,15 @@
           @click="$emit('update:isZoomFit', !isZoomFit)"
         />
         <TButton
+          :icon="IconRotate"
+          :disabled="fileIndex < 0 || isSlideShow || !canInteract"
+          :iconStyle="{ transform: `rotate(${file?.rotate ?? 0}deg)`, transition: 'transform 0.3s' }"
+          :selected="(file?.rotate ?? 0) % 360 !== 0 && !isSlideShow"
+          :tooltip="$t('menu.meta.rotate')"
+          :shortcut="shortcut('meta.rotate')"
+          @click="$emit('item-action', { action: 'rotate', index: fileIndex })"
+        />
+        <TButton
           :icon="IconAutoFocus"
           :selected="showAfAreas"
           :disabled="fileIndex < 0 || isSlideShow || !canInteract || ![1, 3].includes(Number(file?.file_type))"
@@ -158,28 +167,11 @@
             :shortcut="shortcut('meta.collection')"
             @click="$emit('item-action', { action: 'add-to-collection', index: fileIndex })"
           />
-          <TButton
-            :icon="IconComment"
-            :disabled="fileIndex < 0 || isSlideShow || !canInteract"
-            :selected="!!file?.comments && !isSlideShow"
-            :tooltip="$t('menu.meta.comment')"
-            :shortcut="shortcut('meta.comment')"
-            @click="$emit('item-action', { action: 'comment', index: fileIndex })"
-          />
-          <TButton
-            :icon="IconRotate"
-            :disabled="fileIndex < 0 || isSlideShow || !canInteract"
-            :iconStyle="{ transform: `rotate(${file?.rotate ?? 0}deg)`, transition: 'transform 0.3s' }"
-            :selected="(file?.rotate ?? 0) % 360 !== 0 && !isSlideShow"
-            :tooltip="$t('menu.meta.rotate')"
-            :shortcut="shortcut('meta.rotate')"
-            @click="$emit('item-action', { action: 'rotate', index: fileIndex })"
-          />
           <!-- <TButton
             v-if="mode !== 2"
             :icon="IconFileInfo"
             :disabled="fileIndex < 0 || isSlideShow || !canInteract"
-            :tooltip="$t('menu.meta.info')"
+            :tooltip="$t('menu.file.show_info')"
             :shortcut="shortcut('meta.info')"
             @click="$emit('item-action', { action: 'info', index: fileIndex })"
           /> -->
@@ -207,6 +199,7 @@
           :icon="!isFullScreen ? IconFullScreen : IconRestoreScreen"
           :tooltip="!isFullScreen ? $t('image_viewer.toolbar.fullscreen') : $t('image_viewer.toolbar.exit_fullscreen')"
           :disabled="!canInteract"
+          :shortcut="shortcut('view.toggleFullscreen')"
           @click="toggleFullScreen"
         />
         <TButton v-if="mode !== 2 && !isFullScreen"
@@ -281,7 +274,6 @@
                 v-for="(entry, index) in badge.icons"
                 :key="`${badge.key}-${index}`"
                 class="h-3.5 w-3.5 shrink-0"
-                :style="entry.style"
               />
             </div>
           </template>
@@ -1021,7 +1013,6 @@ type StatusBadge = {
   icon?: Component;
   icons?: Array<{
     icon: Component;
-    style?: CSSProperties;
   }>;
   label?: string;
   iconClass?: string;
@@ -1029,11 +1020,6 @@ type StatusBadge = {
   trailingIcon?: Component;
   trailingIconClass?: string;
 };
-
-const normalizedFileRotate = computed(() => {
-  const rotate = Number(props.file?.rotate || 0) % 360;
-  return rotate < 0 ? rotate + 360 : rotate;
-});
 
 const quickViewStatusBadges = computed<StatusBadge[]>(() => {
   const badges: StatusBadge[] = [];
@@ -1079,12 +1065,6 @@ const quickViewStatusBadges = computed<StatusBadge[]>(() => {
   if (props.file?.has_tags) metaIcons.push({ icon: IconTag });
   if (props.file?.has_collections) metaIcons.push({ icon: IconCollection });
   if (props.file?.comments?.length > 0) metaIcons.push({ icon: IconComment });
-  if (normalizedFileRotate.value > 0) {
-    metaIcons.push({
-      icon: IconRotate,
-      style: { transform: `rotate(${normalizedFileRotate.value}deg)` },
-    });
-  }
   if (metaIcons.length > 0) {
     badges.push({
       key: 'meta',
@@ -1108,8 +1088,7 @@ function sameStatusBadges(badges: StatusBadge[], previous: StatusBadge[]) {
       && badge.iconClass === other.iconClass && badge.trailingIcon === other.trailingIcon
       && badge.trailingIconClass === other.trailingIconClass
       && badge.icons?.length === other.icons?.length
-      && (badge.icons || []).every((entry, i) => entry.icon === other.icons![i].icon
-        && JSON.stringify(entry.style) === JSON.stringify(other.icons![i].style));
+      && (badge.icons || []).every((entry, i) => entry.icon === other.icons![i].icon);
   });
 }
 function clearStatusFeedback() {
@@ -1378,11 +1357,11 @@ const isOverlayBackdropTarget = (event: PointerEvent) => {
   const currentTarget = event.currentTarget;
 
   if (!(currentTarget instanceof HTMLElement)) return false;
-  if (!(target instanceof HTMLElement)) return target === currentTarget;
+  if (!(target instanceof Element)) return false;
   if (target === currentTarget) return true;
 
   if (target.closest(
-    'img, video, button, a, input, select, textarea, label, [role="button"], [data-image-navigator], [data-video-play-overlay], .vjs-tech, .vjs-control-bar, .vjs-control, .vjs-big-play-button, .vjs-menu'
+    'img, video, button, a, input, select, textarea, label, [role="button"], [data-raw-preview-controls], [data-image-navigator], [data-video-play-overlay], .vjs-tech, .vjs-control-bar, .vjs-control, .vjs-big-play-button, .vjs-menu'
   )) {
     return false;
   }
@@ -1437,12 +1416,14 @@ const handleMessageFromImageViewer = (payload: { message: string }) => {
 defineExpose({
   isFullScreen,
   exitPreviewFullScreen,
+  toggleFullScreen,
   zoomIn,
   zoomOut,
   zoomActual,
   rotateView,
   togglePlay,
   toggleAfAreas,
+  cycleRawPreview: () => !isLivePhotoPlaying.value && mediaRef.value?.cycleRawPreview?.(),
   getViewportState,
   applyViewportState,
   navigateImage: (point: { normX: number; normY: number }) => mediaRef.value?.navigateImage?.(point),

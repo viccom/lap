@@ -113,7 +113,6 @@
                 v-for="(entry, index) in badge.icons"
                 :key="`${badge.key}-${index}`"
                 class="h-3.5 w-3.5 shrink-0"
-                :style="entry.style"
               />
             </div>
           </template>
@@ -240,7 +239,7 @@ import { useI18n } from 'vue-i18n';
 import { useUIStore } from '@/stores/uiStore';
 import { config } from '@/common/config';
 import { THUMBNAIL_BADGE } from '@/common/constants';
-import { isMac, shortenFilename, formatFileSize, formatDimensionText, formatDuration, formatTimestamp, formatCaptureSettings, formatCaptureSettingValue, formatCameraInfo, getAssetSrc, getThumbUrl, getMediaSrcForId, signMediaUrl, getFileExtension } from '@/common/utils';
+import { isMac, shortenFilename, formatFileSize, getMediaItemSize, formatDimensionText, formatVideoDurationBadge, formatTimestamp, formatCaptureSettings, formatCaptureSettingValue, formatCameraInfo, getAssetSrc, getThumbUrl, getMediaSrcForId, signMediaUrl, getFileExtension, formatRawPairBadge } from '@/common/utils';
 import { isWebViewVideoPlaybackDisabled, getGStreamerAvailability } from '@/common/video';
 import { claimHoverPreview, releaseHoverPreview } from '@/common/hoverPreview';
 import ContextMenu from '@/components/ContextMenu.vue';
@@ -258,8 +257,6 @@ import {
   IconHeartFilled,
   IconTag,
   IconCollection,
-  IconRotate,
-  IconComment,
   IconSparkles,
   IconStarFilled,
   IconFlagFilled,
@@ -326,10 +323,7 @@ const isVideoFile = computed(() => props.file?.file_type === 2);
 const isLivePhoto = computed(() => props.file?.media_subtype === 'live_photo' && !!props.file?.live_photo_video_path);
 const isMotionPhoto = computed(() => props.file?.media_subtype === 'motion_photo');
 const isRawJpegPair = computed(() => props.file?.media_subtype === 'raw_jpeg_pair');
-const rawJpegPairBadge = computed(() => {
-  const extension = getFileExtension(props.file?.live_photo_video_path || '').toLowerCase();
-  return ['heic', 'heif', 'hif'].includes(extension) ? 'RAW+HEIC' : 'RAW+JPEG';
-});
+const rawJpegPairBadge = computed(() => formatRawPairBadge(props.file?.live_photo_video_path));
 const previewVideoPath = computed(() => isLivePhoto.value ? props.file.live_photo_video_path : props.file?.file_path);
 // Web client playback addresses the video by id (batch 4.9); a live photo's
 // moving part is its own file, otherwise the still's id.
@@ -551,11 +545,10 @@ function startAnimatedImagePreview() {
 
   const request = ++animatedImagePreviewRequest;
   const filePath = props.file?.file_path || '';
-  animatedImagePreviewTimer = setTimeout(async () => {
+  animatedImagePreviewTimer = setTimeout(() => {
     animatedImagePreviewTimer = null;
     if (!canPreviewAnimatedImage.value) return;
     // The catalog flag can be stale; loading an online-only image would download it.
-    if (await isCloudOnlyFile(filePath)) return;
     if (request !== animatedImagePreviewRequest || props.file?.file_path !== filePath
       || !canPreviewAnimatedImage.value) return;
     isAnimatedImagePreviewReady.value = false;
@@ -682,7 +675,7 @@ const getGridLabelText = (file: any, option: number) => {
   switch (option) {
     case 0: return '';
     case 1: return shortenFilename(file.name) || ' ';
-    case 2: return formatFileSize(file.size) || ' ';
+    case 2: return formatFileSize(getMediaItemSize(file)) || ' ';
     case 3: return formatDimensionText(file.width, file.height) || ' ';
     case 4: return formatTimestamp(file.taken_date, 'date_time') || ' ';
     case 5: return file.geo_name || ' ';
@@ -704,7 +697,6 @@ type ThumbnailBadge = {
   icon?: Component;
   icons?: Array<{
     icon: Component;
-    style?: CSSProperties;
   }>;
   label?: string;
   iconClass?: string;
@@ -719,15 +711,7 @@ const normalizedRotate = computed(() => {
   return rotate < 0 ? rotate + 360 : rotate;
 });
 
-const videoDurationBadge = computed(() => {
-  if (props.file?.file_type !== 2) return '';
-
-  const duration = Number(props.file?.duration);
-  if (!Number.isFinite(duration) || duration <= 0) return '';
-
-  const formattedDuration = formatDuration(duration);
-  return formattedDuration;
-});
+const videoDurationBadge = computed(() => formatVideoDurationBadge(props.file));
 
 const thumbnailBadge = computed(() => {
   const summary = Number(config.settings.grid.thumbnailBadge || 0);
@@ -804,13 +788,6 @@ const statusBadges = computed<ThumbnailBadge[]>(() => {
   
   if (props.file.has_tags) metaIcons.push({ icon: IconTag });
   if (props.file.has_collections) metaIcons.push({ icon: IconCollection });
-  if (props.file.comments?.length > 0) metaIcons.push({ icon: IconComment });
-  if (normalizedRotate.value > 0) {
-    metaIcons.push({
-      icon: IconRotate,
-      style: { transform: `rotate(${normalizedRotate.value}deg)` },
-    });
-  }
   if (metaIcons.length > 0) {
     badges.push({
       key: 'meta',

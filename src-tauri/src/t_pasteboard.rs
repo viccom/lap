@@ -286,6 +286,7 @@ pub async fn get_clipboard_import_data(
 pub async fn copy_files_to_clipboard(
     app_handle: &tauri::AppHandle,
     file_paths: Vec<String>,
+    files_only: bool,
 ) -> Result<usize, String> {
     let file_paths = file_paths
         .into_iter()
@@ -303,7 +304,13 @@ pub async fn copy_files_to_clipboard(
     {
         return Err(format!("File is unavailable: {}", path));
     }
-    let preview = lappp_core::t_image::clipboard_preview_png(&file_paths).await;
+    // A single-image representation lets paste targets pick pixels instead of
+    // the file list. Copy a complete RAW pair as files only.
+    let preview = if files_only {
+        None
+    } else {
+        lappp_core::t_image::clipboard_preview_png(&file_paths).await
+    };
     copy_files_and_image(app_handle, &file_paths, preview.as_deref()).await?;
     Ok(file_paths.len())
 }

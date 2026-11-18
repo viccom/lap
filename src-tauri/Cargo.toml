@@ -1,7 +1,7 @@
 [package]
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/manifest.html
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 name = "lappp"
-version = "0.3.3"
+version = "0.4.0"
 description = "An offline-first photo manager for large local libraries."
 homepage = "https://julyx10.github.io/lap"
 repository = "https://github.com/julyx10/lap"
@@ -95,12 +95,12 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 jxl-oxide = { version = "0.12.5", features = ["image"] }
 libc = "0.2"
 hnsw_rs = "0.3.4"
+http-range = "0.1.5"
+tauri-utils = "2"
+percent-encoding = "2.3.1"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 xattr = "1.6.1"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-percent-encoding = "2.3.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

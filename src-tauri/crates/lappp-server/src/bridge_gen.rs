@@ -2,8 +2,8 @@
 //!
 //! Regenerate after adding commands: `python -I docs/dev/gen-lapd-bridge.py`.
 //! Whitelist = class A commands with a network exposure level, in main.rs
-//! registration order: 232 bridged / 254 registered
-//! (22 skipped: B desktop-glue, C native-only, A 不暴露).
+//! registration order: 233 bridged / 256 registered
+//! (23 skipped: B desktop-glue, C native-only, A 不暴露).
 use crate::bridge::{
     arg, arg_opt, ok, ok_res, spawn_sync, spawn_sync_plain, BridgeError,
 };
@@ -17,6 +17,7 @@ use lappp_core::t_sqlite::ImageSearchParams;
 use lappp_core::t_sqlite::PersonPageRequest;
 use lappp_core::t_sqlite::QueryParams;
 use lappp_core::t_sqlite::SmartQueryParams;
+use std::collections::HashMap;
 use lappp_core::t_image;
 use lappp_core::t_montage;
 use lappp_core::t_sqlite;
@@ -114,7 +115,8 @@ pub const COMMANDS: &[&str] = &[
     "get_files_by_ids",
     "get_folder_files",
     "sync_album_folder_mtimes",
-    "refresh_album_subfolders",
+    "reconcile_raw_jpeg_pairs",
+    "refresh_album_folders",
     "is_directory_accessible",
     "get_folder_thumb_count",
     "edit_image",
@@ -134,7 +136,7 @@ pub const COMMANDS: &[&str] = &[
     "delete_file_permanently",
     "delete_db_file",
     "batch_delete_files",
-    "edit_file_comment",
+    "edit_file_metadata",
     "clean_unused_thumbnail_cache",
     "get_file_thumb",
     "get_file_thumb_by_id",
@@ -149,7 +151,6 @@ pub const COMMANDS: &[&str] = &[
     "end_file_refresh_batch",
     "refresh_selected_file_info",
     "change_video_thumbnail",
-    "index_cloud_file",
     "is_cloud_only_file",
     "prepare_motion_photo_video",
     "add_file_to_db",
@@ -218,6 +219,7 @@ pub const COMMANDS: &[&str] = &[
     "dedup_list_groups",
     "dedup_get_overview",
     "dedup_set_keep",
+    "dedup_get_group_items",
     "dedup_delete",
     "similar_start_scan",
     "similar_get_scan_status",
@@ -352,7 +354,8 @@ pub const EXPOSURES: &[(&str, &str)] = &[
     ("get_files_by_ids", "read"),
     ("get_folder_files", "read"),
     ("sync_album_folder_mtimes", "admin"),
-    ("refresh_album_subfolders", "admin"),
+    ("reconcile_raw_jpeg_pairs", "read"),
+    ("refresh_album_folders", "read"),
     ("is_directory_accessible", "read"),
     ("get_folder_thumb_count", "read"),
     ("edit_image", "write"),
@@ -372,7 +375,7 @@ pub const EXPOSURES: &[(&str, &str)] = &[
     ("delete_file_permanently", "admin"),
     ("delete_db_file", "admin"),
     ("batch_delete_files", "write"),
-    ("edit_file_comment", "write"),
+    ("edit_file_metadata", "write"),
     ("clean_unused_thumbnail_cache", "admin"),
     ("get_file_thumb", "read"),
     ("get_file_thumb_by_id", "read"),
@@ -387,7 +390,6 @@ pub const EXPOSURES: &[(&str, &str)] = &[
     ("end_file_refresh_batch", "write"),
     ("refresh_selected_file_info", "write"),
     ("change_video_thumbnail", "write"),
-    ("index_cloud_file", "write"),
     ("is_cloud_only_file", "read"),
     ("prepare_motion_photo_video", "read"),
     ("add_file_to_db", "admin"),
@@ -456,6 +458,7 @@ pub const EXPOSURES: &[(&str, &str)] = &[
     ("dedup_list_groups", "write"),
     ("dedup_get_overview", "write"),
     ("dedup_set_keep", "write"),
+    ("dedup_get_group_items", "write"),
     ("dedup_delete", "admin"),
     ("similar_start_scan", "admin"),
     ("similar_get_scan_status", "write"),
@@ -992,11 +995,19 @@ let folder_path: String = arg(body, "folderPath")?;
 let group_raw_jpeg_pairs: bool = arg(body, "groupRawJpegPairs")?;
 ok_res(lappp_core::t_cmds::sync_album_folder_mtimes(album_id, folder_id, folder_path, group_raw_jpeg_pairs).await)
         }
-        // t_cmds::refresh_album_subfolders [admin]
-        "refresh_album_subfolders" => {
+        // t_cmds::reconcile_raw_jpeg_pairs [read]
+        "reconcile_raw_jpeg_pairs" => {
+let library_id: String = arg(body, "libraryId")?;
+let enabled: bool = arg(body, "enabled")?;
+ok_res(lappp_core::t_cmds::reconcile_raw_jpeg_pairs(library_id, enabled).await)
+        }
+        // t_cmds::refresh_album_folders [read]
+        "refresh_album_folders" => {
 let album_id: i64 = arg(body, "albumId")?;
 let folder_path: String = arg(body, "folderPath")?;
-ok_res(lappp_core::t_cmds::refresh_album_subfolders(album_id, folder_path).await)
+let library_id: String = arg(body, "libraryId")?;
+let group_raw_jpeg_pairs: bool = arg(body, "groupRawJpegPairs")?;
+ok_res(lappp_core::t_cmds::refresh_album_folders(album_id, folder_path, library_id, group_raw_jpeg_pairs).await)
         }
         // t_cmds::is_directory_accessible [read]
         "is_directory_accessible" => {
@@ -1049,7 +1060,8 @@ let new_folder_id: i64 = arg(body, "newFolderId")?;
 let new_folder_path: String = arg(body, "newFolderPath")?;
 let conflict_policy: String = arg(body, "conflictPolicy")?;
 let batch_id: Option<u64> = arg_opt(body, "batchId")?;
-spawn_sync(move || lappp_core::t_cmds::move_file(file_id, &file_path, new_folder_id, &new_folder_path, &conflict_policy, batch_id)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::move_file(file_id, &file_path, new_folder_id, &new_folder_path, &conflict_policy, batch_id, group_raw_pairs)).await
         }
         // t_cmds::move_file_outside_library [write]
         "move_file_outside_library" => {
@@ -1058,7 +1070,8 @@ let file_path: String = arg(body, "filePath")?;
 let new_folder_path: String = arg(body, "newFolderPath")?;
 let conflict_policy: String = arg(body, "conflictPolicy")?;
 let batch_id: Option<u64> = arg_opt(body, "batchId")?;
-spawn_sync(move || lappp_core::t_cmds::move_file_outside_library(file_id, &file_path, &new_folder_path, &conflict_policy, batch_id)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::move_file_outside_library(file_id, &file_path, &new_folder_path, &conflict_policy, batch_id, group_raw_pairs)).await
         }
         // t_cmds::copy_file [write]
         "copy_file" => {
@@ -1066,7 +1079,8 @@ let file_path: String = arg(body, "filePath")?;
 let new_folder_path: String = arg(body, "newFolderPath")?;
 let conflict_policy: String = arg(body, "conflictPolicy")?;
 let batch_id: Option<u64> = arg_opt(body, "batchId")?;
-spawn_sync(move || lappp_core::t_cmds::copy_file(&file_path, &new_folder_path, &conflict_policy, batch_id)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::copy_file(&file_path, &new_folder_path, &conflict_policy, batch_id, group_raw_pairs)).await
         }
         // t_cmds::import_file [admin]
         "import_file" => {
@@ -1083,7 +1097,8 @@ let source_path: String = arg(body, "sourcePath")?;
 let destination_path: String = arg(body, "destinationPath")?;
 let layout: String = arg(body, "layout")?;
 let completed_paths: Vec<String> = arg(body, "completedPaths")?;
-spawn_sync(move || lappp_core::t_cmds::import_and_organize(album_id, source_path, destination_path, layout, completed_paths)).await
+let group_raw_jpeg_pairs: bool = arg(body, "groupRawJpegPairs")?;
+spawn_sync(move || lappp_core::t_cmds::import_and_organize(album_id, source_path, destination_path, layout, completed_paths, group_raw_jpeg_pairs)).await
         }
         // t_cmds::cancel_import_and_organize [write]
         "cancel_import_and_organize" => {
@@ -1108,13 +1123,15 @@ ok_res(lappp_core::t_cmds::import_file_bytes(bytes, name, folder_id, folder_path
         "delete_file" => {
 let file_id: i64 = arg(body, "fileId")?;
 let file_path: String = arg(body, "filePath")?;
-spawn_sync(move || lappp_core::t_cmds::delete_file(file_id, &file_path)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::delete_file(file_id, &file_path, group_raw_pairs)).await
         }
         // t_cmds::delete_file_permanently [admin]
         "delete_file_permanently" => {
 let file_id: i64 = arg(body, "fileId")?;
 let file_path: String = arg(body, "filePath")?;
-spawn_sync(move || lappp_core::t_cmds::delete_file_permanently(file_id, &file_path)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::delete_file_permanently(file_id, &file_path, group_raw_pairs)).await
         }
         // t_cmds::delete_db_file [admin]
         "delete_db_file" => {
@@ -1125,13 +1142,16 @@ spawn_sync(move || lappp_core::t_cmds::delete_db_file(file_id)).await
         "batch_delete_files" => {
 let files: Vec<BatchDeleteFile> = arg(body, "files")?;
 let permanently: bool = arg(body, "permanently")?;
-ok_res(lappp_core::t_cmds::batch_delete_files(files, permanently).await)
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+let selection: Option<lappp_core::t_cmds::FileDeleteSelection> = arg_opt(body, "selection")?;
+ok_res(lappp_core::t_cmds::batch_delete_files(files, permanently, group_raw_pairs, selection).await)
         }
-        // t_cmds::edit_file_comment [write]
-        "edit_file_comment" => {
-let file_id: i64 = arg(body, "fileId")?;
-let comment: String = arg(body, "comment")?;
-spawn_sync(move || lappp_core::t_cmds::edit_file_comment(file_id, &comment)).await
+        // t_cmds::edit_file_metadata [write]
+        "edit_file_metadata" => {
+let library_id: String = arg(body, "libraryId")?;
+let file_ids: Vec<i64> = arg(body, "fileIds")?;
+let changes: HashMap<String, String> = arg(body, "changes")?;
+spawn_sync(move || lappp_core::t_cmds::edit_file_metadata(library_id, file_ids, changes)).await
         }
         // t_cmds::clean_unused_thumbnail_cache [admin]
         "clean_unused_thumbnail_cache" => {
@@ -1227,15 +1247,6 @@ let file_id: i64 = arg(body, "fileId")?;
 let thumbnail_size: u32 = arg(body, "thumbnailSize")?;
 let seek_percent: u8 = arg(body, "seekPercent")?;
 ok_res(lappp_core::t_cmds::change_video_thumbnail(library_id, file_id, thumbnail_size, seek_percent).await)
-        }
-        // t_cmds::index_cloud_file [write]
-        "index_cloud_file" => {
-let library_id: String = arg(body, "libraryId")?;
-let batch_id: Option<u64> = arg_opt(body, "batchId")?;
-let file_id: i64 = arg(body, "fileId")?;
-let thumbnail_size: u32 = arg(body, "thumbnailSize")?;
-let raw_display_options: RawDisplayOptions = arg(body, "rawDisplayOptions")?;
-ok_res(lappp_core::t_cmds::index_cloud_file(library_id, batch_id, file_id, thumbnail_size, raw_display_options).await)
         }
         // t_cmds::is_cloud_only_file [read]
         "is_cloud_only_file" => {
@@ -1575,11 +1586,14 @@ let page: u32 = arg(body, "page")?;
 let page_size: u32 = arg(body, "pageSize")?;
 let sort_by: String = arg(body, "sortBy")?;
 let filter: String = arg(body, "filter")?;
-spawn_sync(move || lappp_core::t_cmds::dedup_list_groups(page, page_size, sort_by, filter)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::dedup_list_groups(page, page_size, sort_by, filter, group_raw_pairs)).await
         }
         // t_cmds::dedup_get_overview [write]
         "dedup_get_overview" => {
-spawn_sync(move || lappp_core::t_cmds::dedup_get_overview()).await
+let library_id: String = arg(body, "libraryId")?;
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+ok_res(lappp_core::t_cmds::dedup_get_overview(library_id, group_raw_pairs).await)
         }
         // t_cmds::dedup_set_keep [write]
         "dedup_set_keep" => {
@@ -1587,6 +1601,12 @@ let group_id: i64 = arg(body, "groupId")?;
 let file_id: i64 = arg(body, "fileId")?;
 let group_raw_pairs: Option<bool> = arg_opt(body, "groupRawPairs")?;
 spawn_sync(move || lappp_core::t_cmds::dedup_set_keep(group_id, file_id, group_raw_pairs)).await
+        }
+        // t_cmds::dedup_get_group_items [write]
+        "dedup_get_group_items" => {
+let group_id: i64 = arg(body, "groupId")?;
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::dedup_get_group_items(group_id, group_raw_pairs)).await
         }
         // t_cmds::dedup_delete [admin]
         "dedup_delete" => {
@@ -1601,8 +1621,9 @@ let similarity_threshold: f32 = arg(body, "similarityThreshold")?;
 let params: Option<QueryParams> = arg_opt(body, "params")?;
 let collection_id: Option<i64> = arg_opt(body, "collectionId")?;
 let file_ids: Option<Vec<i64>> = arg_opt(body, "fileIds")?;
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
 let keep_rules: Option<lappp_core::t_dedup::KeepRules> = arg_opt(body, "keepRules")?;
-spawn_sync(move || lappp_core::t_cmds::similar_start_scan(scope_key, source_version, similarity_threshold, params, collection_id, file_ids, keep_rules)).await
+spawn_sync(move || lappp_core::t_cmds::similar_start_scan(scope_key, source_version, similarity_threshold, params, collection_id, file_ids, group_raw_pairs, keep_rules)).await
         }
         // t_cmds::similar_get_scan_status [write]
         "similar_get_scan_status" => {
@@ -1617,7 +1638,8 @@ spawn_sync_plain(move || lappp_core::t_cmds::similar_cancel_scan()).await
 let params: Option<QueryParams> = arg_opt(body, "params")?;
 let collection_id: Option<i64> = arg_opt(body, "collectionId")?;
 let file_ids: Option<Vec<i64>> = arg_opt(body, "fileIds")?;
-spawn_sync(move || lappp_core::t_cmds::similar_get_eligible_count(params, collection_id, file_ids)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::similar_get_eligible_count(params, collection_id, file_ids, group_raw_pairs)).await
         }
         // t_cmds::similar_list_groups [write]
         "similar_list_groups" => {
@@ -1629,13 +1651,15 @@ spawn_sync(move || lappp_core::t_cmds::similar_list_groups(scope_key, limit, off
         // t_cmds::similar_get_overview [write]
         "similar_get_overview" => {
 let scope_key: String = arg(body, "scopeKey")?;
-spawn_sync(move || lappp_core::t_cmds::similar_get_overview(scope_key)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::similar_get_overview(scope_key, group_raw_pairs)).await
         }
         // t_cmds::similar_get_group [write]
         "similar_get_group" => {
 let group_id: i64 = arg(body, "groupId")?;
 let scope_key: String = arg(body, "scopeKey")?;
-spawn_sync(move || lappp_core::t_cmds::similar_get_group(group_id, scope_key)).await
+let group_raw_pairs: bool = arg(body, "groupRawPairs")?;
+spawn_sync(move || lappp_core::t_cmds::similar_get_group(group_id, scope_key, group_raw_pairs)).await
         }
         // t_cmds::similar_set_keep [write]
         "similar_set_keep" => {

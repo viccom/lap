@@ -3296,7 +3296,7 @@ dependencies = [
 
 [[package]]
 name = "lappp"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -3312,6 +3312,7 @@ dependencies = [
  "flate2",
  "hnsw_rs",
  "http",
+ "http-range",
  "image",
  "imagesize",
  "jxl-oxide",
@@ -3350,6 +3351,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "tauri-utils",
  "tokenizers",
  "tokio",
  "trash",
@@ -3362,7 +3364,7 @@ dependencies = [
 
 [[package]]
 name = "lappp-core"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -3416,7 +3418,7 @@ dependencies = [
 
 [[package]]
 name = "lappp-server"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "argon2",
  "axum",

@@ -1,7 +1,7 @@
 <template>
   <div
     ref="videoContainer"
-    class="relative w-full h-full overflow-hidden cursor-pointer"
+    class="relative w-full h-full overflow-hidden cursor-default"
     :class="{ 'pointer-events-none': !isActive }"
     style="touch-action: none;"
     @wheel.prevent="handleWheel"
@@ -82,12 +82,13 @@
 import { GESTURE_LOCK_THRESHOLD, HORIZONTAL_NAV_THRESHOLD, PLAYBACK_DEADLINE_MS, DIRECT_PLAYBACK_TIMEOUT_MS, LOADING_OVERLAY_DELAY_MS } from '@/common/constants';
 import { ref, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useToast } from '@/common/toast';
 import { config } from '@/common/config';
 import { IconVideoSlash, IconVideoPlay, IconVideoReplay, IconVideoPause } from '@/common/icons';
 import videojs from 'video.js/core';
 import 'video.js/dist/video-js.min.css';
 import { getThumbUrl, getAssetSrc, getMediaSrcForId, signMediaUrl, isLinux, isMac, isWin } from '@/common/utils';
-import { openFileWithApp } from '@/common/api';
+import { isCloudOnlyFile, openFileWithApp } from '@/common/api';
 import { transportMode } from '@/common/transport';
 import zhCN from 'video.js/dist/lang/zh-CN.json';
 import {
@@ -117,6 +118,7 @@ const props = defineProps({
 
 const emit = defineEmits(['message-from-video-viewer', 'slideshow-next', 'scale', 'viewport-change', 'context-menu']);
 const { t: $t } = useI18n();
+const toast = useToast();
 
 const videoContainer = ref<HTMLDivElement | null>(null);
 const videoElements = ref<HTMLVideoElement[]>([]);
@@ -186,7 +188,13 @@ const loadingLabel = computed(() => (
 
 async function openInExternalApp() {
   if (props.originalUnavailable || !props.filePath || !externalVideoAppPath.value) return;
-  await openFileWithApp(props.filePath, externalVideoAppPath.value);
+  try {
+    await openFileWithApp(props.filePath, externalVideoAppPath.value);
+  } catch (error) {
+    toast.error(String(error).includes('File is online-only')
+      ? $t('offline.requires_original')
+      : $t('tooltip.open_external.failed'));
+  }
 }
 
 function handleContextMenu(event: MouseEvent) {
@@ -537,6 +545,15 @@ const loadVideo = async (filePath: string) => {
     resetLoadingUi();
     return;
   }
+  const cloudOnly = await isCloudOnlyFile(filePath);
+  if (currentLoadId !== currentLoadingId) return;
+  if (cloudOnly) {
+    getActivePlayer()?.pause();
+    resetLoadingUi();
+    hasError.value = true;
+    errorMessage.value = $t('offline.requires_original');
+    return;
+  }
 
   const currentPlayer = getActivePlayer();
   if (currentPlayer) {
@@ -849,7 +866,7 @@ function handlePlayerError(playerInstance: ReturnType<typeof videojs>) {
       case 4: msg = getFallbackErrorMessage(); break;
     }
   } else {
-    msg = $t('video.errors.playback_failed') || 'Playback failed';
+    msg = $t('video.errors.playback_failed');
   }
 
   hasError.value = true;

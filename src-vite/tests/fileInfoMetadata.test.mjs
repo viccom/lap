@@ -9,9 +9,9 @@ const source = await readFile(new URL('../src/components/FileInfo.vue', import.m
 
 test('searchable source metadata displays the indexed values, including empty values', () => {
   const start = source.indexOf('const sourceKeys =');
-  const end = source.indexOf('const sourceDetailRows', start);
-  const keys = ['title', 'headline', 'creator', 'copyright', 'software'];
-  const fields = ['e_title', 'e_headline', 'e_artist', 'e_copyright', 'e_software'];
+  const end = source.indexOf('const organizationMetadata', start);
+  const keys = ['software'];
+  const fields = ['e_software'];
   const details = Object.fromEntries(keys.map(key => [key, { values: [`stale ${key}`] }]));
   const rows = fileInfo => new Function('props', 'metadataDetails', 't', 'fieldVisible', 'displayField', ts.transpile(
     `${source.slice(start, end)}; return detailRows('source', ${JSON.stringify(keys)});`, { target: ts.ScriptTarget.ES2022 }
@@ -22,7 +22,7 @@ test('searchable source metadata displays the indexed values, including empty va
 function section(key) {
   const title = source.indexOf(`$t('file_info.${key}')`);
   assert.ok(title > 0);
-  const start = source.lastIndexOf('      <div ', title);
+  const start = key === 'organization' ? source.lastIndexOf('      <div class=', source.lastIndexOf('        <div class=', title) - 1) : source.lastIndexOf('      <div ', title);
   const end = source.indexOf('\n      </div>', title) + '\n      </div>'.length;
   assert.ok(start >= 0 && end > title);
   return source.slice(start, end);
@@ -31,8 +31,8 @@ async function render(key, overrides = {}) {
   const context = {
     detailSections: {source:{loading:false}},
     sourceDetailRows: [{ key: "software", value: "SOURCE SOFTWARE", source: "EXIF", label: "file_info.detail_fields.software" }], detailsLoading: false, detailsError: false,
-    showOrganizationPanel: true, showSourceMetadataPanel: false, hasSourceMetadata: true,
-    toggleOrganization() {}, toggleSourceMetadata() {}, emit() {},
+    IconEdit: {}, editableMetadataFields: [], fieldVisible: () => false, organizationMetadata: [], showOrganizationPanel: true, showSourceMetadataPanel: false, hasSourceMetadata: true,
+    toggleOrganization() {}, toggleSourceMetadata() {}, emit() {}, getShortcutLabel: () => 'M',
     isPrimaryGeneralInfo: false, displayTags: [], fileCollections: [], filePersons: [],
     config: { settings: { face: { enabled: false } } },
     fileInfo: { comments: '', e_description: 'ORIGINAL SOURCE TEXT' }, ...overrides,
@@ -45,7 +45,7 @@ async function render(key, overrides = {}) {
   return renderToString(app);
 }
 
-test('organization keeps catalog controls on the companion tab and hides empty descriptions', async () => {
+test('organization keeps catalog controls on the companion tab and displays editable metadata', async () => {
   const html = await render('organization');
   assert.doesNotMatch(html, /file_info.marks/);
   assert.doesNotMatch(html, /file_info.comment/);
@@ -53,7 +53,7 @@ test('organization keeps catalog controls on the companion tab and hides empty d
   assert.doesNotMatch(html, /—/);
   assert.doesNotMatch(html, /<button[^>]*text-left/);
   assert.doesNotMatch(html, /ORIGINAL SOURCE TEXT/);
-  const filled = await render('organization', { fileInfo: { comments: 'USER DESCRIPTION' } });
+  const filled = await render('organization', { organizationMetadata: [{ key: 'comments', label: 'file_info.comment', value: 'USER DESCRIPTION' }] });
   assert.match(filled, /file_info.comment/);
   assert.match(filled, /USER DESCRIPTION/);
 });
@@ -80,10 +80,10 @@ test('location accepts zero coordinates and rejects missing or invalid coordinat
 test('section visibility follows field choices even when values are empty', () => {
   const start = source.indexOf('const hasCaptureInfo = computed(');
   const end = source.indexOf('const showBasicInfoPanel', start);
-  const evaluate = selected => new Function('computed', 'hasVisibleFields', 'hideEmptyFields',
+  const evaluate = selected => new Function('computed', 'hasVisibleFields', 'hideEmptyFields', 'sourceDetailRows',
     `${source.slice(start, end)}; return [hasCaptureInfo.value, hasLocationInfo.value, hasSourceMetadata.value];`
-  )(computed, section => selected.includes(section), { value: false });
-  assert.deepEqual(evaluate([]), [false, false, false]);
+  )(computed, section => selected.includes(section), { value: false }, { value: [{ key: 'description' }] });
+  assert.deepEqual(evaluate([]), [false, false, true]);
   assert.deepEqual(evaluate(['capture', 'source']), [true, false, true]);
 });
 
@@ -166,7 +166,7 @@ test('uncached file waits for all expanded sections and publishes successful fie
   await settle();
   assert.equal(f.state.infoReady.value, true);
   assert.equal(f.state.metadataDetails.value.credit.values[0], 'credit');
-  assert.ok(f.state.sourceDetailRows.value.some(row => row.value === 'DB title'));
+  assert.ok(!f.state.sourceDetailRows.value.some(row => row.key === 'title'));
 });
 
 test('offline albums and cloud-only originals show DB immediately without any file-detail IPC', () => {
@@ -230,7 +230,6 @@ test('DB-only field choices do not start realtime metadata reads', () => {
   f.state.changeFile(['test', 1], undefined);
   assert.equal(f.calls.length, 0);
   assert.equal(f.state.infoReady.value, true);
-  assert.equal(f.state.sourceDetailRows.value[0].value, 'DB title');
 });
 
 test('field choices allow no fields and reject unknown fields', async () => {
@@ -238,7 +237,7 @@ test('field choices allow no fields and reject unknown fields', async () => {
   const module = await import(`data:text/javascript;base64,${Buffer.from(ts.transpile(registry, {target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext})).toString('base64')}`);
   assert.deepEqual(module.normalizeFileInfoFields([]), []);
   assert.equal(module.allFileInfoFields.includes('source.description'), false);
-  assert.deepEqual(module.normalizeFileInfoFields(['unknown', 'source.title', 'source.title']), ['source.title']);
+  assert.deepEqual(module.normalizeFileInfoFields(['unknown', 'source.software', 'source.software']), ['source.software']);
   assert.deepEqual(module.normalizeFileInfoFields(undefined), module.normalizeFileInfoFields(module.defaultFileInfoFields));
   assert.equal(module.normalizeFileInfoFields(module.defaultFileInfoFields).length, module.defaultFileInfoFields.length);
   for (const locale of ['en','cs','de','es','fr','hu','it','ja','ko','nl','pl','pt','ru','uk','vi','zh-CN','zh-TW']) {
@@ -287,7 +286,7 @@ test('auto-hide removes empty sections while retaining sections with selected co
 });
 
 
-test('File section follows rendered fields including auto-hide and video-only duration', () => {
+test('File section follows rendered fields and ignores the retired duration setting', () => {
   const start = source.indexOf('const hasFileInfo =');
   const end = source.indexOf('const hasCaptureInfo =', start);
   const generalFileInfo = ref({ file_type: 1 });
@@ -303,17 +302,11 @@ test('File section follows rendered fields including auto-hide and video-only du
   imageDetailRows.value = [];
   selected.clear();
   selected.add('file.duration');
-  generalFileInfo.value = { file_type: 1, duration: 15 };
-  assert.equal(hasInfo.value, false, 'duration does not apply to images');
   generalFileInfo.value = { file_type: 2, duration: 15 };
-  assert.equal(hasInfo.value, true);
-  generalFileInfo.value = { file_type: 2 };
-  assert.equal(hasInfo.value, false, 'empty video duration is hidden');
+  assert.equal(hasInfo.value, false, 'duration belongs to the filename badge');
   hideEmpty = false;
   generalFileInfo.value = { file_type: 2 };
-  assert.equal(hasInfo.value, true, 'empty video duration remains visible with auto-hide disabled');
-  generalFileInfo.value = { file_type: 1 };
-  assert.equal(hasInfo.value, false, 'image duration stays hidden even with auto-hide disabled');
+  assert.equal(hasInfo.value, false, 'the legacy duration choice does not create a field');
   selected.clear();
   generalFileInfo.value = { file_type: 1, name: 'image.jpg' };
   assert.equal(hasInfo.value, false, 'no selected fields hides the section');
@@ -321,4 +314,89 @@ test('File section follows rendered fields including auto-hide and video-only du
   hideEmpty = true;
   generalFileInfo.value = { file_type: 1, size: 0 };
   assert.equal(hasInfo.value, true, 'zero bytes is a valid value');
+});
+
+
+test('File Info switches between paired files and shows duration only on MOV', async () => {
+  const utils = await readFile(new URL('../src/common/utils.ts', import.meta.url), 'utf8');
+  const helpers = utils.slice(utils.indexOf('export function formatVideoDurationBadge'), utils.indexOf('export function formatDuration'));
+  const code = source.slice(source.indexOf('const isLivePhoto ='), source.indexOf('const generalFileUnavailable'));
+  const watchStart = source.lastIndexOf('watch(', source.indexOf('props.fileInfo?.id, hasFileCompanion.value'));
+  const watchCode = source.slice(watchStart, source.indexOf('const startRename', watchStart));
+  const props = reactive({ fileInfo: {
+    id: 1, name: 'IMG.HEIC', media_subtype: 'live_photo', live_photo_video_id: 2,
+    live_photo_video_path: '/album/IMG.MOV', file_type: 1, size: 100, companion_size: 200,
+  } });
+  let resetCompanion;
+  let companionLoads = 0;
+  const tabs = new Function('computed', 'ref', 'props', 'getFileExtension', 'watch', 'getFileInfo', 'formatDuration', ts.transpile(
+    `${helpers.replace('export function', 'function')}
+${code}
+${watchCode}
+return { generalInfoTab, generalFileInfo, videoDurationBadge, primaryFileLabel, selectFileCompanionTab };`,
+  ))(computed, ref, props, name => name.split('.').at(-1), (_, handler) => { resetCompanion = handler; },
+    async id => {
+      companionLoads++;
+      return id === 2 ? { id, name: 'IMG.MOV', file_type: 2, size: 200, duration: 3 }
+        : { id, name: 'RAW.JPG', file_type: 1, size: 300 };
+    }, seconds => `0:0${seconds}`);
+
+  resetCompanion([1, true, 2]);
+  assert.equal(companionLoads, 0, 'companion must load lazily');
+  assert.equal(tabs.primaryFileLabel.value, 'HEIC');
+  assert.equal(tabs.generalFileInfo.value.size, 100);
+  assert.equal(tabs.videoDurationBadge.value, '');
+  await tabs.selectFileCompanionTab();
+  assert.equal(companionLoads, 1);
+  assert.equal(tabs.generalFileInfo.value.name, 'IMG.MOV');
+  assert.equal(tabs.generalFileInfo.value.size, 200);
+  assert.equal(tabs.videoDurationBadge.value, '0:03');
+
+  props.fileInfo = {
+    id: 4, name: 'RAW.NEF', file_type: 3, size: 400,
+    media_subtype: 'raw_jpeg_pair', live_photo_video_id: 5, live_photo_video_path: '/album/RAW.JPG',
+  };
+  resetCompanion([4, true, 5]);
+  assert.equal(tabs.generalInfoTab.value, 'primary');
+  assert.equal(tabs.primaryFileLabel.value, 'RAW');
+  assert.equal(tabs.generalFileInfo.value.size, 400);
+  await tabs.selectFileCompanionTab();
+  assert.equal(tabs.generalFileInfo.value.name, 'RAW.JPG');
+  assert.equal(tabs.generalFileInfo.value.size, 300);
+  assert.equal(tabs.videoDurationBadge.value, '');
+
+  props.fileInfo = { id: 3, name: 'OTHER.JPG', file_type: 1 };
+  resetCompanion([3, false, null]);
+  await tabs.selectFileCompanionTab();
+  assert.equal(tabs.generalInfoTab.value, 'primary');
+  assert.equal(tabs.generalFileInfo.value.name, 'OTHER.JPG');
+  assert.equal(tabs.videoDurationBadge.value, '');
+});
+
+
+test('StatusBar shows a Live Photo as one item with the combined size', async () => {
+  const statusBar = await readFile(new URL('../src/components/StatusBar.vue', import.meta.url), 'utf8');
+  const utils = await readFile(new URL('../src/common/utils.ts', import.meta.url), 'utf8');
+  const templateStart = statusBar.indexOf('<div class="flex items-center shrink-0">');
+  const templateEnd = statusBar.indexOf('<div class="flex items-center gap-1 shink-0">', templateStart);
+  assert.ok(templateStart >= 0 && templateEnd > templateStart);
+  const template = statusBar.slice(templateStart, templateEnd) + '</template>';
+  const sizeHelper = utils.slice(utils.indexOf('export function getMediaItemSize'), utils.indexOf('export function formatFileSize'));
+  const getMediaItemSize = new Function(ts.transpile(sizeHelper.replace('export function', 'function')) + '; return getMediaItemSize;')();
+  const currentFile = { name: 'IMG.HEIC', file_type: 1, size: 100, companion_size: 200 };
+  const app = createSSRApp({
+    data: () => ({
+      selectedItemIndex: 1, hasRealSelectedFile: true, itemPosition: '2 / 4', totalFileSize: 500,
+      currentFile, isLivePhoto: true, rawPairBadge: '', IconPhoto: () => null,
+      formatFileSize: size => `${size} B`, getMediaItemSize, shortenFilename: name => name,
+    }),
+    render: compile(template),
+  });
+  app.config.globalProperties.$t = (key, args) => key === 'statusbar.items_summary'
+    ? `${args.count} items (${args.size})`
+    : 'LIVE';
+  for (const name of ['IconList', 'IconLivePhoto']) app.component(name, { render: () => null });
+  const html = await renderToString(app);
+  assert.match(html, /2 \/ 4 items \(500 B\)/);
+  assert.match(html, /IMG\.HEIC.*LIVE.*\(300 B\)/s);
 });

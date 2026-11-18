@@ -38,14 +38,14 @@
     "drop_action": "Додати",
     "drop_title_hint": "Перетягніть, щоб додати",
     "empty_drop_hint": "Перетягніть елементи на добірку вище, щоб додати їх.",
-    "added_toast": "Додано файлів до добірки: {count}",
-    "add_failed_toast": "Не вдалося додати файли до добірок: {count}",
-    "already_exists_toast": "Файлів уже у добірці: {count}",
+    "added_toast": "Додано елементів до добірки: {count}",
+    "add_failed_toast": "Не вдалося додати елементи до добірок: {count}",
+    "already_exists_toast": "Елементів уже у добірці: {count}",
     "clear": "Спорожнити добірку",
     "clear_confirm_title": "Спорожнити добірку",
     "clear_confirm_message": "Вилучити всі файли з \"{name}\"? Самі файли не буде видалено.",
     "clear_confirm_ok": "Спорожнити",
-    "removed_toast": "Вилучено файлів із добірки: {count}"
+    "removed_toast": "Вилучено елементів із добірки: {count}"
   },
   "library": {
     "all_files": "Усі файли",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Офлайн",
+    "download_to_open": "Перш ніж відкрити це фото, завантажте його в застосунку хмарного сховища.",
     "cloud_only": "Доступний лише в мережі",
     "cloud_only_pending": "Доступний лише в мережі — відомості про файл неповні",
     "original_unavailable": "Оригінальний файл недоступний",
@@ -255,7 +256,7 @@
     "section_folders": "Виберіть теку",
     "section_status": "Стан імпорту",
     "to_import": "До імпорту",
-    "files_progress": "{processed} / {total} файлів ({size})",
+    "files_progress": "{processed} / {total} елементів ({size})",
     "source": "Джерело",
     "source_placeholder": "Виберіть теку джерела",
     "destination": "Призначення",
@@ -266,7 +267,7 @@
     "layout_structure": "Зберегти структуру папок",
     "import": "Імпортувати",
     "preparing": "Підготовка імпорту",
-    "importing": "Імпортування файлів",
+    "importing": "Імпорт елементів",
     "complete": "Імпорт завершено",
     "cancelled": "Імпорт скасовано",
     "continue": "Продовжити",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Почніть з нового альбому",
-    "add_album_description": "Виберіть теку і дозвольте lappp впорядкувати ваші фотографії та відео.",
+    "add_album_description": "Виберіть теку і дозвольте Lap впорядкувати ваші фотографії та відео.",
     "smart_album_title": "Впорядковуйте за допомогою розумних альбомів",
     "smart_album_description": "Використовуйте правила, щоб автоматично групувати фотографії за вашими критеріями.",
     "collection_title": "Групуйте фотографії в добірки",
@@ -296,23 +297,6 @@
     "unknown_lens": "Невідомий об'єктив",
     "semantic_matches": "Візуальні збіги",
     "text_matches": "Текстові збіги",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "У черзі на сканування",
       "indexing": "Сканування... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Пропустити цей файл і продовжити",
         "file_label": "Останній просканований файл",
         "message": "Попереднє сканування не завершилося належним чином.",
-        "message_with_file": "Попереднє завдання сканування не завершилося коректно.\n\nОстанній просканований файл:\n{file}\n\nЯкщо ви продовжите, lappp пропустить цей файл один раз і відновить сканування."
+        "message_with_file": "Попереднє завдання сканування не завершилося коректно.\n\nОстанній просканований файл:\n{file}\n\nЯкщо ви продовжите, Lap пропустить цей файл один раз і відновить сканування."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Улюблені теки"
   },
   "rating": {
+    "mixed": "Різні значення",
     "title": "Оцінки",
     "unrated": "Без оцінки",
     "all_rated": "Усі з оцінкою",
     "rated": "З оцінкою",
-    "mixed": "Різні",
     "clear_rating": "Скинути оцінку",
     "five_stars": "5 зірок",
     "four_stars": "4 зірки",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Лише обране",
-      "select_mode": "Множинний вибір",
-      "select_files": "Вибрати файли",
-      "show_selection_panel": "Відкрити панель множинного вибору",
-      "hide_selection_panel": "Згорнути панель множинного вибору",
-      "exit_select_mode": "Вийти з режиму множинного вибору",
+      "show_selection_panel": "Відкрити панель вибору",
+      "exit_selection_mode": "Вийти з режиму вибору",
       "select_count": "Вибрано: {count}",
       "group_type_options": [
         "Немає",
@@ -516,14 +514,16 @@
         "Лише RAW",
         "Відео"
       ],
-      "file_type_other": "Інше"
+      "file_type_other": "Інше",
+      "select_mode": "Множинний вибір",
+      "select_files": "Вибрати файли",
+      "hide_selection_panel": "Згорнути панель множинного вибору",
+      "exit_select_mode": "Вийти з режиму множинного вибору"
     },
     "tooltip": {
       "restore": "Відновити",
       "refresh": "Оновити",
-      "show_info": "Показати відомості",
-      "hide_info": "Приховати відомості",
-      "open_dedup": "Знайти дублікати та схожі",
+      "info": "Відомості",
       "clear_history": "Очистити історію пошуку",
       "index_faces": "Індексувати обличчя",
       "sort": "Сортувати",
@@ -534,7 +534,10 @@
       "back": "Назад",
       "scanning": "Сканування…",
       "scan_paused": "Сканування призупинено",
-      "scan_queued": "У черзі на сканування"
+      "scan_queued": "У черзі на сканування",
+      "show_info": "Показати відомості",
+      "hide_info": "Приховати відомості",
+      "open_dedup": "Знайти дублікати та схожі"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Корекція"
     ],
     "empty_title": "Цей список порожній",
-    "empty_desc": "Додайте файли або оновіть поточний фільтр, щоб побачити тут елементи.",
-    "select_hint": "Файлів не вибрано",
+    "empty_desc": "Додайте елементи або оновіть поточний фільтр, щоб побачити їх тут.",
+    "select_hint": "Елементів не вибрано",
     "deselect": "Скасувати вибір",
-    "select_mode_entered": "Режим множинного вибору увімкнено",
-    "selection_load_failed": "Не вдалося завантажити всі файли для вибору. Спробуйте ще раз.",
+    "selection_load_failed": "Не вдалося завантажити всі елементи для вибору. Спробуйте ще раз.",
     "large_batch": {
       "title": "Підтвердьте масову операцію",
-      "content": "Ця операція обробить файлів: {count} і може зайняти деякий час. Продовжити?",
+      "content": "Ця операція обробить елементів: {count} і може зайняти деякий час. Продовжити?",
       "ok": "Продовжити"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Залишити",
       "unkeep_label": "Не залишати",
       "delete_selected": "Видалити вибрані",
+      "trash_all": "Перемістити все до кошика",
       "delete_all": "Видалити всі",
       "move_selected_to_trash": "Перемістити до кошика (вибрано {count} · {size})",
-      "no_removable_files": "Немає файлів, які можна перемістити до кошика",
+      "no_removable_files": "Немає елементів, які можна перемістити до кошика",
       "set_keep": "Залишити",
       "removable_copies_summary": "Копій, які можна вилучити: {count} · {size}",
+      "similar_items_summary": "Схожих елементів: {count} · {size}",
       "similar_photos_summary": "Схожих фотографій: {count} · {size}"
-    }
+    },
+    "select_mode_entered": "Режим множинного вибору увімкнено"
   },
   "tooltip": {
     "loading": "Завантаження...",
@@ -694,9 +699,9 @@
       "success": "Шпалери стільниці оновлено",
       "failed": "Не вдалося встановити шпалери стільниці"
     },
-    "refresh_subfolders": {
-      "success": "Підтеки оновлено",
-      "failed": "Не вдалося оновити підтеки"
+    "refresh_folders": {
+      "success": "Теки оновлено",
+      "failed": "Не вдалося оновити теки"
     },
     "copy_image": {
       "success": "Скопійовано файлів до буфера обміну: {count}",
@@ -727,12 +732,17 @@
     },
     "album_exists": "Цей альбом уже існує",
     "album_nested": "Ця тека перекривається з іншим альбомом",
+    "refresh_subfolders": {
+      "success": "Підтеки оновлено",
+      "failed": "Не вдалося оновити підтеки"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "{count} файлів ({size})"
+    "files_summary": "{count} файлів ({size})",
+    "items_summary": "{count} елементів ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Виключити з пошуку",
       "remove": "Вилучити",
       "delete_folder": "Видалити теку",
+      "refresh_folders": "Оновити теки",
       "refresh_subfolders": "Оновити підтеки"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Показати у Finder...",
       "reveal_in_file_explorer": "Показати у Провіднику...",
       "refresh_file_info": "Оновити відомості про файл",
-      "index_cloud_files": "Завантажити, проіндексувати та звільнити місце",
       "set_album_cover": "Зробити обкладинкою альбому",
       "set_as": "Задати як",
       "set_desktop_wallpaper": "Зробити шпалерами стільниці",
@@ -804,6 +814,7 @@
       "xmp_save_success": "Метадані XMP збережено для {count} файлів",
       "xmp_save_failed": "Не вдалося зберегти XMP для {count} файлів",
       "comment": "Опис…",
+      "index_cloud_files": "Завантажити, проіндексувати та звільнити місце",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "ОК",
+    "save": "Зберегти",
     "discard": "Відхилити",
     "reset": "Скинути",
     "cancel": "Скасувати",
@@ -994,42 +1006,60 @@
       "invalid": "Введіть назву та додатний цілий початковий номер.",
       "success": "Перейменовано {count} елементів."
     },
+    "file_delete": {
+      "permanent_summary": "Буде видалено безповоротно: {count}.",
+      "trash_summary": "Буде переміщено до кошика: {count}.",
+      "title": "Видалити безповоротно: {count}?",
+      "confirm": "Видалити: {count}",
+      "irreversible": "Цю дію неможливо скасувати.",
+      "mixed_hint": "Застосовується лише до RAW-пар. Інші вибрані елементи завжди видаляються повністю.",
+      "trash_unavailable": "Не вдалося перемістити файли до кошика. На цьому диску кошик може бути недоступний."
+    },
+    "raw_pair_delete": {
+      "scope": "Файли RAW-пар для видалення",
+      "both": "Обидва файли",
+      "raw": "Лише RAW",
+      "companion": "Лише JPEG / HEIC",
+      "format": "Лише {format}",
+      "failed": "Не вдалося видалити: {count}."
+    },
+    "folder_delete_contents": "Це стосується всіх файлів і вкладених папок.",
     "move_to_trash": {
       "title": "Перемістити до кошика",
       "file_content": "Файл '{file}' буде переміщено до кошика.",
-      "files_content": "Вибраних файлів буде переміщено до кошика: {count}.",
-      "removable_files_content": "Усіх файлів, які можна вилучити, буде переміщено до кошика: {count}.",
-      "raw_jpeg_companions_content": "Також буде видалено супутніх файлів RAW+JPEG: {count}.",
+      "files_content": "Вибраних елементів буде переміщено до кошика: {count}.",
+      "removable_files_content": "Усіх елементів, які можна вилучити, буде переміщено до кошика: {count}.",
       "folder_content": "Теку '{folder}' буде переміщено до кошика.",
       "ok": "До кошика",
       "file_success": "Файл '{file}' переміщено до кошика.",
-      "files_success": "Вибраних файлів переміщено до кошика: {count}.",
+      "files_success": "Вибраних елементів переміщено до кошика: {count}.",
       "folder_success": "Теку '{folder}' переміщено до кошика.",
       "file_error": "Не вдалося перемістити файл до кошика.",
-      "files_error": "Не вдалося перемістити вибрані файли до кошика.",
-      "folder_error": "Не вдалося перемістити теку до кошика."
+      "files_error": "Не вдалося перемістити вибрані елементи до кошика.",
+      "folder_error": "Не вдалося перемістити теку до кошика.",
+      "raw_jpeg_companions_content": "Також буде видалено супутніх файлів RAW+JPEG: {count}."
     },
     "permanent_delete": {
       "title": "Видалити назавжди",
       "file_content": "Файл '{file}' буде видалено назавжди.",
-      "files_content": "Вибраних файлів буде видалено назавжди: {count}.",
-      "removable_files_content": "Усіх файлів, які можна вилучити, буде видалено назавжди: {count}.",
+      "files_content": "Вибраних елементів буде видалено назавжди: {count}.",
+      "removable_files_content": "Усіх елементів, які можна вилучити, буде видалено назавжди: {count}.",
       "folder_content": "Теку '{folder}' буде видалено назавжди.",
-      "checkbox": "Видалити назавжди (не можна скасувати)",
       "ok": "Видалити",
       "file_success": "Файл '{file}' видалено назавжди.",
-      "files_success": "Вибраних файлів видалено назавжди: {count}.",
+      "files_success": "Вибраних елементів видалено назавжди: {count}.",
       "folder_success": "Теку '{folder}' видалено назавжди.",
       "file_error": "Не вдалося видалити файл назавжди.",
-      "files_error": "Не вдалося видалити вибрані файли назавжди.",
-      "folder_error": "Не вдалося видалити теку назавжди."
+      "files_error": "Не вдалося видалити вибрані елементи назавжди.",
+      "folder_error": "Не вдалося видалити теку назавжди.",
+      "checkbox": "Видалити назавжди (не можна скасувати)"
     },
     "trash_failed": {
       "title": "Не вдалося перемістити до кошика",
       "file_content": "Не вдалося перемістити файл '{file}' до кошика.\n\nВидалити його назавжди?",
-      "files_content": "Не вдалося перемістити до кошика вибраних файлів: {count}.\n\nВидалити їх назавжди?",
+      "files_content": "Не вдалося перемістити до кошика вибраних елементів: {count}.\n\nВидалити їх назавжди?",
       "folder_content": "Не вдалося перемістити теку '{folder}' до кошика.\n\nВидалити її назавжди?\n\nЦю дію неможливо скасувати через системний кошик.",
-      "folder_partial_warning": "Під час попередньої спроби частину вмісту могло бути переміщено до кошика. Остаточне видалення видалить цю папку та решту її вмісту.",
+      "folder_partial_warning": "Під час попередньої спроби частину вмісту могло бути переміщено до кошика.",
       "ok": "Видалити назавжди"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Короткий заголовок",
+      "e_headline": "Заголовок для публікації",
+      "comments": "Опишіть вміст або додайте контекст",
+      "e_artist": "Ім'я",
+      "e_artist_hint": "По одному в рядку",
+      "e_copyright": "© {year} Ім'я"
+    },
+    "edit_metadata_no_fields": "Перед редагуванням метаданих виберіть принаймні одне поле розділу «Організація» в налаштуваннях полів.",
+    "edit_metadata": "Редагувати метадані",
+    "metadata_save_failed": "Не вдалося зберегти метадані",
     "paths_copied": "Скопійовано шляхів до файлів у буфер обміну: {count}",
     "copy_path": "Копіювати шлях до файлу",
     "copy_path_failed": "Не вдалося скопіювати шлях",
@@ -1269,7 +1310,7 @@
     "organization": "Упорядкування",
     "file": "Файл",
     "capture": "Зйомка",
-    "source_metadata": "Метадані вихідного файлу",
+    "source_metadata": "Інші відомості",
     "source_description": "Початковий опис",
     "coordinates": "Координати",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "Підготовка сумісного відтворення...",
     "failed": "Не вдалося відтворити відео",
     "errors": {
+      "playback_failed": "Не вдалося відтворити",
       "aborted": "Завантаження відео скасовано",
       "network": "Помилка мережі під час завантаження відео",
       "decode": "Помилка декодування відео",
       "format": "Непідтримуваний формат відео або файл пошкоджено.",
-      "external_player_recommended": "Для цього відео потрібне транскодування для сумісності, перш ніж його можна буде відтворити тут. Для довгих відео lappp рекомендує скористатися зовнішнім програвачем замість очікування фонової обробки.",
+      "external_player_recommended": "Для цього відео потрібне транскодування для сумісності, перш ніж його можна буде відтворити тут. Для довгих відео Lap рекомендує скористатися зовнішнім програвачем замість очікування фонової обробки.",
       "unsafe_webview": "Цей формат відео не підтримується для відтворення.",
       "open_in_external_app": "Відкрити у зовнішньому програвачі",
       "open_in_external_app_named": "Відкрити відео в {app}...",
       "use_external": "Щоб відкривати непідтримувані формати, налаштуйте зовнішній програвач у Налаштуваннях.",
       "use_external_generic": "Спробуйте відкрити його у зовнішньому програвачі.",
       "use_external_with_app": "Спробуйте відкрити натомість у {app}.",
-      "unknown": "Невідома помилка",
-      "playback_failed": "Video playback failed"
+      "unknown": "Невідома помилка"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "Парні файли",
-      "clipboard_both": "Обидва файли",
-      "clipboard_raw": "Лише RAW",
-      "clipboard_jpeg": "Лише JPEG/HEIC",
-      "clipboard_hint": "Також застосовується до шляхів. Не впливає на копіювання та переміщення до папок.",
       "pair_source": "Типове відображення для пар",
       "pair_source_hint": "Використовується для парних мініатюр і попередніх переглядів",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Типове джерело попереднього перегляду",
       "preview_source_hint": "Якщо вибране джерело недоступне, використовується інше",
-      "rawRenderBrightness": "Яскравість обробки",
-      "option_embedded": "Спочатку вбудований",
-      "option_rendered": "Спочатку обробляти RAW",
-      "option_original": "Оригінальна експозиція",
-      "option_brightened": "Освітлений",
-      "brightness_hint": "Застосовується лише під час обробки RAW",
-      "switch_to": "Перемкнути на {source}",
+      "option_embedded": "Вбудований перегляд",
+      "option_rendered": "Обробити RAW",
+      "option_brightened": "Автоматичне освітлення",
       "show_pair": "Показати парний {format}",
-      "source_embedded": "Вбудований",
-      "source_rendered": "Оброблений",
-      "source_brightened": "Освітлений",
-      "preview_mode": "Режим попереднього перегляду RAW"
+      "source_embedded": "Вбудований перегляд",
+      "source_rendered": "Обробити RAW",
+      "source_brightened": "Автоматичне освітлення",
+      "preview_mode": "Режим попереднього перегляду RAW",
+      "clipboard_both": "Обидва файли",
+      "clipboard_raw": "Лише RAW",
+      "clipboard_jpeg": "Лише JPEG/HEIC",
+      "clipboard_hint": "Також застосовується до шляхів. Не впливає на копіювання та переміщення до папок.",
+      "rawRenderBrightness": "Яскравість обробки",
+      "option_original": "Оригінальна експозиція",
+      "brightness_hint": "Застосовується лише під час обробки RAW",
+      "switch_to": "Перемкнути на {source}"
     },
     "metadata": {
       "title": "Метадані",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "Багатомовну модель пошуку фотографій не встановлено. Завантажте її, щоб увімкнути пошук понад 50 мовами.",
       "download": "Завантажити",
       "downloading_multilingual_model": "Завантаження багатомовної моделі",
-      "multilingual_model_download_success": "Багатомовна модель пошуку готова. Перезапустіть lappp, щоб скористатися нею.",
+      "multilingual_model_download_success": "Багатомовна модель пошуку готова. Перезапустіть Lap, щоб скористатися нею.",
       "multilingual_model_download_failed": "Не вдалося завантажити багатомовну модель пошуку",
       "similarity": "Подібність пошуку",
       "similarity_hint": "Керує візуальними збігами для пошуку за ключовими словами",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Збільшити",
         "zoom_out": "Зменшити",
         "zoom_fit": "Перемкнути фактичний розмір / пасувати до вікна",
+        "cycle_raw_preview": "Перемкнути режим перегляду RAW",
         "toggle_af_areas": "Показати/приховати області автофокусу",
         "cycle_background": "Змінити тло",
         "open_new_window": "Переглянути в новому вікні",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "Під час видалення файлів",
+      "file_delete_trash_hint": "Один файл переміщується до кошика без підтвердження",
+      "file_delete_permanent_hint": "Безповоротне видалення завжди потребує підтвердження",
+      "file_delete_section": "Видалення файлів",
       "title": "Додатково",
       "external_app": {
         "section_external_apps": "Зовнішні застосунки",

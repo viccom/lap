@@ -18,6 +18,7 @@
         :tooltip="$t('menu.album.add')"
         @click="clickNewAlbum"
       />
+      <ContextMenu :menuItems="albumPanelMenuItems" :iconMenu="IconMore" :smallIcon="true" />
     </div>
 
     <div v-if="isMainPane" class="mx-1 mb-2 px-1 shrink-0">
@@ -79,7 +80,7 @@
         <VueDraggable
           v-if="visibleAlbums.length > 0"
           v-model="albums"
-          :disabled="!isMainPane || isFolderFiltering || reorderingAlbumId === null"
+          :disabled="!isMainPane || isFolderFiltering || !isReorderingAlbums"
           handle=".album-drag-handle"
           direction="vertical"
           :group="{ name: 'album-folder', pull: false, put: false }"
@@ -100,7 +101,7 @@
             "
           >
             <div
-              :data-reordering-album="isReorderingAlbum(album) ? 'true' : undefined"
+              :data-reordering-album="isReorderingAlbums && !isFolderFiltering ? 'true' : undefined"
               :data-file-drop-path="selectionSource === 'local' || album.is_accessible === false ? undefined : album.path"
               :data-file-drop-album-id="selectionSource === 'local' || album.is_accessible === false ? undefined : album.id"
               :class="[
@@ -114,7 +115,7 @@
               @contextmenu.prevent.stop="(e: MouseEvent) => handleAlbumContextMenu(album, e)"
             >
               <IconDragHandle
-                v-if="isReorderingAlbum(album)"
+                v-if="isReorderingAlbums && !isFolderFiltering"
                 class="album-drag-handle p-1 w-6 h-6 shrink-0 cursor-grab text-base-content/30"
                 :title="$t('menu.album.reorder')"
                 @click.stop
@@ -322,6 +323,7 @@ import { getAllAlbums, getAlbumVisibleCounts, getAllAlbumFolders, reorderAlbums,
          getAlbum, checkAlbumAccessibility, cancelIndexing as cancelIndexingApi, listenIndexProgress, listenIndexFinished, recountAlbum } from '@/common/api';
 import { Album, Folder } from '@/common/types';
 import { useAlbumSelectionProvider, SelectionSource } from '@/composables/useAlbumSelection';
+import { useLibraryChangeRefresh } from '@/composables/useLibraryChangeRefresh';
 
 import AlbumFolder from '@/components/AlbumFolder.vue';
 import AlbumEdit from '@/components/AlbumEdit.vue';
@@ -334,6 +336,8 @@ import {
   IconAdd,
   IconDownload,
   IconMore,
+  IconOk,
+  IconDot,
   IconEdit,
   IconRemove,
   IconUpdate,
@@ -361,6 +365,40 @@ const props = withDefaults(defineProps<{
 /// i18n
 const { t, locale, messages } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
+const albumPanelMenuItems = computed(() => {
+  const browse = localeMsg.value.settings.browse;
+  return [
+    {
+      label: browse.show_subfolder_files,
+      icon: config.settings.showSubfolderFiles ? IconOk : undefined,
+      iconClass: 'w-4 h-4',
+      action: () => {
+        const value = !config.settings.showSubfolderFiles;
+        config.setShowSubfolderFiles(value);
+        void tauriEmit('settings-showSubfolderFiles-changed', value);
+      },
+    },
+    {
+      label: browse.folder_sort,
+      children: (browse.folder_sort_options as string[]).map((label, value) => ({
+        label,
+        icon: Number(config.settings.folderSort) === value ? IconDot : undefined,
+        action: () => {
+          config.setFolderSort(value);
+          void tauriEmit('settings-folderSort-changed', value);
+        },
+      })),
+    },
+    { label: "-", action: null },
+    {
+      label: localeMsg.value.menu.album.reorder,
+      icon: IconOrder,
+      disabled: albums.value.length < 2 || isFolderFiltering.value,
+      action: () => { isReorderingAlbums.value = !isReorderingAlbums.value; },
+    },
+  ];
+});
+
 const uiStore = useUIStore();
 // Adding an album and importing a folder both need the native folder picker to
 // choose a server-side path; the Web client hides those entries (§3.9).
@@ -403,6 +441,7 @@ async function refreshAlbumVisibleCounts() {
   ) return;
   libConfig.album.counts = counts;
 }
+useLibraryChangeRefresh(refreshAlbumVisibleCounts);
 
 // Computed to check if we're in main album pane
 const isMainPane = computed(() => props.selectionSource === 'album');
@@ -567,15 +606,15 @@ watch([externalDragKind, canAcceptAlbumDrop], ([kind, enabled]) => {
 });
 
 const isDragging = ref(false);  // dragging albums
-const reorderingAlbumId = ref<number | null>(null);
+const isReorderingAlbums = ref(false);
 const albumCoverErrors = ref<Record<number, boolean>>({});
 
 interface FilteredAlbumResult {
   album: Album;
   rootFolderMatches: boolean;
   hasMatches: boolean;
-  visibleFolderPaths: string[];
-  matchedFolderPaths: string[];
+  visibleFolderPaths: Set<string>;
+  matchedFolderPaths: Set<string>;
   folderTree: Folder[];
 }
 
@@ -583,7 +622,22 @@ interface AlbumFolderRecord extends Folder {
   album_id: number;
 }
 
-const normalizedFolderSearch = computed(() => folderSearch.value.trim().toLocaleLowerCase());
+const FOLDER_SEARCH_DEBOUNCE_MS = 150;
+const appliedFolderSearch = ref('');
+let folderSearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+watch(folderSearch, (value) => {
+  if (folderSearchDebounceTimer) clearTimeout(folderSearchDebounceTimer);
+  folderSearchDebounceTimer = null;
+  if (!value.trim()) {
+    appliedFolderSearch.value = value;
+    return;
+  }
+  folderSearchDebounceTimer = setTimeout(() => {
+    folderSearchDebounceTimer = null;
+    appliedFolderSearch.value = folderSearch.value;
+  }, FOLDER_SEARCH_DEBOUNCE_MS);
+});
+const normalizedFolderSearch = computed(() => appliedFolderSearch.value.trim().toLocaleLowerCase());
 const isFolderFiltering = computed(() =>
   isMainPane.value && (normalizedFolderSearch.value.length > 0 || favoriteFoldersOnly.value)
 );
@@ -629,14 +683,13 @@ function getFolderSearchPaths(folders: AlbumFolderRecord[], rootPath: string, qu
   }
 
   return {
-    visibleFolderPaths: Array.from(visiblePaths),
-    matchedFolderPaths: Array.from(matchedPaths),
+    visibleFolderPaths: visiblePaths,
+    matchedFolderPaths: matchedPaths,
     hasMatches: visiblePaths.size > 0,
   };
 }
 
-function buildFilteredFolderTree(folders: AlbumFolderRecord[], visiblePaths: string[]) {
-  const visible = new Set(visiblePaths);
+function buildFilteredFolderTree(folders: AlbumFolderRecord[], visible: ReadonlySet<string>) {
   const nodes = new Map<string, Folder>();
   const roots: Folder[] = [];
 
@@ -679,7 +732,7 @@ async function loadCachedAlbumTree(album: Album) {
     has_subfolders: records.length > 0,
   };
   const folders = [root, ...records.filter((folder: AlbumFolderRecord) => folder.path !== album.path)];
-  album.children = buildFilteredFolderTree(folders, folders.map((folder: AlbumFolderRecord) => folder.path));
+  album.children = buildFilteredFolderTree(folders, new Set(folders.map((folder: AlbumFolderRecord) => folder.path)));
 }
 
 const filteredAlbumResults = computed<FilteredAlbumResult[]>(() => {
@@ -688,8 +741,8 @@ const filteredAlbumResults = computed<FilteredAlbumResult[]>(() => {
     return albums.value.map(album => ({
       album,
       rootFolderMatches: false,
-      visibleFolderPaths: [],
-      matchedFolderPaths: [],
+      visibleFolderPaths: new Set<string>(),
+      matchedFolderPaths: new Set<string>(),
       hasMatches: false,
       folderTree: [],
     }));
@@ -713,31 +766,27 @@ const filteredAlbumResults = computed<FilteredAlbumResult[]>(() => {
       ? folders.filter(folder => folder.is_favorite)
       : folders;
     const folderPaths = getFolderSearchPaths(matchingFolders, album.path, query);
-    const visibleFolderPaths = rootFolderVisible || folderPaths.hasMatches
-      ? [rootFolder.path, ...folderPaths.visibleFolderPaths]
-      : [];
-    const matchedFolderPaths = rootFolderMatches
-      ? [rootFolder.path, ...folderPaths.matchedFolderPaths]
-      : folderPaths.matchedFolderPaths;
-    return rootFolderVisible || folderPaths.hasMatches
-      ? [{
-        album,
-        rootFolderMatches,
-        ...folderPaths,
-        hasMatches: rootFolderVisible || folderPaths.hasMatches,
-        visibleFolderPaths,
-        matchedFolderPaths,
-        folderTree: buildFilteredFolderTree([rootFolder, ...folders], visibleFolderPaths),
-      }]
-      : [];
+    if (!rootFolderVisible && !folderPaths.hasMatches) return [];
+    const { visibleFolderPaths, matchedFolderPaths } = folderPaths;
+    visibleFolderPaths.add(rootFolder.path);
+    if (rootFolderMatches) matchedFolderPaths.add(rootFolder.path);
+    return [{
+      album,
+      rootFolderMatches,
+      hasMatches: true,
+      visibleFolderPaths,
+      matchedFolderPaths,
+      folderTree: buildFilteredFolderTree([rootFolder, ...folders], visibleFolderPaths),
+    }];
   });
 });
 
 const visibleAlbums = computed(() => filteredAlbumResults.value.map(result => result.album));
-const getFilteredAlbumResult = (albumId: number) =>
-  filteredAlbumResults.value.find(result => Number(result.album.id) === Number(albumId));
-const getVisibleFolderPaths = (albumId: number) => getFilteredAlbumResult(albumId)?.visibleFolderPaths || [];
-const getMatchedFolderPaths = (albumId: number) => getFilteredAlbumResult(albumId)?.matchedFolderPaths || [];
+const filteredAlbumResultsById = computed(() =>
+  new Map(filteredAlbumResults.value.map(result => [Number(result.album.id), result])));
+const getFilteredAlbumResult = (albumId: number) => filteredAlbumResultsById.value.get(Number(albumId));
+const getVisibleFolderPaths = (albumId: number) => getFilteredAlbumResult(albumId)?.visibleFolderPaths || new Set<string>();
+const getMatchedFolderPaths = (albumId: number) => getFilteredAlbumResult(albumId)?.matchedFolderPaths || new Set<string>();
 const getFilteredFolderTree = (albumId: number) => getFilteredAlbumResult(albumId)?.folderTree || [];
 const shouldShowFilteredFolderTree = (albumId: number) => {
   const result = getFilteredAlbumResult(albumId);
@@ -788,7 +837,6 @@ function handleAlbumContextMenu(album: Album, event: MouseEvent) {
 
 const getAlbumById = (id: number) =>
   albums.value.find(album => Number(album.id) === Number(id));
-const isReorderingAlbum = (album: Album) => Number(album.id) === reorderingAlbumId.value;
 const selectedAlbum = computed(() => getAlbumById(selection.albumId.value)) || {};
 const editingAlbum = computed(() => getAlbumById(editingAlbumId.value));
 const isAlbumQueued = (albumId: number) =>
@@ -887,13 +935,6 @@ const getMoreMenuItems = async (album: any) => {
       icon: isAlbumQueued(album.id) ? IconUpdateOff : IconUpdate,
       disabled: !isAccessible && !isAlbumQueued(album.id),
       action: () => toggleIndexAlbum(album.id)
-    },
-    {
-      label: localeMsg.value.menu.album.reorder,
-      icon: IconOrder,
-      action: () => {
-        reorderingAlbumId.value = isReorderingAlbum(album) ? null : album.id;
-      }
     },
     {
       label: "-",   // separator
@@ -1157,12 +1198,13 @@ watch(isFolderFiltering, (filtering) => {
     refreshFolderSearchFolders();
     return;
   }
-  reorderingAlbumId.value = null;
+  isReorderingAlbums.value = false;
   void loadFolderSearchFolders();
 });
 
 onBeforeUnmount(() => {
   disposed = true;
+  if (folderSearchDebounceTimer) clearTimeout(folderSearchDebounceTimer);
   if (isMainPane.value) resetExternalDrag();
   document.removeEventListener('pointerdown', handleReorderOutsidePointerDown, true);
   document.removeEventListener('dragenter', handleWindowAlbumDrag, true);
@@ -1362,8 +1404,8 @@ const clickRemoveAlbum = async () => {
 
     // remove the album from the list
     albums.value = albums.value.filter(album => album.id !== albumId);
-    if (reorderingAlbumId.value === albumId) {
-      reorderingAlbumId.value = null;
+    if (albums.value.length < 2) {
+      isReorderingAlbums.value = false;
     }
     showAlbumEdit.value = false; // Close the edit dialog if it's open
 
@@ -1602,9 +1644,9 @@ const onDragEnd = async ({ oldIndex, newIndex }: DraggableEvent) => {
 }
 
 function handleReorderOutsidePointerDown(event: PointerEvent) {
-  if (event.button !== 0 || reorderingAlbumId.value === null || isDragging.value) return;
+  if (event.button !== 0 || !isReorderingAlbums.value || isDragging.value) return;
   if (event.target instanceof Element && event.target.closest('[data-reordering-album="true"]')) return;
-  reorderingAlbumId.value = null;
+  isReorderingAlbums.value = false;
 }
 
 // Expose methods

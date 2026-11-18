@@ -38,14 +38,14 @@
     "drop_action": "Добавить",
     "drop_title_hint": "Перетащите для добавления",
     "empty_drop_hint": "Перетащите элементы в коллекцию, чтобы их добавить.",
-    "added_toast": "Добавлено файлов в коллекцию: {count}",
-    "add_failed_toast": "Не удалось добавить файлы в коллекции ({count})",
-    "already_exists_toast": "Файлов в коллекции: {count}",
+    "added_toast": "Добавлено элементов в коллекцию: {count}",
+    "add_failed_toast": "Не удалось добавить элементы в коллекции ({count})",
+    "already_exists_toast": "Элементов уже в коллекции: {count}",
     "clear": "Очистить коллекцию",
     "clear_confirm_title": "Очистить коллекцию",
     "clear_confirm_message": "Удалить все файлы из \"{name}\"? Сами файлы не будут удалены.",
     "clear_confirm_ok": "Очистить",
-    "removed_toast": "Удалено файлов из коллекции: {count}"
+    "removed_toast": "Удалено элементов из коллекции: {count}"
   },
   "library": {
     "all_files": "Все файлы",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "Не в сети",
+    "download_to_open": "Перед открытием скачайте эту фотографию в приложении облачного хранилища.",
     "cloud_only": "Доступен только в сети",
     "cloud_only_pending": "Доступен только в сети — сведения о файле неполные",
     "original_unavailable": "Исходный файл недоступен",
@@ -255,7 +256,7 @@
     "section_folders": "Выбор папки",
     "section_status": "Состояние импорта",
     "to_import": "К импорту",
-    "files_progress": "{processed} / {total} файлов ({size})",
+    "files_progress": "{processed} / {total} элементов ({size})",
     "source": "Источник",
     "source_placeholder": "Выберите исходную папку",
     "destination": "Назначение",
@@ -266,7 +267,7 @@
     "layout_structure": "Сохранить структуру папок",
     "import": "Импортировать",
     "preparing": "Подготовка импорта",
-    "importing": "Импорт файлов",
+    "importing": "Импорт элементов",
     "complete": "Импорт завершён",
     "cancelled": "Импорт отменён",
     "continue": "Продолжить",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Начните с нового альбома",
-    "add_album_description": "Выберите папку и позвольте lappp упорядочить ваши фото и видео.",
+    "add_album_description": "Выберите папку и позвольте Lap упорядочить ваши фото и видео.",
     "smart_album_title": "Упорядочивайте объекты с помощью смарт-альбомов",
     "smart_album_description": "Для автоматической группировки подходящих фото используйте правила.",
     "collection_title": "Группируйте фото по коллекциям",
@@ -296,23 +297,6 @@
     "unknown_lens": "Неизвестный объектив",
     "semantic_matches": "Визуальные совпадения",
     "text_matches": "Текстовые совпадения",
-    "mode": {
-      "label": "Search mode",
-      "all": "All",
-      "precise": "Precise",
-      "semantic": "Semantic",
-      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
-    },
-    "matches_from": "Matched in",
-    "precise_matches": "Precise matches",
-    "match_column": {
-      "name": "File name",
-      "people": "People",
-      "meta": "Metadata",
-      "tags": "Tags",
-      "caption": "Caption",
-      "like": "Fuzzy match"
-    },
     "index": {
       "wait_index": "В очереди на сканирование",
       "indexing": "Сканирование... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "Пропустить этот файл и продолжить",
         "file_label": "Последний просканированный файл",
         "message": "Предыдущее сканирование завершилось некорректно.",
-        "message_with_file": "Предыдущее сканирование завершилось некорректно.\n\nПоследний просканированный файл:\n{file}\n\nЕсли продолжить, lappp пропустит этот файл один раз и возобновит сканирование."
+        "message_with_file": "Предыдущее сканирование завершилось некорректно.\n\nПоследний просканированный файл:\n{file}\n\nЕсли продолжить, Lap пропустит этот файл один раз и возобновит сканирование."
       }
+    },
+    "mode": {
+      "label": "Search mode",
+      "all": "All",
+      "precise": "Precise",
+      "semantic": "Semantic",
+      "single_char_hint": "A single character falls back to a fuzzy match, which is slower."
+    },
+    "matches_from": "Matched in",
+    "precise_matches": "Precise matches",
+    "match_column": {
+      "name": "File name",
+      "people": "People",
+      "meta": "Metadata",
+      "tags": "Tags",
+      "caption": "Caption",
+      "like": "Fuzzy match"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "Избранные папки"
   },
   "rating": {
+    "mixed": "Разные значения",
     "title": "Оценки",
     "unrated": "Без оценки",
     "all_rated": "Все оценённые",
     "rated": "С оценкой",
-    "mixed": "Разные",
     "clear_rating": "Сбросить оценку",
     "five_stars": "5 звёзд",
     "four_stars": "4 звезды",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "Только избранное",
-      "select_mode": "Множественный выбор",
-      "select_files": "Выбрать файлы",
-      "show_selection_panel": "Открыть панель множественного выбора",
-      "hide_selection_panel": "Свернуть панель множественного выбора",
-      "exit_select_mode": "Выйти из режима множественного выбора",
+      "show_selection_panel": "Открыть панель выбора",
+      "exit_selection_mode": "Выйти из режима выбора",
       "select_count": "Выбрано: {count}",
       "group_type_options": [
         "Нет",
@@ -516,14 +514,16 @@
         "Только RAW",
         "Видео"
       ],
-      "file_type_other": "Другое"
+      "file_type_other": "Другое",
+      "select_mode": "Множественный выбор",
+      "select_files": "Выбрать файлы",
+      "hide_selection_panel": "Свернуть панель множественного выбора",
+      "exit_select_mode": "Выйти из режима множественного выбора"
     },
     "tooltip": {
       "restore": "Восстановить",
       "refresh": "Обновить",
-      "show_info": "Показать информацию",
-      "hide_info": "Скрыть информацию",
-      "open_dedup": "Найти дубликаты и похожие фото",
+      "info": "Информация",
       "clear_history": "Очистить историю",
       "index_faces": "Индексировать лица",
       "sort": "Сортировка",
@@ -534,7 +534,10 @@
       "back": "Назад",
       "scanning": "Сканирование…",
       "scan_paused": "Сканирование на паузе",
-      "scan_queued": "В очереди на сканирование"
+      "scan_queued": "В очереди на сканирование",
+      "show_info": "Показать информацию",
+      "hide_info": "Скрыть информацию",
+      "open_dedup": "Найти дубликаты и похожие фото"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "Настройка"
     ],
     "empty_title": "Этот список пуст",
-    "empty_desc": "Добавьте файлы или обновите текущий фильтр, чтобы здесь появились элементы.",
-    "select_hint": "Не выбраны файлы",
+    "empty_desc": "Добавьте элементы или обновите текущий фильтр, чтобы они появились здесь.",
+    "select_hint": "Не выбраны элементы",
     "deselect": "Отменить выбор",
-    "select_mode_entered": "Включён режим множественного выбора",
-    "selection_load_failed": "Не удалось загрузить все файлы для выбора. Повторите попытку.",
+    "selection_load_failed": "Не удалось загрузить все элементы для выбора. Повторите попытку.",
     "large_batch": {
       "title": "Подтвердить групповую операцию",
-      "content": "Файлов для обработки: {count}. Это может занять некоторое время. Продолжить?",
+      "content": "Элементов для обработки: {count}. Это может занять некоторое время. Продолжить?",
       "ok": "Продолжить"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "Оставить",
       "unkeep_label": "Не сохранять",
       "delete_selected": "Удалить выбранное",
+      "trash_all": "Переместить всё в корзину",
       "delete_all": "Удалить все",
       "move_selected_to_trash": "Удалить в Корзину ({count} выбрано · {size})",
-      "no_removable_files": "Нет удаляемых файлов для перемещения в Корзину",
+      "no_removable_files": "Нет удаляемых элементов для перемещения в Корзину",
       "set_keep": "Оставить",
       "removable_copies_summary": "Удаляемых копий: {count} · {size}",
+      "similar_items_summary": "Похожих элементов: {count} · {size}",
       "similar_photos_summary": "Похожих фото: {count} · {size}"
-    }
+    },
+    "select_mode_entered": "Включён режим множественного выбора"
   },
   "tooltip": {
     "loading": "Загрузка...",
@@ -694,9 +699,9 @@
       "success": "Обои рабочего стола обновлены",
       "failed": "Не удалось установить обои рабочего стола"
     },
-    "refresh_subfolders": {
-      "success": "Подпапки обновлены",
-      "failed": "Не удалось обновить подпапки"
+    "refresh_folders": {
+      "success": "Папки обновлены",
+      "failed": "Не удалось обновить папки"
     },
     "copy_image": {
       "success": "Скопировано файлов в буфер обмена: {count}",
@@ -727,12 +732,17 @@
     },
     "album_exists": "Альбом уже существует",
     "album_nested": "Эта папка пересекается с другим альбомом",
+    "refresh_subfolders": {
+      "success": "Подпапки обновлены",
+      "failed": "Не удалось обновить подпапки"
+    },
     "album": {
       "remove": "Remove from album"
     }
   },
   "statusbar": {
-    "files_summary": "Файлов: {count} ({size})"
+    "files_summary": "Файлов: {count} ({size})",
+    "items_summary": "Элементов: {count} ({size})"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "Исключить из поиска",
       "remove": "Удалить",
       "delete_folder": "Удалить папку",
+      "refresh_folders": "Обновить папки",
       "refresh_subfolders": "Обновить подпапки"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "Показать в Finder...",
       "reveal_in_file_explorer": "Показать в Проводнике...",
       "refresh_file_info": "Обновить сведения о файле",
-      "index_cloud_files": "Скачать, проиндексировать и освободить место",
       "set_album_cover": "Сделать обложкой",
       "set_as": "Установить как",
       "set_desktop_wallpaper": "Сделать обоями рабочего стола",
@@ -804,6 +814,7 @@
       "xmp_save_success": "Метаданные XMP сохранены для {count} файлов",
       "xmp_save_failed": "Не удалось сохранить XMP для {count} файлов",
       "comment": "Описание…",
+      "index_cloud_files": "Скачать, проиндексировать и освободить место",
       "vl_analyze": "AI understanding (cloud)",
       "vl_analyze_selected": "AI understanding (cloud)"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "OK",
+    "save": "Сохранить",
     "discard": "Вернуть",
     "reset": "Сброс",
     "cancel": "Отмена",
@@ -994,42 +1006,60 @@
       "invalid": "Введите имя и положительный целый начальный номер.",
       "success": "Переименовано {count} элементов."
     },
+    "file_delete": {
+      "permanent_summary": "Будет удалено безвозвратно: {count}.",
+      "trash_summary": "Будет перемещено в корзину: {count}.",
+      "title": "Удалить безвозвратно: {count}?",
+      "confirm": "Удалить: {count}",
+      "irreversible": "Это действие нельзя отменить.",
+      "mixed_hint": "Применяется только к RAW-парам. Остальные выбранные элементы всегда удаляются полностью.",
+      "trash_unavailable": "Не удалось переместить файлы в корзину. Возможно, на этом диске корзина недоступна."
+    },
+    "raw_pair_delete": {
+      "scope": "Файлы RAW-пар для удаления",
+      "both": "Оба файла",
+      "raw": "Только RAW",
+      "companion": "Только JPEG / HEIC",
+      "format": "Только {format}",
+      "failed": "Не удалось удалить: {count}."
+    },
+    "folder_delete_contents": "Это касается всех файлов и вложенных папок.",
     "move_to_trash": {
       "title": "Удаление в Корзину",
       "file_content": "Файл '{file}' будет перемещён в Корзину.",
-      "files_content": "Выбранные файлы ({count} шт.) будут перемещены в Корзину.",
-      "removable_files_content": "Все удаляемые файлы ({count} шт.) будут перемещены в Корзину.",
-      "raw_jpeg_companions_content": "Также будут удалены парные файлы RAW+JPEG ({count} шт.).",
+      "files_content": "Выбранные элементы ({count} шт.) будут перемещены в Корзину.",
+      "removable_files_content": "Все удаляемые элементы ({count} шт.) будут перемещены в Корзину.",
       "folder_content": "Папка '{folder}' будет перемещена в Корзину.",
       "ok": "Переместить",
       "file_success": "Файл '{file}' перемещён в Корзину.",
-      "files_success": "Выбранные файлы ({count} шт.) перемещены в Корзину.",
+      "files_success": "Выбранные элементы ({count} шт.) перемещены в Корзину.",
       "folder_success": "Папка '{folder}' перемещена в Корзину.",
       "file_error": "Не удалось переместить файл в Корзину.",
-      "files_error": "Не удалось переместить выбранные файлы в Корзину.",
-      "folder_error": "Не удалось переместить папку в Корзину."
+      "files_error": "Не удалось переместить выбранные элементы в Корзину.",
+      "folder_error": "Не удалось переместить папку в Корзину.",
+      "raw_jpeg_companions_content": "Также будут удалены парные файлы RAW+JPEG ({count} шт.)."
     },
     "permanent_delete": {
       "title": "Удалить безвозвратно",
       "file_content": "Файл '{file}' будет удалён безвозвратно.",
-      "files_content": "Выбранные файлы ({count} шт.) будут удалены безвозвратно.",
-      "removable_files_content": "Все {count} удаляемых файлов будут удалены безвозвратно.",
+      "files_content": "Выбранные элементы ({count} шт.) будут удалены безвозвратно.",
+      "removable_files_content": "Все удаляемые элементы ({count} шт.) будут удалены безвозвратно.",
       "folder_content": "Папка '{folder}' будет удалена безвозвратно.",
-      "checkbox": "Удалить безвозвратно (вернуть нельзя)",
       "ok": "Удалить",
       "file_success": "Файл '{file}' удалён безвозвратно.",
-      "files_success": "Выбранные файлы ({count} шт.) удалены безвозвратно.",
+      "files_success": "Выбранные элементы ({count} шт.) удалены безвозвратно.",
       "folder_success": "Папка '{folder}' удалена безвозвратно.",
       "file_error": "Не удалось удалить файл безвозвратно.",
-      "files_error": "Не удалось удалить выбранные файлы безвозвратно.",
-      "folder_error": "Не удалось удалить папку безвозвратно."
+      "files_error": "Не удалось удалить выбранные элементы безвозвратно.",
+      "folder_error": "Не удалось удалить папку безвозвратно.",
+      "checkbox": "Удалить безвозвратно (вернуть нельзя)"
     },
     "trash_failed": {
       "title": "Не удалось переместить в Корзину",
       "file_content": "Файл '{file}' не удалось переместить в Корзину.\n\nУдалить его безвозвратно?",
-      "files_content": "Выбранные файлы ({count} шт.) не удалось переместить в Корзину.\n\nУдалить их безвозвратно?",
+      "files_content": "Выбранные элементы ({count} шт.) не удалось переместить в Корзину.\n\nУдалить их безвозвратно?",
       "folder_content": "Папку '{folder}' не удалось переместить в Корзину.\n\nУдалить её безвозвратно?\n\nЭто действие нельзя отменить через системную корзину.",
-      "folder_partial_warning": "При предыдущей попытке часть содержимого могла быть перемещена в корзину. Безвозвратное удаление удалит эту папку и оставшееся содержимое.",
+      "folder_partial_warning": "При предыдущей попытке часть содержимого могла быть перемещена в корзину.",
       "ok": "Удалить безвозвратно"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "Краткий заголовок",
+      "e_headline": "Заголовок для публикации",
+      "comments": "Опишите содержимое или добавьте контекст",
+      "e_artist": "Имя",
+      "e_artist_hint": "По одному в строке",
+      "e_copyright": "© {year} Имя"
+    },
+    "edit_metadata_no_fields": "Перед редактированием метаданных выберите хотя бы одно поле раздела «Организация» в настройках полей.",
+    "edit_metadata": "Редактировать метаданные",
+    "metadata_save_failed": "Не удалось сохранить метаданные",
     "paths_copied": "Скопировано путей к файлам в буфер обмена: {count}",
     "copy_path": "Копировать путь к файлу",
     "copy_path_failed": "Не удалось скопировать путь",
@@ -1269,7 +1310,7 @@
     "organization": "Организация",
     "file": "Файл",
     "capture": "Съёмка",
-    "source_metadata": "Метаданные исходного файла",
+    "source_metadata": "Прочие сведения",
     "source_description": "Исходное описание",
     "coordinates": "Координаты",
     "detail_fields": {
@@ -1365,6 +1406,7 @@
     "loading_compatible": "Подготовка совместимого воспроизведения...",
     "failed": "Ошибка воспроизведения",
     "errors": {
+      "playback_failed": "Не удалось воспроизвести",
       "aborted": "Загрузка видео была отменена",
       "network": "Сетевая ошибка при загрузке видео",
       "decode": "Ошибка декодирования видео",
@@ -1376,8 +1418,7 @@
       "use_external": "Для открытия неподдерживаемых форматов укажите внешний плеер в настройках.",
       "use_external_generic": "Попробуйте открыть во внешнем плеере.",
       "use_external_with_app": "Попробуйте открыть в {app}.",
-      "unknown": "Неизвестная ошибка",
-      "playback_failed": "Video playback failed"
+      "unknown": "Неизвестная ошибка"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "Парные файлы",
-      "clipboard_both": "Оба файла",
-      "clipboard_raw": "Только RAW",
-      "clipboard_jpeg": "Только JPEG/HEIC",
-      "clipboard_hint": "Применяется также к путям. Не влияет на копирование и перемещение в папки.",
       "pair_source": "Отображение пар по умолчанию",
       "pair_source_hint": "Используется для парных миниатюр и предпросмотров",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "Источник предпросмотра по умолчанию",
       "preview_source_hint": "Если выбранный источник недоступен, используется другой",
-      "rawRenderBrightness": "Яркость рендеринга",
-      "option_embedded": "Сначала встроенный предпросмотр",
-      "option_rendered": "Сначала рендерить RAW",
-      "option_original": "Исходная экспозиция",
-      "option_brightened": "Осветлённая",
-      "brightness_hint": "Применяется только при рендеринге RAW",
-      "switch_to": "Переключить на {source}",
+      "option_embedded": "Встроенный предпросмотр",
+      "option_rendered": "Обработать RAW",
+      "option_brightened": "Автоматическое осветление",
       "show_pair": "Показать парный {format}",
-      "source_embedded": "Встроенный",
-      "source_rendered": "Рендеринг",
-      "source_brightened": "Осветлённая",
-      "preview_mode": "Режим предпросмотра RAW"
+      "source_embedded": "Встроенный предпросмотр",
+      "source_rendered": "Обработать RAW",
+      "source_brightened": "Автоматическое осветление",
+      "preview_mode": "Режим предпросмотра RAW",
+      "clipboard_both": "Оба файла",
+      "clipboard_raw": "Только RAW",
+      "clipboard_jpeg": "Только JPEG/HEIC",
+      "clipboard_hint": "Применяется также к путям. Не влияет на копирование и перемещение в папки.",
+      "rawRenderBrightness": "Яркость рендеринга",
+      "option_original": "Исходная экспозиция",
+      "brightness_hint": "Применяется только при рендеринге RAW",
+      "switch_to": "Переключить на {source}"
     },
     "metadata": {
       "title": "Метаданные",
@@ -1680,6 +1721,7 @@
         "zoom_in": "Увеличить",
         "zoom_out": "Уменьшить",
         "zoom_fit": "Реальный размер / по размеру окна",
+        "cycle_raw_preview": "Переключить режим предпросмотра RAW",
         "toggle_af_areas": "Показать/скрыть области автофокуса",
         "cycle_background": "Переключить фон",
         "open_new_window": "Показать в новом окне",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_behavior": "При удалении файлов",
+      "file_delete_trash_hint": "Один файл перемещается в корзину без подтверждения",
+      "file_delete_permanent_hint": "Безвозвратное удаление всегда требует подтверждения",
+      "file_delete_section": "Удаление файлов",
       "title": "Дополнительно",
       "external_app": {
         "section_external_apps": "Внешние приложения",

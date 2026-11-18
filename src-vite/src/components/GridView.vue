@@ -55,14 +55,14 @@
                 @change="(event) => $emit('group-select-toggled', item, (event.target as HTMLInputElement).checked)"
               />
             </div>
-            <component :is="getGroupIcon(item)" class="w-4 h-4 shrink-0 text-base-content/30" />
+            <component :is="getGroupIcon(item)" class="w-4 h-4 shrink-0 text-base-content/70" />
             <Breadcrumb
               v-if="isFolderPathGroup()"
               :items="getFolderGroupBreadcrumbItems(item)"
               disabled
               class="min-w-0 flex-1 overflow-hidden"
             />
-            <span v-else class="min-w-0 truncate text-sm text-base-content/30">{{ item.label }}</span>
+            <span v-else class="min-w-0 truncate text-sm text-base-content/70">{{ item.label }}</span>
           </div>
           <span class="ml-auto badge badge-xs shrink-0 text-xs text-base-content/30">
             {{ item.countLabel || Number(item.count || 0).toLocaleString() }}
@@ -118,7 +118,7 @@
 
 <script setup lang="ts">
 
-import { watch, ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
+import { watch, ref, onMounted, onBeforeUnmount, computed, nextTick, toRaw } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useUIStore } from '@/stores/uiStore';
 import { config } from '@/common/config';
@@ -309,10 +309,19 @@ const hasGroupRows = computed(() =>
   !isFilmstripView.value &&
   (Number(props.groupBy || 0) > 0 || isGroupRow(renderItems.value[0]))
 );
+
+function getLayoutItems(): any[] {
+  const items = renderItems.value;
+  void props.layoutVersion;
+  // Creating the iterator tracks item replacements without reading the array.
+  void items[Symbol.iterator]();
+  return toRaw(items);
+}
+
 const fileIndexToRowIndex = computed(() => {
   const map = new Map<number, number>();
   if (!hasGroupRows.value) return map;
-  renderItems.value.forEach((item, rowIndex) => {
+  getLayoutItems().forEach((item, rowIndex) => {
     if (!isGroupRow(item)) {
       const fileIndex = getFileIndex(item, rowIndex);
       if (fileIndex >= 0) map.set(fileIndex, rowIndex);
@@ -323,7 +332,7 @@ const fileIndexToRowIndex = computed(() => {
 const rowIndexToFileIndex = computed(() => {
   const map = new Map<number, number>();
   if (!hasGroupRows.value) return map;
-  renderItems.value.forEach((item, rowIndex) => {
+  getLayoutItems().forEach((item, rowIndex) => {
     if (!isGroupRow(item)) {
       const fileIndex = getFileIndex(item, rowIndex);
       if (fileIndex >= 0) map.set(rowIndex, fileIndex);
@@ -339,13 +348,14 @@ const groupedLayoutGeometryResult = computed(() => {
 
   const { style } = config.settings.grid;
   const size = props.gridSize;
-  const boxes: Geometry[] = new Array(renderItems.value.length);
+  const items = getLayoutItems();
+  const boxes: Geometry[] = new Array(items.length);
 
   if (!isGeometryGridStyle(style)) {
     let y = 0;
     let col = 0;
 
-    renderItems.value.forEach((item, rowIndex) => {
+    items.forEach((item, rowIndex) => {
       if (isGroupRow(item)) {
         if (col > 0) {
           y += itemHeight.value;
@@ -393,7 +403,7 @@ const groupedLayoutGeometryResult = computed(() => {
     groupRowIndices = [];
   };
 
-  renderItems.value.forEach((item, rowIndex) => {
+  items.forEach((item, rowIndex) => {
     if (isGroupRow(item)) {
       flushGroup();
       boxes[rowIndex] = { x: 0, y, width: containerWidth.value, height: groupHeaderHeight.value };
@@ -425,19 +435,19 @@ const layoutGeometryResult = computed(() => {
       const isVertical = config.settings.grid.previewPosition >= 2;
       if (isVertical) {
         if (containerWidth.value <= 0) return { boxes: [], contentSize: 0 };
-        const result = calculateLinearColumnLayout(props.fileList, containerWidth.value, 0);
+        const result = calculateLinearColumnLayout(getLayoutItems(), containerWidth.value, 0);
         return { boxes: result.boxes, contentSize: result.containerHeight };
       }
-      const result = calculateLinearRowLayout(props.fileList, size, 0);
+      const result = calculateLinearRowLayout(getLayoutItems(), size, 0);
       return { boxes: result.boxes, contentSize: result.containerWidth };
     }
   } else {
     if (style === 2 && containerWidth.value > 0) {
-      const result = calculateJustifiedLayout(props.fileList, containerWidth.value, size, 0);
+      const result = calculateJustifiedLayout(getLayoutItems(), containerWidth.value, size, 0);
       return { boxes: result.boxes, contentSize: result.containerHeight };
     }
     else if (style === 3 && containerWidth.value > 0) {
-      const result = calculateMasonryLayout(props.fileList, containerWidth.value, size, 0);
+      const result = calculateMasonryLayout(getLayoutItems(), containerWidth.value, size, 0);
       return { boxes: result.boxes, contentSize: result.containerHeight };
     }
   }

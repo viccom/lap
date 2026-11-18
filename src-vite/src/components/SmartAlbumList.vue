@@ -85,7 +85,7 @@
                 @error="smartAlbumCoverErrors[smartAlbum.id] = Number(smartAlbum.coverFileId)"
               />
               <div v-else class="w-full h-full flex items-center justify-center text-base-content/30">
-                <IconFolderCog class="w-5 h-5" />
+                <IconError class="w-5 h-5" />
               </div>
             </div>
             <span class="sidebar-item-label">{{ smartAlbum.name }}</span>
@@ -143,7 +143,8 @@ import { useUIStore } from '@/stores/uiStore';
 import { getThumbUrl, getThumbnailDataUrl, getThumbnailDataUrlInflight, signMediaUrl, isWin, setThumbnailDataUrlInflight } from '@/common/utils';
 import { transportMode } from '@/common/transport';
 import { getFileThumbById, getSmartQueryCountAndSum } from '@/common/api';
-import { IconAdd, IconClose, IconDragHandle, IconEdit, IconMore, IconFolderCog, IconOrder, IconSearch, IconTrash } from '@/common/icons';
+import { useLibraryChangeRefresh } from '@/composables/useLibraryChangeRefresh';
+import { IconAdd, IconClose, IconDragHandle, IconEdit, IconMore, IconError, IconOrder, IconSearch, IconTrash } from '@/common/icons';
 import TButton from '@/components/TButton.vue';
 import ContextMenu from '@/components/ContextMenu.vue';
 import SmartAlbumEdit from '@/components/SmartAlbumEdit.vue';
@@ -221,6 +222,7 @@ async function refreshSmartAlbumCounts() {
     count: countMap[String(album.id)] ?? 0,
   }));
 }
+useLibraryChangeRefresh(refreshSmartAlbumCounts);
 
 watch(
   () => [smartAlbumCountSignature.value, libConfig._libraryId],

@@ -464,7 +464,7 @@ fn source_text_from_properties(properties: &[&XmlNode]) -> super::model::SourceT
         title: scalar("title"),
         headline: scalar("headline"),
         creator: descriptive("creator"),
-        copyright: descriptive("copyright"),
+        copyright: scalar("copyright"),
         software: descriptive("software"),
     }
 }
@@ -709,18 +709,21 @@ pub(crate) fn import_with_system(
     extracted_software: Option<Option<&str>>, // Some(None) means extraction found no value.
     fresh_capture: Option<&crate::t_sqlite::AFile>,
 ) -> Result<bool, String> {
-    let result = import_sources(
-        file_id,
-        file_path,
-        conn,
-        mode,
-        system,
-        extracted_software,
-        fresh_capture,
-    );
-    if result.is_err() {
-        super::import_count::record(conn, file_id);
-    }
+    let result = import_sources(file_id, file_path, conn, mode, system, extracted_software, fresh_capture, None);
+    if result.is_err() { super::import_count::record(conn, file_id); }
+    result
+}
+
+pub(crate) fn import_initial_scan(
+    file_id: i64,
+    file_path: &str,
+    conn: &Connection,
+    extracted_software: Option<Option<&str>>,
+    embedded_description: Option<&str>,
+) -> Result<bool, String> {
+    let result = import_sources(file_id, file_path, conn, XmpImportMode::InitialScan,
+        None, extracted_software, None, embedded_description);
+    if result.is_err() { super::import_count::record(conn, file_id); }
     result
 }
 
@@ -732,6 +735,7 @@ fn import_sources(
     system: Option<super::system::SystemMetadata>,
     extracted_software: Option<Option<&str>>,
     fresh_capture: Option<&crate::t_sqlite::AFile>,
+    embedded_description: Option<&str>,
 ) -> Result<bool, String> {
     let sidecar_path = find_xmp_sidecar(Path::new(file_path));
     // Manual import changes catalog values, not the automatic source snapshot.
@@ -826,9 +830,14 @@ fn import_sources(
         software: embedded.software,
     };
     let mut meta = embedded.organization;
+    if let Some(description) = embedded_description.filter(|value| !value.trim().is_empty()) {
+        meta.description = Some(description.to_owned());
+    }
+    let embedded_tags = meta.tags.clone().unwrap_or_default();
     super::merge::merge_system(&mut meta, snapshot.metadata);
     let mut sidecar_gps = None;
     let mut sidecar_date = None;
+    let mut tag_source = "embedded_metadata";
     if let Some(path) = sidecar_path {
         let (sidecar, text, gps, date) = parse_xmp_with_source_text(&read_xmp_content(&path)?)?;
         sidecar_gps = gps;
@@ -838,6 +847,9 @@ fn import_sources(
         source.creator = text.creator.or(source.creator);
         source.copyright = text.copyright.or(source.copyright);
         source.software = text.software.or(source.software);
+        if sidecar.tags.is_some() {
+            tag_source = "xmp_sidecar";
+        }
         super::merge::merge_sidecar(&mut meta, sidecar);
     }
     // Explicit refresh provides freshly extracted values. On a sidecar-only
@@ -934,17 +946,8 @@ fn import_sources(
         }
         source.software = source.software.or(previous.software);
     }
-    // Explicit empty sidecar properties clear the corresponding catalog value.
-    for value in [
-        &mut source.title,
-        &mut source.headline,
-        &mut source.creator,
-        &mut source.copyright,
-        &mut source.software,
-    ] {
-        if value.as_ref().is_some_and(|value| value.trim().is_empty()) {
-            *value = None;
-        }
+    if source.software.as_ref().is_some_and(|value| value.trim().is_empty()) {
+        source.software = None;
     }
     // Leave the fingerprint invalid so the next scan can retry a partial read.
     let retry_gps = restore_gps && gps.is_none();
@@ -972,15 +975,15 @@ fn import_sources(
         )
     };
     let capture = super::model::SourceCapture { gps, date };
-    super::merge::apply_with_source_text(
-        file_id,
-        &meta,
-        conn,
-        mode,
-        Some(&fingerprint),
-        Some(&source),
-        Some(capture),
-    )
+    super::merge::apply_with_source_text(file_id, &meta, conn, mode, Some(&fingerprint), Some(&source), Some(capture), |tag| {
+        if tag_source == "embedded_metadata" && !embedded_tags.iter().any(|value| value.trim().eq_ignore_ascii_case(tag.trim()))
+            && !meta.hierarchical_tags.as_ref().is_some_and(|paths| paths.iter().any(|path| path == tag))
+        {
+            "system_metadata"
+        } else {
+            tag_source
+        }
+    })
 }
 
 /// Scanner-derived descriptions preserve local edits and explicit clears.
@@ -1350,28 +1353,14 @@ fn merge_with_favorite(
     description: &str,
     mask: i32,
 ) -> Result<String, String> {
-    merge_with_paths(
-        xml,
-        rating,
-        culling,
-        favorite,
-        tags,
-        None,
-        description,
-        mask,
-    )
+    merge_with_paths(xml,rating,culling,favorite,tags,None,description,mask,&[])
 }
 
 fn merge_with_paths(
-    xml: &str,
-    rating: i32,
-    culling: i32,
-    favorite: bool,
-    tags: &[String],
-    paths: Option<&[String]>,
-    description: &str,
-    mask: i32,
-) -> Result<String, String> {
+    xml: &str, rating: i32, culling: i32, favorite: bool,
+    tags: &[String], paths: Option<&[String]>, description: &str, mask: i32,
+    text: &[(schema::XmpProperty, &str)],
+) -> Result<String,String> {
     parse_xmp_str(xml)?; // reuse bounded, DTD-free validation
     // Rating and culling are one export unit: normalize legacy Rating=-1
     // while preserving the independent Lap star rating and current flag.
@@ -1455,6 +1444,8 @@ fn merge_with_paths(
                                     &a.decode_and_unescape_value(reader.decoder())
                                         .map_err(|e| e.to_string())?,
                                 ));
+                        let own = own || text.iter().any(|(property, _)|
+                            property.matches(&uri, &String::from_utf8_lossy(local.as_ref())));
                         if own {
                             tag_writer.observe(&uri, &String::from_utf8_lossy(local.as_ref()));
                             had_darktable_rejected |= schema::REJECTED
@@ -1546,7 +1537,7 @@ fn merge_with_paths(
             "Named RDF subjects require manual resolution; original sidecar retained".into(),
         );
     }
-    let mut found_description = false;
+    let mut found_text = std::collections::HashSet::new();
     for (id, n) in nodes.iter().enumerate() {
         let Some(parent) = n.parent else { continue };
         let p = &nodes[parent];
@@ -1571,13 +1562,18 @@ fn merge_with_paths(
             tag_writer.observe(&n.uri, &n.name);
             patches.push((n.start, n.end, String::new()));
         }
-        if mask & CatalogField::Description.mask() != 0
-            && schema::DESCRIPTION[0].matches(&n.uri, &n.name)
+        let description_field = (mask & CatalogField::Description.mask() != 0)
+            .then_some((schema::DESCRIPTION[0], description));
+        if let Some((property, value)) = description_field.into_iter().chain(text.iter().copied())
+            .find(|(property, _)| property.matches(&n.uri, &n.name))
         {
-            if found_description {
-                return Err("Multiple description properties require manual resolution".into());
+            if !found_text.insert(property.name) {
+                return Err("Multiple editable XMP properties require manual resolution".into());
             }
-            found_description = true;
+            if !is_language_alternative(property) {
+                patches.push((n.start, n.end, editable_text_xml(property, value)));
+                continue;
+            }
             let alts: Vec<_> = nodes
                 .iter()
                 .enumerate()
@@ -1591,7 +1587,7 @@ fn merge_with_paths(
                     alt.end,
                     format!(
                         "<rdf:Alt xmlns:rdf=\"{NS_RDF}\"><rdf:li xml:lang=\"x-default\">{}</rdf:li></rdf:Alt>",
-                        escape(description)
+                        escape(value)
                     ),
                 ));
             } else if alts.len() == 1 {
@@ -1609,13 +1605,13 @@ fn merge_with_paths(
                     alt.close,
                     format!(
                         "<rdf:li xmlns:rdf=\"{NS_RDF}\" xml:lang=\"x-default\">{}</rdf:li>",
-                        escape(description)
+                        escape(value)
                     ),
                 ));
             } else if nodes.iter().any(|c| c.parent == Some(id)) {
-                return Err("Unsupported description structure; original sidecar retained".into());
+                return Err("Unsupported editable XMP structure; original sidecar retained".into());
             } else {
-                patches.push((n.start, n.end, description_xml(description)));
+                patches.push((n.start, n.end, editable_text_xml(property, value)));
             }
         }
     }
@@ -1662,8 +1658,13 @@ fn merge_with_paths(
     if mask & CatalogField::Tags.mask() != 0 {
         properties += &tag_writer.render(tags, paths);
     }
-    if mask & CatalogField::Description.mask() != 0 && !found_description {
-        properties += &description_xml(description);
+    if mask & CatalogField::Description.mask() != 0 && !found_text.contains("description") {
+        properties += &editable_text_xml(schema::DESCRIPTION[0], description);
+    }
+    for &(property, value) in text {
+        if !found_text.contains(property.name) {
+            properties += &editable_text_xml(property, value);
+        }
     }
     let addition = format!(
         "<rdf:Description xmlns:rdf=\"{NS_RDF}\" xmlns:xmp=\"{NS_XMP}\" xmlns:dc=\"{NS_DC}\" xmlns:xmpDM=\"{NS_XMP_DM}\" xmlns:darktable=\"{NS_DARKTABLE}\" rdf:about=\"\">{properties}</rdf:Description>"
@@ -1700,15 +1701,22 @@ fn merge_with_paths(
     parse_xmp_str(&out)?;
     Ok(out)
 }
-fn description_xml(value: &str) -> String {
-    let property = schema::DESCRIPTION[0];
+fn is_language_alternative(property: schema::XmpProperty) -> bool {
+    property.uri == NS_DC && matches!(property.name, "description" | "title" | "rights")
+}
+
+fn editable_text_xml(property: schema::XmpProperty, value: &str) -> String {
     let name = property.qualified_name();
-    format!(
-        "<{name} xmlns:{}=\"{}\" xmlns:rdf=\"{NS_RDF}\"><rdf:Alt><rdf:li xml:lang=\"x-default\">{}</rdf:li></rdf:Alt></{name}>",
-        property.prefix,
-        property.uri,
+    let body = if is_language_alternative(property) {
+        format!("<rdf:Alt xmlns:rdf=\"{NS_RDF}\"><rdf:li xml:lang=\"x-default\">{}</rdf:li></rdf:Alt>", escape(value))
+    } else if property.matches(NS_DC, "creator") {
+        let entries: String = value.lines().map(str::trim).filter(|name| !name.is_empty())
+            .map(|name| format!("<rdf:li>{}</rdf:li>", escape(name))).collect();
+        format!("<rdf:Seq xmlns:rdf=\"{NS_RDF}\">{entries}</rdf:Seq>")
+    } else {
         escape(value)
-    )
+    };
+    format!("<{name} xmlns:{}=\"{}\">{body}</{name}>", property.prefix, property.uri)
 }
 
 fn bounded_read(path: &Path) -> Result<Vec<u8>, String> {
@@ -1869,6 +1877,11 @@ fn write_one(conn: &Connection, file_id: i64, cache: &mut ExportIndex) -> Result
         .query_row("SELECT f.path,a.name,COALESCE(a.rating,0),COALESCE(a.culling_flag,0),COALESCE(a.comments,''),COALESCE(a.is_favorite,0) FROM afiles a JOIN afolders f ON f.id=a.folder_id WHERE a.id=?1",
             [file_id], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?,r.get(5)?)))
         .map_err(|e|e.to_string())?;
+    let (values, dirty) = tx.query_row(
+        "SELECT a.e_title,a.e_headline,a.e_artist,a.e_copyright,COALESCE(x.dirty,0)
+         FROM afiles a LEFT JOIN axmp_imports x ON x.file_id=a.id WHERE a.id=?1",
+        [file_id], |row| Ok(([row.get::<_, Option<String>>(0)?, row.get(1)?, row.get(2)?, row.get(3)?], row.get::<_, i32>(4)?)),
+    ).map_err(|e| e.to_string())?;
     // The AI understanding subtree stays in the library: exporting it would
     // drop bare machine keywords into dc:subject where no consumer can tell
     // them apart from the user's own (REVIEW-2026-11-14 P0-3).
@@ -1903,16 +1916,13 @@ fn write_one(conn: &Connection, file_id: i64, cache: &mut ExportIndex) -> Result
             "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"{NS_RDF}\"></rdf:RDF></x:xmpmeta>"
         ),
     };
-    let output = merge_with_paths(
-        &xml,
-        rating,
-        culling,
-        favorite,
-        &tags,
-        Some(&paths),
-        &description,
-        ALL,
-    )?;
+    let text: Vec<_> = schema::EDITABLE_XMP_TEXT.iter().zip(&values)
+        .filter(|((_, _, bit), _)| before.is_none() || dirty & bit != 0)
+        .filter_map(|((_, key, _), value)| {
+            let property = schema::DETAIL_FIELDS.iter().find(|field| field.key == *key)?.xmp?;
+            Some((property, value.as_deref()?))
+        }).collect();
+    let output = merge_with_paths(&xml, rating, culling, favorite, &tags, Some(&paths), &description, ALL, &text)?;
     let temp = dest.with_file_name(format!(
         ".lap-xmp-{}-{}.tmp",
         std::process::id(),
@@ -1923,7 +1933,7 @@ fn write_one(conn: &Connection, file_id: i64, cache: &mut ExportIndex) -> Result
         .write(true)
         .open(&temp)
         .map_err(|e| e.to_string())?;
-    let result = (|| {
+    let result: Result<(), String> = (|| {
         file.write_all(&encode_xmp_text(&output, before.as_deref()))
             .map_err(|e| e.to_string())?;
         if before.is_some() {
@@ -1940,10 +1950,26 @@ fn write_one(conn: &Connection, file_id: i64, cache: &mut ExportIndex) -> Result
         Ok(())
     })();
     let _ = fs::remove_file(&temp);
-    if result.is_ok() {
-        cache.published(&dest);
+    result?;
+    cache.published(&dest);
+    if !schema::EDITABLE_XMP_TEXT.iter().zip(&values)
+        .any(|((_, _, bit), value)| dirty & bit != 0 && value.is_some())
+    {
+        return Ok(());
     }
-    result
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for ((column, _, bit), value) in schema::EDITABLE_XMP_TEXT.iter().zip(&values) {
+        if dirty & bit == 0 || value.is_none() {
+            continue;
+        }
+        // A newer edit remains pending if it differs from the published snapshot.
+        tx.execute(
+            &format!("UPDATE axmp_imports SET dirty=dirty & ~?2 WHERE file_id=?1
+                AND EXISTS(SELECT 1 FROM afiles WHERE id=?1 AND {column} IS ?3)"),
+            rusqlite::params![file_id, bit, value],
+        ).map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
 }
 
 /// Optimistic external-change check immediately before publishing the complete packet.
@@ -2041,6 +2067,11 @@ mod import_tests {
 
     fn setup_in_memory_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
+        setup_import_db(&conn);
+        conn
+    }
+
+    fn setup_import_db(conn: &Connection) {
         conn.execute_batch(
             "CREATE TABLE afiles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2055,17 +2086,60 @@ mod import_tests {
             CREATE TABLE atags (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
+                source TEXT,
                 parent_id INTEGER REFERENCES atags(id) ON DELETE CASCADE
             );
             CREATE TABLE afile_tags (
                 file_id INTEGER NOT NULL,
                 tag_id INTEGER NOT NULL,
-                UNIQUE(file_id, tag_id)
+                UNIQUE(file_id, tag_id),
+                FOREIGN KEY(tag_id) REFERENCES atags(id) ON DELETE CASCADE
             );",
         )
         .unwrap();
-        initialize(&conn).unwrap();
-        conn
+        initialize(conn).unwrap();
+    }
+
+    #[test]
+    fn catalog_tag_delete_and_rename_control_automatic_xmp_import() {
+        use crate::t_sqlite::{ATag, TEST_DB_PATH, open_conn};
+
+        struct TestLibrary(PathBuf);
+        impl Drop for TestLibrary {
+            fn drop(&mut self) {
+                TEST_DB_PATH.with(|path| path.replace(None));
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+
+        let library = TestLibrary(create_temp_test_dir("tag_delete_rename"));
+        TEST_DB_PATH.with(|path| path.replace(Some(library.0.join("test.db").to_str().unwrap().into())));
+        let conn = open_conn().unwrap();
+        setup_import_db(&conn);
+        conn.execute("INSERT INTO afiles(id,name) VALUES(1,'before.jpg'),(2,'after.jpg')", []).unwrap();
+
+        let deleted = ATag::add("Places", None).unwrap();
+        assert_eq!(ATag::delete(deleted.id).unwrap(), 1);
+        let sidecar = r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+            <rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/">
+                <dc:subject><rdf:Bag><rdf:li>Places</rdf:li></rdf:Bag></dc:subject>
+            </rdf:Description></rdf:RDF>"#;
+        let scan = |id, name: &str| {
+            let path = library.0.join(name);
+            fs::write(path.with_extension("xmp"), sidecar).unwrap();
+            assert!(import_xmp_for_file_with_conn(
+                id, path.to_str().unwrap(), &conn, XmpImportMode::RescanNonDestructive,
+            ).unwrap());
+        };
+        scan(1, "before.jpg");
+        assert!(ATag::get_tags_for_file(1).unwrap().is_empty());
+        assert_eq!(crate::t_tags::find(&conn, "Places", None).unwrap(), None);
+
+        let replacement = ATag::add("Other", None).unwrap();
+        assert_eq!(ATag::rename(replacement.id, "Places").unwrap(), 1);
+        scan(2, "after.jpg");
+        let tags = ATag::get_tags_for_file(2).unwrap();
+        assert_eq!(tags.iter().map(|tag| tag.id).collect::<Vec<_>>(), [replacement.id]);
     }
 
     #[test]
@@ -2371,7 +2445,7 @@ mod import_tests {
             .unwrap();
         assert_eq!(manual_rating, 2);
         assert_eq!(manual_flag, 1);
-        assert_eq!(manual_comments.as_deref(), Some("Initial XMP caption"));
+        assert_eq!(manual_comments.as_deref(), Some("Local Lap edit"));
     }
     fn xml(body: &str) -> String {
         format!(
@@ -2914,7 +2988,7 @@ mod export_tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("CREATE TABLE afolders(id INTEGER PRIMARY KEY,path TEXT); INSERT INTO afolders(id) VALUES(1);
             CREATE TABLE afiles(id INTEGER PRIMARY KEY,folder_id INTEGER DEFAULT 1,name TEXT DEFAULT 'photo.jpg',e_title TEXT,e_headline TEXT,e_artist TEXT,e_copyright TEXT,e_software TEXT,is_favorite INTEGER DEFAULT 0,rating INTEGER DEFAULT 0,culling_flag INTEGER DEFAULT 0,comments TEXT,has_tags INTEGER DEFAULT 0);
-            CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT,parent_id INTEGER REFERENCES atags(id) ON DELETE CASCADE);CREATE TABLE afile_tags(file_id INTEGER,tag_id INTEGER,UNIQUE(file_id,tag_id));
+            CREATE TABLE atags(id INTEGER PRIMARY KEY,name TEXT,source TEXT,parent_id INTEGER REFERENCES atags(id) ON DELETE CASCADE);CREATE TABLE afile_tags(file_id INTEGER,tag_id INTEGER,UNIQUE(file_id,tag_id));
             INSERT INTO afiles(id,rating,comments) VALUES(1,4,'local caption'); INSERT INTO atags(id,name) VALUES(1,'旅行, travel & <test>');INSERT INTO afile_tags VALUES(1,1);").unwrap();
         conn.execute(
             "UPDATE afolders SET path=?1 WHERE id=1",
@@ -2925,79 +2999,80 @@ mod export_tests {
         (conn, folder, media)
     }
     #[test]
-    fn titles_import_sidecar_overrides_embedded_and_clears_without_editing_description() {
+    fn initial_scan_prefers_sidecar_description_over_extracted_png_comment() {
+        for (sidecar, expected) in [
+            (Some("<d:description>Sidecar caption</d:description>"), Some("Sidecar caption")),
+            (Some("<d:description/>"), None),
+            (Some("<r:Rating>3</r:Rating>"), Some("PNG caption")),
+            (None, Some("PNG caption")),
+        ] {
+            let (conn, dir, media) = fixture();
+            conn.execute("UPDATE afiles SET comments=NULL WHERE id=1", []).unwrap();
+            if let Some(body) = sidecar {
+                fs::write(media.with_extension("xmp"), packet(body)).unwrap();
+            }
+            import_initial_scan(1, media.to_str().unwrap(), &conn, None, Some("PNG caption")).unwrap();
+            let description: Option<String> = conn.query_row(
+                "SELECT comments FROM afiles WHERE id=1", [], |row| row.get(0),
+            ).unwrap();
+            assert_eq!(description.as_deref(), expected);
+            fs::remove_dir_all(dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn editable_text_writeback_preserves_languages_and_round_trips_clears() {
         let (conn, dir, media) = fixture();
-        let xml = packet(
-            "<d:title><rdf:Alt><rdf:li xml:lang=\"fr\">Titre</rdf:li><rdf:li xml:lang=\"x-default\">Embedded title</rdf:li></rdf:Alt></d:title><p:Headline xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\">Embedded headline</p:Headline>",
-        );
-        fs::write(
-            &media,
-            crate::metadata::embedded::tests::jpeg_with_xmp_packet(xml.as_bytes()),
-        )
-        .unwrap();
-        let fields = || {
-            conn.query_row(
-                "SELECT e_title,e_headline,comments FROM afiles WHERE id=1",
-                [],
-                |r| {
-                    Ok((
-                        r.get::<_, Option<String>>(0)?,
-                        r.get::<_, Option<String>>(1)?,
-                        r.get::<_, String>(2)?,
-                    ))
-                },
-            )
-            .unwrap()
-        };
-        let import = || {
-            import_xmp_for_file_with_conn(
-                1,
-                media.to_str().unwrap(),
-                &conn,
-                XmpImportMode::RefreshNonDestructive,
-            )
-            .unwrap()
-        };
-        assert!(import());
-        assert_eq!(
-            fields(),
-            (
-                Some("Embedded title".into()),
-                Some("Embedded headline".into()),
-                "local caption".into()
-            )
-        );
         let sidecar = media.with_extension("xmp");
-        fs::write(&sidecar, packet("<d:title>Sidecar title</d:title>")).unwrap();
-        assert!(import());
-        assert_eq!(fields().0.as_deref(), Some("Sidecar title"));
-        assert_eq!(fields().1.as_deref(), Some("Embedded headline"));
-        fs::write(
-            &sidecar,
-            packet("<d:title/><p:Headline xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\"/>"),
-        )
-        .unwrap();
-        assert!(import());
-        assert_eq!(fields(), (None, None, "local caption".into()));
-        fs::write(&sidecar, "<broken>").unwrap();
-        assert!(
-            import_xmp_for_file_with_conn(
-                1,
-                media.to_str().unwrap(),
-                &conn,
-                XmpImportMode::RefreshNonDestructive
-            )
-            .is_err()
-        );
-        assert_eq!(fields().0, None);
-        fs::remove_file(sidecar).unwrap();
-        assert!(import());
-        assert_eq!(fields().0.as_deref(), Some("Embedded title"));
+        fs::write(&sidecar, packet(concat!(
+            "<d:title><rdf:Alt><rdf:li xml:lang=\"fr\">Titre</rdf:li></rdf:Alt></d:title>",
+            "<d:rights>External rights</d:rights><r:CreatorTool>External app</r:CreatorTool>",
+        ))).unwrap();
+        conn.execute("UPDATE afiles SET e_title='A & B', e_headline='', e_artist='Alice' || char(10) || 'Bob', e_copyright='Catalog rights' WHERE id=1", []).unwrap();
+        conn.execute("INSERT INTO axmp_imports(file_id,dirty) VALUES(1,224)", []).unwrap();
+        write_one(&conn, 1, &mut ExportIndex::default()).unwrap();
+        let xml = fs::read_to_string(&sidecar).unwrap();
+        let (_, text, _, _) = parse_xmp_with_source_text(&xml).unwrap();
+        assert_eq!(text.title.as_deref(), Some("A & B"));
+        assert_eq!(text.headline.as_deref(), Some(""));
+        assert_eq!(text.creator.as_deref(), Some("Alice\nBob"));
+        assert_eq!(text.copyright.as_deref(), Some("External rights"));
+        assert_eq!(text.software.as_deref(), Some("External app"));
+        assert!(xml.contains(">Titre</rdf:li>"));
+        fs::write(&sidecar, xml.replace("A &amp; B", "External title")).unwrap();
+        conn.execute("UPDATE axmp_imports SET dirty=dirty | 256 WHERE file_id=1", []).unwrap();
+        write_one(&conn, 1, &mut ExportIndex::default()).unwrap();
+        let (_, text, _, _) = parse_xmp_with_source_text(&fs::read_to_string(&sidecar).unwrap()).unwrap();
+        assert_eq!(text.title.as_deref(), Some("External title"));
+        assert_eq!(text.copyright.as_deref(), Some("Catalog rights"));
+        conn.execute("UPDATE afiles SET e_title=NULL,e_headline=NULL,e_artist=NULL,e_copyright=NULL WHERE id=1", []).unwrap();
+        import_xmp_for_file_with_conn(1, media.to_str().unwrap(), &conn, XmpImportMode::InitialScan).unwrap();
+        let headline: Option<String> = conn.query_row("SELECT e_headline FROM afiles WHERE id=1", [], |row| row.get(0)).unwrap();
+        assert_eq!(headline.as_deref(), Some(""));
         fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
-    fn indexed_source_fields_prefer_sidecar_and_restore_embedded_values() {
+    fn titles_import_from_sidecar_then_preserve_existing_values_and_local_clears() {
+        let (conn, dir, media) = fixture();
+        let xml = packet("<d:title><rdf:Alt><rdf:li xml:lang=\"fr\">Titre</rdf:li><rdf:li xml:lang=\"x-default\">Embedded title</rdf:li></rdf:Alt></d:title><p:Headline xmlns:p=\"http://ns.adobe.com/photoshop/1.0/\">Embedded headline</p:Headline>");
+        fs::write(&media, crate::metadata::embedded::tests::jpeg_with_xmp_packet(xml.as_bytes())).unwrap();
+        let fields = || conn.query_row("SELECT e_title,e_headline,comments FROM afiles WHERE id=1", [],
+            |r| Ok((r.get::<_,Option<String>>(0)?,r.get::<_,Option<String>>(1)?,r.get::<_,String>(2)?))).unwrap();
+        let import = || import_xmp_for_file_with_conn(1, media.to_str().unwrap(), &conn, XmpImportMode::RefreshNonDestructive).unwrap();
+        let sidecar = media.with_extension("xmp");
+        fs::write(&sidecar, packet("<d:title>Sidecar title</d:title>")).unwrap();
+        assert!(import());
+        assert_eq!(fields(), (Some("Sidecar title".into()),Some("Embedded headline".into()),"local caption".into()));
+        conn.execute("UPDATE afiles SET e_title='', comments='' WHERE id=1", []).unwrap();
+        fs::write(&sidecar, packet("<d:title>External title</d:title><d:description>External description</d:description>")).unwrap();
+        assert!(import());
+        assert_eq!(fields(), (Some("".into()),Some("Embedded headline".into()),"".into()));
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn indexed_editable_fields_preserve_first_import_while_software_remains_refreshable() {
         let (conn, dir, media) = fixture();
         let embedded = packet(concat!(
             "<d:creator><rdf:Seq><rdf:li>Embedded creator</rdf:li></rdf:Seq></d:creator>",
@@ -3049,14 +3124,7 @@ mod export_tests {
             "<r:CreatorTool>Sidecar software</r:CreatorTool>",
         ))).unwrap();
         assert!(import());
-        assert_eq!(
-            fields(),
-            (
-                Some("Sidecar Alice\nSidecar Bob".into()),
-                Some("Embedded copyright".into()),
-                Some("Sidecar software".into())
-            )
-        );
+        assert_eq!(fields(), (Some("Embedded creator".into()), Some("Embedded copyright".into()), Some("Sidecar software".into())));
         assert!(!import());
 
         fs::write(
@@ -3065,14 +3133,7 @@ mod export_tests {
         )
         .unwrap();
         assert!(import());
-        assert_eq!(
-            fields(),
-            (
-                None,
-                Some("Sidecar copyright".into()),
-                Some("Embedded software".into())
-            )
-        );
+        assert_eq!(fields(), embedded_fields);
 
         fs::remove_file(sidecar).unwrap();
         assert!(import());
@@ -3192,7 +3253,7 @@ mod export_tests {
     }
 
     #[test]
-    fn embedded_read_failure_preserves_source_fields_and_allows_sidecar_overrides() {
+    fn embedded_read_failure_preserves_source_fields() {
         let (conn, dir, media) = fixture();
         conn.execute(
             "UPDATE afiles SET e_artist='Previous creator', e_copyright='Previous copyright',
@@ -3230,17 +3291,10 @@ mod export_tests {
             )
             .unwrap()
         };
-        assert_eq!(
-            import(),
-            (
-                Some("Sidecar creator".into()),
-                None,
-                Some("Previous software".into())
-            )
-        );
+        assert_eq!(import(), (Some("Previous creator".into()), Some("Previous copyright".into()), Some("Previous software".into())));
         fs::remove_dir_all(&media).unwrap();
         fs::write(&media, b"").unwrap();
-        assert_eq!(import(), (Some("Sidecar creator".into()), None, None));
+        assert_eq!(import(), (Some("Previous creator".into()), Some("Previous copyright".into()), None));
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -3436,7 +3490,7 @@ mod export_tests {
         )
         .unwrap();
         assert!(import(XmpImportMode::ManualOverwrite));
-        assert_eq!(comment(), "Sidecar comment");
+        assert_eq!(comment(), "Local edit");
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -3992,15 +4046,11 @@ mod export_tests {
             ),
         ] {
             let xml = format!("<rdf:RDF xmlns:rdf=\"{NS_RDF}\">{description}</rdf:RDF>");
-            let cleared = merge_with_paths(&xml, 0, 0, false, &[], Some(&[]), "", 8).unwrap();
+            let cleared = merge_with_paths(&xml, 0, 0, false, &[], Some(&[]), "", 8, &[]).unwrap();
             assert_eq!(parse_xmp_str(&cleared).unwrap().tags, Some(vec![]));
             let paths = vec!["Places|Rome".into()];
-            let replaced =
-                merge_with_paths(&xml, 0, 0, false, &["Rome".into()], Some(&paths), "", 8).unwrap();
-            assert_eq!(
-                parse_xmp_str(&replaced).unwrap().hierarchical_tags,
-                Some(paths)
-            );
+            let replaced = merge_with_paths(&xml, 0, 0, false, &["Rome".into()], Some(&paths), "", 8, &[]).unwrap();
+            assert_eq!(parse_xmp_str(&replaced).unwrap().hierarchical_tags, Some(paths));
             assert!(!replaced.contains("Paris"));
         }
     }

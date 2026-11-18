@@ -147,10 +147,13 @@
       </div>
 
       <div class="shrink-0 border-t border-base-content/5 px-1 py-3">
+        <div class="flex items-center gap-2">
         <button type="button" class="flex w-full items-center gap-1 cursor-pointer text-base-content/70 hover:text-base-content" :aria-expanded="showOrganizationPanel" @click="toggleOrganization">
           <IconRight class="w-3 h-3 transition-transform duration-200" :class="{ 'rotate-90': showOrganizationPanel }" />
           <span class="font-bold uppercase text-xs tracking-wide text-base-content/30">{{ $t('file_info.organization') }}</span>
         </button>
+          <TButton :icon="IconEdit" :disabled="!editableMetadataFields.some(field => fieldVisible(`organization.${field.key}`))" :tooltip="$t('file_info.edit_metadata')" :shortcut="getShortcutLabel('meta.edit')" button-size="small" @click.stop="emit('editMetadata', 'e_title')" />
+        </div>
         <div class="shrink-0">
           <div v-if="showOrganizationPanel" class="pt-3 space-y-1.5">
             <FavoriteRatingControl class="pl-4"
@@ -197,28 +200,6 @@
               </div>
             </template>
 
-            <!-- Editable description -->
-            <template v-if="fileInfo?.comments?.trim()">
-              <div class="flex items-center text-[11px] text-base-content/30 py-1.5">{{ $t('file_info.comment') }}</div>
-              <div class="group/field flex items-center gap-1">
-                <button type="button" class="text-left text-[12px] leading-5 text-base-content/70 wrap-break-word whitespace-pre-wrap flex-1 min-w-0 cursor-pointer hover:text-base-content" @click.stop="emit('quickEditComment')">{{ fileInfo?.comments ?? '' }}</button>
-              </div>
-            </template>
-
-            <!-- Rotate Display -->
-            <template v-if="fileInfo?.rotate && fileInfo?.rotate !== 0">
-              <div class="flex items-center text-[11px] text-base-content/30 h-6">{{ $t('menu.meta.rotate') }}</div>
-              <div class="flex items-center gap-2 min-h-6">
-                <span class="text-[12px] text-base-content/70">{{ normalizedRotate }}°</span>
-                <TButton
-                  :icon="IconRotate"
-                  :tooltip="$t('menu.meta.rotate')"
-                  :buttonSize="'small'"
-                  @click.stop="emit('rotate')"
-                />
-              </div>
-            </template>
-
             <!-- People -->
             <template v-if="config.settings.face.enabled && filePersons.length">
               <div class="flex items-center text-[11px] text-base-content/30 min-h-6 py-1.5">{{ $t('sidebar.people') }}</div>
@@ -244,6 +225,13 @@
               </div>
             </template>
 
+            <!-- Metadata -->
+            <template v-for="field in organizationMetadata" :key="field.key">
+              <div class="text-[11px] text-base-content/30 min-h-6 py-1">{{ $t(field.label) }}</div>
+              <button type="button" class="min-h-6 py-1 text-left text-[12px] text-base-content/70 whitespace-pre-wrap wrap-break-word cursor-pointer hover:text-base-content"
+                @click.stop="emit('editMetadata', field.key)">{{ field.value || '\u00a0' }}</button>
+            </template>
+
           </div>
           </div>
         </div>
@@ -261,18 +249,18 @@
             @click.stop="toggleBasicInfo"
           />
           <span class="py-1 font-bold mr-auto uppercase text-xs tracking-wide text-base-content/30">{{ $t('file_info.file') }}</span>
-          <div v-if="showBasicInfoPanel && isRawJpegPair" role="tablist" class="tabs tabs-xs shrink-0">
+          <div v-if="showBasicInfoPanel && hasFileCompanion" role="tablist" class="tabs tabs-xs shrink-0">
             <button
               role="tab"
-              :class="['tab', generalInfoTab === 'raw' ? 'tab-active text-primary' : '']"
-              @click.stop="generalInfoTab = 'raw'"
-            >RAW</button>
+              :class="['tab', generalInfoTab === 'primary' ? 'tab-active text-primary' : '']"
+              @click.stop="generalInfoTab = 'primary'"
+            >{{ primaryFileLabel }}</button>
             <button
               role="tab"
               :class="['tab', generalInfoTab === 'companion' ? 'tab-active text-primary' : '']"
-              :disabled="!rawJpegCompanion"
-              @click.stop="generalInfoTab = 'companion'"
-            >{{ rawJpegCompanionLabel }}</button>
+              :disabled="!hasFileCompanion"
+              @click.stop="selectFileCompanionTab"
+            >{{ isLivePhoto ? 'MOV' : rawJpegCompanionLabel }}</button>
           </div>
         </div>
 
@@ -309,7 +297,16 @@
                 >
                   <span class="min-w-0 break-all">{{ generalFileInfo?.name }}</span>
                   <span
-                    v-if="generalFileUnavailable"
+                    v-if="generalFileInfo?.cloud_only"
+                    class="shrink-0 text-base-content/50"
+                    :title="t('offline.cloud_only')"
+                    :aria-label="t('offline.cloud_only')"
+                    role="img"
+                  >
+                    <IconCloud class="size-3.5" aria-hidden="true" />
+                  </span>
+                  <span
+                    v-else-if="generalFileUnavailable"
                     class="shrink-0 text-warning/70"
                     :title="t('offline.original_unavailable')"
                     :aria-label="t('offline.original_unavailable')"
@@ -317,11 +314,14 @@
                   >
                     <IconExclamation class="size-3.5" aria-hidden="true" />
                   </span>
+                  <span v-if="videoDurationBadge" class="shrink-0 whitespace-nowrap rounded bg-base-content/10 px-1 text-[10px] font-medium">
+                    {{ videoDurationBadge }}
+                  </span>
                 </span>
                 <button
                   type="button"
                   class="shrink-0 p-1 cursor-pointer hover:text-primary"
-                  :title="t('file_info.copy_path')"
+                  :title="`${t('file_info.copy_path')} (${getShortcutLabel('file.copyPath')})`"
                   :aria-label="t('file_info.copy_path')"
                   @click.stop="copyInfoFilePath"
                 >
@@ -356,13 +356,7 @@
             <template v-if="displayField('file.dimension', generalFileInfo?.width && generalFileInfo?.height ? 'dimension' : '')">
             <!-- Dimension -->
             <div class="flex items-center text-[11px] text-base-content/30 h-6">{{ $t('file_info.dimension') }}</div>
-            <div class="flex items-center text-[12px] text-base-content/70">{{ generalFileInfo?.width && generalFileInfo?.height ? formatDimensionText(generalFileInfo.width, generalFileInfo.height, true) : '' }}</div>
-            </template>
-
-            <!-- Duration -->
-            <template v-if="generalFileInfo?.file_type === 2 && displayField('file.duration', Number.isFinite(generalFileInfo?.duration) && generalFileInfo.duration > 0 ? generalFileInfo.duration : '')">
-              <div class="flex items-center text-[11px] text-base-content/30 h-6">{{ $t('file_info.duration') }}</div>
-              <div class="flex items-center text-[12px] text-base-content/70">{{ Number.isFinite(generalFileInfo?.duration) && generalFileInfo.duration > 0 ? formatDuration(generalFileInfo.duration) : '' }}</div>
+            <div class="flex items-center text-[12px] text-base-content/70">{{ generalFileInfo?.width && generalFileInfo?.height ? formatDimensionText(generalFileInfo.width, generalFileInfo.height, true) : '' }}<span v-if="generalFileInfo?.width && generalFileInfo?.height && normalizedRotate" class="ml-1">· {{ normalizedRotate }}°</span></div>
             </template>
 
             <template v-for="row in imageDetailRows" :key="row.key">
@@ -566,7 +560,8 @@
 
 <script setup lang="ts">
 import FileInfoFieldsDialog from '@/components/FileInfoFieldsDialog.vue';
-import { normalizeFileInfoFields } from '@/common/fileInfoFields';
+import { getShortcutLabel } from '@/common/shortcuts';
+import { editableMetadataFields, normalizeFileInfoFields } from '@/common/fileInfoFields';
 import ImageNavigator from '@/components/ImageNavigator.vue';
 import { invoke } from '@/common/transport';
 import { navigatorLayout } from '@/common/imageNavigator';
@@ -597,7 +592,7 @@ import {
   formatFileSize, 
   formatTimestamp,
   formatRelativeTime,
-  formatDuration,
+  formatVideoDurationBadge,
   formatCaptureSettings,
   formatCameraInfo,
   formatGpsCoordinates,
@@ -611,14 +606,15 @@ import {
 import {
   IconCopy,
   IconClose,
+  IconCloud,
   IconRefresh,
+  IconEdit,
   IconAdjustments,
   IconRight,
   IconFile,
   IconExclamation,
   IconFolder,
   IconPhoto,
-  IconRotate,
   IconVideo,
   IconZoomIn,
   IconZoomOut,
@@ -660,7 +656,7 @@ const emit = defineEmits([
   'rotate',
   'quickEditTag',
   'quickEditCollection',
-  'quickEditComment',
+  'editMetadata',
   'navigateFolder',
   'navigateMetadata',
   'navigatePerson',
@@ -746,7 +742,7 @@ function cancelPendingDetails(sections = sectionNames) {
   });
   if (requestIds.length) void invoke('cancel_file_metadata_requests', { requestIds }).catch(() => {});
 }
-const sourceKeys = ['title', 'headline', 'creator', 'copyright', 'software', 'credit', 'source', 'usageTerms', 'rightsUrl'];
+const sourceKeys = ['software', 'credit', 'source', 'usageTerms', 'rightsUrl'];
 const detailKeys: Record<DetailSection, string[]> = {
   source: sourceKeys,
   capture: ['flash', 'whiteBalance', 'exposureMode', 'exposureProgram', 'meteringMode', 'focalLength35mm', 'timeZone'],
@@ -774,6 +770,9 @@ function detailRows(section: DetailSection, keys = detailKeys[section]) {
     return { key, value: value == null ? '' : String(value), label: t(`file_info.detail_fields.${key}`) };
   }).filter(row => displayField(`${section}.${row.key}`, row.value));
 }
+const organizationMetadata = computed(() => editableMetadataFields
+  .map(field => ({ ...field, value: props.fileInfo?.[field.key] ?? '' }))
+  .filter(field => displayField(`organization.${field.key}`, field.value)));
 const sourceDetailRows = computed(() => detailRows('source'));
 const captureDetailRows = computed(() => detailRows('capture'));
 const imageDetailRows = computed(() => [
@@ -940,7 +939,6 @@ const hasFileInfo = computed(() => {
   return ['name', 'album_name', 'size', 'created_at', 'modified_at'].some(key => displayField(`file.${key}`, file?.[key]))
     || displayField('file.folder', generalFolderBreadcrumbs.value.length ? 'folder' : '')
     || displayField('file.dimension', file?.width && file?.height ? 'dimension' : '')
-    || (file?.file_type === 2 && displayField('file.duration', Number.isFinite(file?.duration) && file.duration > 0 ? file.duration : ''))
     || displayField('file.last_scan_time', file?.last_scan_time > 0 ? file.last_scan_time : '')
     || imageDetailRows.value.length > 0;
 });
@@ -953,7 +951,7 @@ const hasLocationInfo = computed(() => hideEmptyFields.value
   ? displayField('location.geo_location', formatGeoLocation()) || displayField('location.gps', hasCoordinates.value || hasAltitude.value ? 'gps' : '')
     || (fieldVisible('location.map') && hasCoordinates.value) || locationDetailRows.value.length > 0
   : hasVisibleFields('location'));
-const hasSourceMetadata = computed(() => hideEmptyFields.value ? sourceDetailRows.value.length > 0 : hasVisibleFields('source'));
+const hasSourceMetadata = computed(() => sourceDetailRows.value.length > 0 || (!hideEmptyFields.value && hasVisibleFields('source')));
 const showBasicInfoPanel = computed(() => config.infoPanel.showBasicInfo);
 const showMetadataPanel = computed(() => config.infoPanel.showMetadata);
 const showMapPanel = computed(() => config.infoPanel.showMap);
@@ -1002,22 +1000,44 @@ const isMotionPhoto = computed(() => props.fileInfo?.media_subtype === 'motion_p
 const isRawJpegPair = computed(() => (
   props.fileInfo?.media_subtype === 'raw_jpeg_pair' && !!props.fileInfo?.live_photo_video_id
 ));
-const rawJpegCompanion = ref<any>(null);
-const generalInfoTab = ref<'raw' | 'companion'>('raw');
-let rawJpegCompanionRequestSeq = 0;
+const hasFileCompanion = computed(() => (
+  (isLivePhoto.value || isRawJpegPair.value) && !!props.fileInfo?.live_photo_video_id
+));
+const primaryFileLabel = computed(() => {
+  if (isRawJpegPair.value) return 'RAW';
+  const extension = getFileExtension(props.fileInfo?.name || '').toUpperCase();
+  return extension === 'JPG' ? 'JPEG' : extension || 'HEIC';
+});
+const fileCompanion = ref<any>(null);
+const generalInfoTab = ref<'primary' | 'companion'>('primary');
+let fileCompanionRequestSeq = 0;
+async function selectFileCompanionTab() {
+  if (!hasFileCompanion.value) return;
+  generalInfoTab.value = 'companion';
+  if (fileCompanion.value) return;
+  const requestSeq = ++fileCompanionRequestSeq;
+  const fileId = props.fileInfo?.id;
+  const companionId = props.fileInfo?.live_photo_video_id;
+  if (!fileId || !companionId) return;
+  const companion = await getFileInfo(Number(companionId));
+  if (requestSeq !== fileCompanionRequestSeq || Number(props.fileInfo?.id) !== Number(fileId)) return;
+  fileCompanion.value = companion || null;
+  if (!companion) generalInfoTab.value = 'primary';
+}
 const rawJpegCompanionLabel = computed(() => {
   const extension = getFileExtension(
-    rawJpegCompanion.value?.name || props.fileInfo?.live_photo_video_path || '',
+    fileCompanion.value?.name || props.fileInfo?.live_photo_video_path || '',
   ).toLowerCase();
   return ['heic', 'heif', 'hif'].includes(extension) ? 'HEIC' : 'JPEG';
 });
 const generalFileInfo = computed(() => (
-  generalInfoTab.value === 'companion' && rawJpegCompanion.value
-    ? rawJpegCompanion.value
+  generalInfoTab.value === 'companion' && fileCompanion.value
+    ? fileCompanion.value
     : props.fileInfo
 ));
+const videoDurationBadge = computed(() => formatVideoDurationBadge(generalFileInfo.value));
 const generalFileUnavailable = computed(() => isOriginalUnavailable(generalFileInfo.value));
-const canRenameGeneralFile = computed(() => generalInfoTab.value === 'raw' && !generalFileUnavailable.value);
+const canRenameGeneralFile = computed(() => generalInfoTab.value === 'primary' && !generalFileUnavailable.value);
 const motionPhotoVideoPath = ref<string | null>(null);
 let motionPhotoVideoRequestSeq = 0;
 const previewVideoPath = computed(() => {
@@ -1470,15 +1490,11 @@ watch(
 );
 
 watch(
-  () => [props.fileInfo?.id, props.fileInfo?.media_subtype, props.fileInfo?.live_photo_video_id] as const,
-  async ([fileId, mediaSubtype, companionId]) => {
-    const requestSeq = ++rawJpegCompanionRequestSeq;
-    generalInfoTab.value = 'raw';
-    rawJpegCompanion.value = null;
-    if (!fileId || mediaSubtype !== 'raw_jpeg_pair' || !companionId) return;
-    const companion = await getFileInfo(Number(companionId));
-    if (requestSeq !== rawJpegCompanionRequestSeq || Number(props.fileInfo?.id) !== Number(fileId)) return;
-    rawJpegCompanion.value = companion || null;
+  () => [props.fileInfo?.id, hasFileCompanion.value, props.fileInfo?.live_photo_video_id] as const,
+  () => {
+    fileCompanionRequestSeq++;
+    generalInfoTab.value = 'primary';
+    fileCompanion.value = null;
   },
   { immediate: true },
 );

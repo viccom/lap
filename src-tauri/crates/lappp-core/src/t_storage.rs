@@ -21,6 +21,21 @@ use crate::t_config::{self, AppConfig, Library, LibraryState};
 
 static DB_MIGRATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
+/// Serializes tests that race on the process-global `DB_MIGRATION_IN_PROGRESS`
+/// flag. A test that flips the flag must not run while a sibling test opens a
+/// connection: the flag makes `DbConnectionLease::acquire` (and therefore
+/// `open_conn`) fail with "Database storage migration is in progress." Test-only:
+/// no effect on the shipped binary.
+#[cfg(test)]
+static DB_MIGRATION_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn db_migration_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    DB_MIGRATION_TEST_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 // Admission and draining share one lock so a connection cannot slip past migration.
 static ACTIVE_CONNECTIONS: Mutex<usize> = Mutex::new(0);
 static CONNECTIONS_RETURNED: Condvar = Condvar::new();
@@ -617,6 +632,8 @@ mod migration_tests {
 
     #[test]
     fn migration_waits_for_connections_and_reopens_admission() {
+        // Hold the flag while no other test opens a connection (see the lock).
+        let _serial = db_migration_test_lock();
         let lease = DbConnectionLease::acquire().unwrap();
         let (ready_tx, ready_rx) = std::sync::mpsc::channel();
         let (finish_tx, finish_rx) = std::sync::mpsc::channel();

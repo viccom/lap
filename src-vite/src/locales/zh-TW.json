@@ -38,14 +38,14 @@
     "drop_action": "新增",
     "drop_title_hint": "拖放以新增",
     "empty_drop_hint": "將項目拖到上方的收藏即可新增。",
-    "added_toast": "已新增 {count} 個檔案到收藏",
-    "add_failed_toast": "無法將檔案新增到 {count} 個收藏",
-    "already_exists_toast": "{count} 個檔案已在收藏中",
+    "added_toast": "已新增 {count} 個項目到收藏",
+    "add_failed_toast": "無法將項目新增到 {count} 個收藏",
+    "already_exists_toast": "{count} 個項目已在收藏中",
     "clear": "清空收藏",
     "clear_confirm_title": "清空收藏",
     "clear_confirm_message": "從「{name}」移除所有檔案？檔案本身不會被刪除。",
     "clear_confirm_ok": "清空",
-    "removed_toast": "已從收藏移除 {count} 個檔案"
+    "removed_toast": "已從收藏移除 {count} 個項目"
   },
   "library": {
     "all_files": "所有檔案",
@@ -236,6 +236,7 @@
   },
   "offline": {
     "badge": "離線",
+    "download_to_open": "請先在雲端硬碟應用程式中下載此照片，再開啟。",
     "cloud_only": "僅線上可用",
     "cloud_only_pending": "僅線上可用 — 檔案資訊待補齊",
     "original_unavailable": "原始檔案暫時無法存取",
@@ -255,7 +256,7 @@
     "section_folders": "選擇資料夾",
     "section_status": "匯入狀態",
     "to_import": "待匯入",
-    "files_progress": "{processed} / {total} 個檔案（{size}）",
+    "files_progress": "{processed} / {total} 個項目（{size}）",
     "source": "來源",
     "source_placeholder": "選擇來源資料夾",
     "destination": "目的地",
@@ -266,7 +267,7 @@
     "layout_structure": "保留資料夾結構",
     "import": "匯入",
     "preparing": "正在準備匯入",
-    "importing": "正在匯入檔案",
+    "importing": "正在匯入項目",
     "complete": "匯入完成",
     "cancelled": "已取消匯入",
     "continue": "繼續",
@@ -280,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "從新相簿開始",
-    "add_album_description": "選擇資料夾，讓 lappp 為你整理相片與影片。",
+    "add_album_description": "選擇資料夾，讓 Lap 為你整理相片與影片。",
     "smart_album_title": "用智慧相簿整理",
     "smart_album_description": "用規則自動分組符合條件的相片。",
     "collection_title": "將相片分組到收藏",
@@ -296,23 +297,6 @@
     "unknown_lens": "未知鏡頭",
     "semantic_matches": "視覺相符",
     "text_matches": "文字相符",
-    "mode": {
-      "label": "搜尋模式",
-      "all": "全部",
-      "precise": "精確",
-      "semantic": "語意",
-      "single_char_hint": "單字精確檢索會退回模糊比對，可能較慢"
-    },
-    "matches_from": "命中來源",
-    "precise_matches": "精確命中",
-    "match_column": {
-      "name": "檔案名稱",
-      "people": "人名",
-      "meta": "中繼資料",
-      "tags": "標籤",
-      "caption": "圖片描述",
-      "like": "模糊比對"
-    },
     "index": {
       "wait_index": "已排隊等待掃描",
       "indexing": "掃描中... {count}/{total}",
@@ -332,8 +316,25 @@
         "skip_once": "跳過此檔案並繼續",
         "file_label": "上次掃描的檔案",
         "message": "上次掃描未正常結束。",
-        "message_with_file": "上次的掃描工作未正常結束。\n\n上次掃描的檔案：\n{file}\n\n若繼續，lappp 會跳過此檔案一次並恢復掃描。"
+        "message_with_file": "上次的掃描工作未正常結束。\n\n上次掃描的檔案：\n{file}\n\n若繼續，Lap 會跳過此檔案一次並恢復掃描。"
       }
+    },
+    "mode": {
+      "label": "搜尋模式",
+      "all": "全部",
+      "precise": "精確",
+      "semantic": "語意",
+      "single_char_hint": "單字精確檢索會退回模糊比對，可能較慢"
+    },
+    "matches_from": "命中來源",
+    "precise_matches": "精確命中",
+    "match_column": {
+      "name": "檔案名稱",
+      "people": "人名",
+      "meta": "中繼資料",
+      "tags": "標籤",
+      "caption": "圖片描述",
+      "like": "模糊比對"
     }
   },
   "face_index": {
@@ -356,11 +357,11 @@
     "folders": "我的最愛資料夾"
   },
   "rating": {
+    "mixed": "混合",
     "title": "評分",
     "unrated": "未評分",
     "all_rated": "全部已評分",
     "rated": "已評分",
-    "mixed": "多種",
     "clear_rating": "清除評分",
     "five_stars": "5 星",
     "four_stars": "4 星",
@@ -475,11 +476,8 @@
     },
     "filter": {
       "favorites_only": "僅收藏",
-      "select_mode": "多選",
-      "select_files": "選擇檔案",
-      "show_selection_panel": "開啟多選面板",
-      "hide_selection_panel": "收起多選面板",
-      "exit_select_mode": "退出多選",
+      "show_selection_panel": "開啟選取面板",
+      "exit_selection_mode": "退出選取模式",
       "select_count": "已選 {count}",
       "group_type_options": [
         "無",
@@ -516,14 +514,16 @@
         "僅 RAW",
         "影片"
       ],
-      "file_type_other": "其他"
+      "file_type_other": "其他",
+      "select_mode": "多選",
+      "select_files": "選擇檔案",
+      "hide_selection_panel": "收起多選面板",
+      "exit_select_mode": "退出多選"
     },
     "tooltip": {
       "restore": "還原",
       "refresh": "重新整理",
-      "show_info": "顯示資訊",
-      "hide_info": "隱藏資訊",
-      "open_dedup": "尋找重複與相似",
+      "info": "資訊",
       "clear_history": "清除搜尋紀錄",
       "index_faces": "建立人臉索引",
       "sort": "排序",
@@ -534,7 +534,10 @@
       "back": "返回",
       "scanning": "掃描中…",
       "scan_paused": "掃描已暫停",
-      "scan_queued": "已排隊等待掃描"
+      "scan_queued": "已排隊等待掃描",
+      "show_info": "顯示資訊",
+      "hide_info": "隱藏資訊",
+      "open_dedup": "尋找重複與相似"
     }
   },
   "info_panel": {
@@ -543,14 +546,13 @@
       "調整"
     ],
     "empty_title": "此清單是空的",
-    "empty_desc": "新增檔案或更新目前篩選以在此顯示項目。",
-    "select_hint": "未選取檔案",
+    "empty_desc": "新增項目或更新目前篩選以在此顯示。",
+    "select_hint": "未選取項目",
     "deselect": "取消選取",
-    "select_mode_entered": "已開啟多選模式",
-    "selection_load_failed": "無法載入所有選取檔案。請再試一次。",
+    "selection_load_failed": "無法載入所有選取項目。請再試一次。",
     "large_batch": {
       "title": "確認大量操作",
-      "content": "此操作將處理 {count} 個檔案，可能需要一些時間。要繼續嗎？",
+      "content": "此操作將處理 {count} 個項目，可能需要一些時間。要繼續嗎？",
       "ok": "繼續"
     },
     "drag_action": {
@@ -640,13 +642,16 @@
       "keep_label": "保留",
       "unkeep_label": "取消保留",
       "delete_selected": "刪除所選",
+      "trash_all": "全部移到垃圾桶",
       "delete_all": "全部刪除",
       "move_selected_to_trash": "移到垃圾桶（已選 {count} · {size}）",
-      "no_removable_files": "沒有可移到垃圾桶的檔案",
+      "no_removable_files": "沒有可移到垃圾桶的可移除項目",
       "set_keep": "保留",
       "removable_copies_summary": "{count} 個可移除複本 · {size}",
+      "similar_items_summary": "{count} 個相似項目 · {size}",
       "similar_photos_summary": "{count} 張相似相片 · {size}"
-    }
+    },
+    "select_mode_entered": "已開啟多選模式"
   },
   "tooltip": {
     "loading": "載入中...",
@@ -694,9 +699,9 @@
       "success": "已更新桌面桌布",
       "failed": "無法設為桌面桌布"
     },
-    "refresh_subfolders": {
-      "success": "已重新整理子資料夾",
-      "failed": "無法重新整理子資料夾"
+    "refresh_folders": {
+      "success": "已重新整理資料夾",
+      "failed": "無法重新整理資料夾"
     },
     "copy_image": {
       "success": "已複製 {count} 個檔案到剪貼簿",
@@ -727,12 +732,17 @@
     },
     "album_exists": "此相簿已存在",
     "album_nested": "此資料夾與另一個相簿重疊",
+    "refresh_subfolders": {
+      "success": "已重新整理子資料夾",
+      "failed": "無法重新整理子資料夾"
+    },
     "album": {
       "remove": "從相簿移除"
     }
   },
   "statusbar": {
-    "files_summary": "{count} 個檔案（{size}）"
+    "files_summary": "{count} 個檔案（{size}）",
+    "items_summary": "{count} 個項目（{size}）"
   },
   "menu": {
     "select": {
@@ -763,6 +773,7 @@
       "exclude_from_search": "從搜尋排除",
       "remove": "移除",
       "delete_folder": "刪除資料夾",
+      "refresh_folders": "重新整理資料夾",
       "refresh_subfolders": "重新整理子資料夾"
     },
     "file": {
@@ -793,7 +804,6 @@
       "reveal_in_finder": "在 Finder 中顯示...",
       "reveal_in_file_explorer": "在檔案總管中顯示...",
       "refresh_file_info": "重新整理檔案資訊",
-      "index_cloud_files": "下載、建立索引並釋放空間",
       "set_album_cover": "設為相簿封面",
       "set_as": "設為",
       "set_desktop_wallpaper": "設為桌面桌布",
@@ -804,6 +814,7 @@
       "xmp_save_success": "已儲存 {count} 個檔案的 XMP 中繼資料",
       "xmp_save_failed": "{count} 個檔案的 XMP 儲存失敗",
       "comment": "描述…",
+      "index_cloud_files": "下載、建立索引並釋放空間",
       "vl_analyze": "AI 理解（雲端）",
       "vl_analyze_selected": "AI 理解（雲端）"
     },
@@ -852,6 +863,7 @@
   },
   "msgbox": {
     "ok": "確定",
+    "save": "儲存",
     "discard": "捨棄",
     "reset": "重設",
     "cancel": "取消",
@@ -994,42 +1006,60 @@
       "invalid": "請輸入名稱及正整數起始編號。",
       "success": "已重新命名 {count} 個項目。"
     },
+    "file_delete": {
+      "permanent_summary": "將永久刪除 {count} 個檔案。",
+      "trash_summary": "將把 {count} 個檔案移到垃圾桶。",
+      "title": "永久刪除 {count} 個檔案？",
+      "confirm": "刪除 {count} 個檔案",
+      "irreversible": "此操作無法復原。",
+      "mixed_hint": "僅適用於 RAW 配對，其他選取項目一律會完整刪除。",
+      "trash_unavailable": "這些檔案無法移到垃圾桶。此磁碟可能沒有可用的垃圾桶。"
+    },
+    "raw_pair_delete": {
+      "scope": "要刪除的 RAW 配對檔案",
+      "both": "刪除兩者",
+      "raw": "僅刪除 RAW",
+      "companion": "僅刪除 JPEG / HEIC",
+      "format": "僅刪除 {format}",
+      "failed": "有 {count} 項刪除失敗。"
+    },
+    "folder_delete_contents": "這包括其中的所有檔案與子資料夾。",
     "move_to_trash": {
       "title": "移到垃圾桶",
       "file_content": "檔案「{file}」將被移到垃圾桶。",
-      "files_content": "已選的 {count} 個檔案將被移到垃圾桶。",
-      "removable_files_content": "全部 {count} 個可移除檔案將被移到垃圾桶。",
-      "raw_jpeg_companions_content": "另將刪除 {count} 個 RAW+JPEG 相伴随檔案。",
+      "files_content": "已選的 {count} 個項目將被移到垃圾桶。",
+      "removable_files_content": "全部 {count} 個可移除項目將被移到垃圾桶。",
       "folder_content": "資料夾「{folder}」將被移到垃圾桶。",
       "ok": "移到垃圾桶",
       "file_success": "已將檔案「{file}」移到垃圾桶。",
-      "files_success": "已將已選的 {count} 個檔案移到垃圾桶。",
+      "files_success": "已將已選的 {count} 個項目移到垃圾桶。",
       "folder_success": "已將資料夾「{folder}」移到垃圾桶。",
       "file_error": "無法將檔案移到垃圾桶。",
-      "files_error": "無法將已選檔案移到垃圾桶。",
-      "folder_error": "無法將資料夾移到垃圾桶。"
+      "files_error": "無法將已選項目移到垃圾桶。",
+      "folder_error": "無法將資料夾移到垃圾桶。",
+      "raw_jpeg_companions_content": "另將刪除 {count} 個 RAW+JPEG 相伴随檔案。"
     },
     "permanent_delete": {
       "title": "永久刪除",
       "file_content": "檔案「{file}」將被永久刪除。",
-      "files_content": "已選的 {count} 個檔案將被永久刪除。",
-      "removable_files_content": "全部 {count} 個可移除檔案將被永久刪除。",
+      "files_content": "已選的 {count} 個項目將被永久刪除。",
+      "removable_files_content": "全部 {count} 個可移除項目將被永久刪除。",
       "folder_content": "資料夾「{folder}」將被永久刪除。",
-      "checkbox": "永久刪除（無法復原）",
       "ok": "刪除",
       "file_success": "已永久刪除檔案「{file}」。",
-      "files_success": "已永久刪除已選的 {count} 個檔案。",
+      "files_success": "已永久刪除已選的 {count} 個項目。",
       "folder_success": "已永久刪除資料夾「{folder}」。",
       "file_error": "無法永久刪除檔案。",
-      "files_error": "無法永久刪除已選檔案。",
-      "folder_error": "無法永久刪除資料夾。"
+      "files_error": "無法永久刪除已選項目。",
+      "folder_error": "無法永久刪除資料夾。",
+      "checkbox": "永久刪除（無法復原）"
     },
     "trash_failed": {
       "title": "移到垃圾桶失敗",
       "file_content": "無法將檔案「{file}」移到垃圾桶。\n\n要改為永久刪除嗎？",
-      "files_content": "無法將已選的 {count} 個檔案移到垃圾桶。\n\n要改為永久刪除嗎？",
+      "files_content": "無法將已選的 {count} 個項目移到垃圾桶。\n\n要改為永久刪除嗎？",
       "folder_content": "無法將資料夾「{folder}」移到垃圾桶。\n\n要改為永久刪除嗎？\n\n此操作無法透過系統垃圾桶復原。",
-      "folder_partial_warning": "上一次操作可能已將部分內容移至垃圾桶。永久刪除將刪除此資料夾及其剩餘內容。",
+      "folder_partial_warning": "上一次操作可能已將部分內容移至垃圾桶。",
       "ok": "永久刪除"
     },
     "open_external_many": {
@@ -1204,6 +1234,17 @@
     }
   },
   "file_info": {
+    "metadata_placeholders": {
+      "e_title": "簡短標題",
+      "e_headline": "用於發布的標題",
+      "comments": "描述內容或補充背景",
+      "e_artist": "姓名",
+      "e_artist_hint": "每行一位",
+      "e_copyright": "© {year} 姓名"
+    },
+    "edit_metadata_no_fields": "請先在「自訂欄位」中勾選至少一個「整理」欄位，再編輯中繼資料。",
+    "edit_metadata": "編輯中繼資料",
+    "metadata_save_failed": "無法儲存中繼資料",
     "paths_copied": "已複製 {count} 個檔案路徑到剪貼簿",
     "copy_path": "複製檔案路徑",
     "copy_path_failed": "複製路徑失敗",
@@ -1269,7 +1310,7 @@
     "organization": "整理",
     "file": "檔案",
     "capture": "拍攝資訊",
-    "source_metadata": "來源檔案中繼資料",
+    "source_metadata": "其他資訊",
     "source_description": "原始描述",
     "coordinates": "座標",
     "detail_fields": {
@@ -1365,19 +1406,19 @@
     "loading_compatible": "正在準備相容播放...",
     "failed": "無法播放影片",
     "errors": {
+      "playback_failed": "播放失敗",
       "aborted": "影片載入已取消",
       "network": "載入影片時發生網路錯誤",
       "decode": "影片解碼錯誤",
       "format": "不支援的影片格式或檔案已損毀。",
-      "external_player_recommended": "此影片需要先轉檔為相容格式才能在此播放。對於長影片，lappp 建議使用外部播放器，而非等待背景處理。",
+      "external_player_recommended": "此影片需要先轉檔為相容格式才能在此播放。對於長影片，Lap 建議使用外部播放器，而非等待背景處理。",
       "unsafe_webview": "不支援播放此影片格式。",
       "open_in_external_app": "用外部播放器開啟",
       "open_in_external_app_named": "用 {app} 開啟影片...",
       "use_external": "若要開啟不支援的格式，請在設定中設定外部播放器。",
       "use_external_generic": "試著用外部播放器開啟。",
       "use_external_with_app": "改試著用 {app} 開啟。",
-      "unknown": "未知錯誤",
-      "playback_failed": "影片播放失敗"
+      "unknown": "未知錯誤"
     }
   },
   "settings": {
@@ -1453,27 +1494,27 @@
     "raw": {
       "title": "RAW",
       "section_pairs": "配對檔案",
-      "clipboard_both": "兩個檔案",
-      "clipboard_raw": "僅 RAW",
-      "clipboard_jpeg": "僅 JPEG/HEIC",
-      "clipboard_hint": "同時影響複製檔案路徑，不影響複製或移動檔案至資料夾。",
       "pair_source": "配對的預設顯示",
       "pair_source_hint": "用於配對的縮圖與預覽",
       "pair_jpeg": "JPEG / HEIC",
       "rawPreviewSource": "預設預覽來源",
       "preview_source_hint": "首選來源無法使用時，自動使用另一來源",
-      "rawRenderBrightness": "算繪亮度",
-      "option_embedded": "優先使用內嵌預覽",
-      "option_rendered": "優先算繪 RAW",
-      "option_original": "原始曝光",
-      "option_brightened": "提亮",
-      "brightness_hint": "僅對 RAW 算繪生效",
-      "switch_to": "切換為 {source}",
+      "option_embedded": "內嵌預覽",
+      "option_rendered": "算繪 RAW",
+      "option_brightened": "自動提亮",
       "show_pair": "顯示配對的 {format}",
-      "source_embedded": "內嵌",
-      "source_rendered": "算繪",
-      "source_brightened": "提亮",
-      "preview_mode": "RAW 預覽模式"
+      "source_embedded": "內嵌預覽",
+      "source_rendered": "算繪 RAW",
+      "source_brightened": "自動提亮",
+      "preview_mode": "RAW 預覽模式",
+      "clipboard_both": "兩個檔案",
+      "clipboard_raw": "僅 RAW",
+      "clipboard_jpeg": "僅 JPEG/HEIC",
+      "clipboard_hint": "同時影響複製檔案路徑，不影響複製或移動檔案至資料夾。",
+      "rawRenderBrightness": "算繪亮度",
+      "option_original": "原始曝光",
+      "brightness_hint": "僅對 RAW 算繪生效",
+      "switch_to": "切換為 {source}"
     },
     "metadata": {
       "title": "中繼資料",
@@ -1627,7 +1668,7 @@
       "multilingual_model_download_message": "尚未安裝多語言相片搜尋模型。下載後即可以超過 50 種語言搜尋。",
       "download": "下載",
       "downloading_multilingual_model": "正在下載多語言模型",
-      "multilingual_model_download_success": "多語言搜尋模型已就緒。請重新啟動 lappp 以使用。",
+      "multilingual_model_download_success": "多語言搜尋模型已就緒。請重新啟動 Lap 以使用。",
       "multilingual_model_download_failed": "無法下載多語言搜尋模型",
       "similarity": "搜尋相似度",
       "similarity_hint": "控制關鍵字搜尋的視覺相符程度",
@@ -1680,6 +1721,7 @@
         "zoom_in": "放大",
         "zoom_out": "縮小",
         "zoom_fit": "切換實際大小 / 符合視窗",
+        "cycle_raw_preview": "切換 RAW 預覽模式",
         "toggle_af_areas": "顯示／隱藏自動對焦區域",
         "cycle_background": "切換背景",
         "open_new_window": "在新視窗檢視",
@@ -1727,6 +1769,10 @@
       }
     },
     "advanced": {
+      "file_delete_section": "檔案刪除",
+      "file_delete_behavior": "刪除時的行為",
+      "file_delete_trash_hint": "單一檔案直接移到垃圾桶",
+      "file_delete_permanent_hint": "永久刪除前一律需要確認",
       "title": "進階",
       "external_app": {
         "section_external_apps": "外部應用程式",

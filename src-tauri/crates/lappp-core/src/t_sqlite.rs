@@ -1659,7 +1659,9 @@ pub struct AFile {
     // file basic info
     pub name: String,                 // file name
     pub name_pinyin: Option<String>,  // file name pinyin(for sort)
-    pub size: i64,                    // file size
+    pub size: i64,                    // physical file size
+    #[serde(default)]
+    pub companion_size: i64,
     pub file_type: Option<i64>,       // file type (0: all, 1: image, 2: video, 3: audio, 4: other)
     pub format_label: Option<String>, // normalized file format label (from file content)
     pub created_at: Option<i64>,      // file create timestamp
@@ -2991,6 +2993,7 @@ impl AFile {
                 &file_info.file_name.to_lowercase(),
             )), // natural sort key (case-insensitive, pinyin + zero-padded numbers)
             size: file_info.file_size,
+            companion_size: 0,
             file_type: Some(file_type),
             format_label,
             created_at: file_info.created,
@@ -3544,7 +3547,10 @@ impl AFile {
                 e_make = ?17, e_model = ?18, e_lens_make = ?19, e_lens_model = ?20,
                 e_date_time = CASE WHEN ?47 THEN e_date_time ELSE ?21 END,
                 e_exposure_bias = ?22, e_exposure_time = ?23, e_f_number = ?24, e_focal_length = ?25, e_iso_speed = ?26, e_flash = ?27, e_orientation = ?28,
-                e_title = ?29, e_headline = ?30, e_description = ?31, e_artist = ?32, e_copyright = ?33,
+                e_title = COALESCE(e_title, NULLIF(?29, '')),
+                e_headline = COALESCE(e_headline, NULLIF(?30, '')), e_description = ?31,
+                e_artist = COALESCE(e_artist, NULLIF(?32, '')),
+                e_copyright = COALESCE(e_copyright, NULLIF(?33, '')),
                 e_software = ?34,
                 gps_latitude = CASE WHEN ?47 THEN gps_latitude ELSE ?35 END,
                 gps_longitude = CASE WHEN ?47 THEN gps_longitude ELSE ?36 END,
@@ -3677,7 +3683,12 @@ impl AFile {
             let mut file_stmt = tx
                 .prepare_cached("DELETE FROM afiles WHERE id = ?1")
                 .map_err(|e| e.to_string())?;
+            let mut unpair_stmt = tx.prepare_cached(
+                "UPDATE afiles SET media_subtype=NULL, live_photo_video_id=NULL
+                 WHERE live_photo_video_id=?1 AND media_subtype='raw_jpeg_pair'",
+            ).map_err(|e| e.to_string())?;
             for id in ids {
+                unpair_stmt.execute(params![id]).map_err(|e| e.to_string())?;
                 thumb_stmt.execute(params![id]).map_err(|e| e.to_string())?;
                 deleted += file_stmt.execute(params![id]).map_err(|e| e.to_string())?;
                 // The index is a virtual table without foreign keys, so the
@@ -3695,12 +3706,20 @@ impl AFile {
     }
 
     pub fn update_moved_file_group(
-        file_id: i64,
-        component_file_ids: &[i64],
+        moved_files: &[(i64, &str)],
         replaced_file_ids: &[i64],
         new_folder_id: i64,
     ) -> Result<usize, String> {
         let mut conn = open_conn()?;
+        Self::update_moved_file_group_on(&mut conn, moved_files, replaced_file_ids, new_folder_id)
+    }
+
+    fn update_moved_file_group_on(
+        conn: &mut Connection,
+        moved_files: &[(i64, &str)],
+        replaced_file_ids: &[i64],
+        new_folder_id: i64,
+    ) -> Result<usize, String> {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         let mut updated = 0usize;
 
@@ -3723,14 +3742,12 @@ impl AFile {
 
         {
             let mut update_stmt = tx
-                .prepare_cached("UPDATE afiles SET folder_id = ?1 WHERE id = ?2")
+                .prepare_cached("UPDATE afiles SET folder_id = ?1, name = ?2, name_pinyin = ?3 WHERE id = ?4")
                 .map_err(|e| e.to_string())?;
-            updated += update_stmt
-                .execute(params![new_folder_id, file_id])
-                .map_err(|e| e.to_string())?;
-            for component_file_id in component_file_ids {
+            for (file_id, path) in moved_files {
+                let name = t_utils::get_file_name(path);
                 updated += update_stmt
-                    .execute(params![new_folder_id, component_file_id])
+                    .execute(params![new_folder_id, name, t_utils::natural_sort_key(&name.to_lowercase()), file_id])
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -3772,14 +3789,21 @@ impl AFile {
     //     Ok(files)
     // }
 
+    const ITEM_SIZE_SQL: &'static str =
+        "a.size + COALESCE((SELECT size FROM afiles WHERE id = a.live_photo_video_id), 0)";
+
+    fn item_size(file: &Self) -> i64 {
+        file.size + file.companion_size
+    }
+
     // Helper function to build the count SQL query
     fn build_count_query() -> String {
-        let base_query = "SELECT COUNT(*), SUM(a.size)
-            FROM afiles a 
+        "SELECT COUNT(*), SUM(a.size + COALESCE(lpv_size.size, 0))
+            FROM afiles a
+            LEFT JOIN afiles lpv_size ON lpv_size.id = a.live_photo_video_id
             LEFT JOIN afolders b ON a.folder_id = b.id
-            LEFT JOIN albums c ON b.album_id = c.id";
-
-        base_query.to_string()
+            LEFT JOIN albums c ON b.album_id = c.id"
+            .to_string()
     }
 
     fn live_photo_companion_exclusion_condition() -> String {
@@ -3813,15 +3837,13 @@ impl AFile {
                 a.content_identifier,
                 a.media_subtype,
                 a.live_photo_video_id,
-                CASE
-                    WHEN lpv.id IS NOT NULL AND lpf.path IS NOT NULL
-                    THEN lpf.path || '/' || lpv.name
-                    ELSE NULL
-                END AS live_photo_video_path,
+                lpf.path AS live_photo_video_folder,
                 {} AS album_visible,
                 a.motion_photo_offset,
                 a.cloud_only,
                 a.metadata_pending,
+                COALESCE(lpv.size, 0),
+                lpv.name AS live_photo_video_name,
                 EXISTS(SELECT 1 FROM vl_annotations v WHERE v.file_id = a.id) AS vl_annotated
             FROM afiles a
             LEFT JOIN afolders b ON a.folder_id = b.id
@@ -3841,6 +3863,7 @@ impl AFile {
             name: row.get(2)?,
             name_pinyin: row.get(3)?,
             size: row.get(4)?,
+            companion_size: row.get(64)?,
             file_type: row.get(5)?,
             format_label: row.get(6)?,
             created_at: row.get(7)?,
@@ -3907,15 +3930,15 @@ impl AFile {
             content_identifier: row.get(56)?,
             media_subtype: row.get(57)?,
             live_photo_video_id: row.get(58)?,
-            live_photo_video_path: row.get(59)?,
-            album_accessible: row
-                .get::<_, Option<i64>>(50)?
-                .is_none_or(t_utils::album_accessible),
+            live_photo_video_path: row.get::<_, Option<String>>(59)?
+                .zip(row.get::<_, Option<String>>(65)?)
+                .map(|(folder, name)| t_utils::get_file_path(&folder, &name)),
+            album_accessible: row.get::<_, Option<i64>>(50)?.is_none_or(t_utils::album_accessible),
             album_visible: row.get(60)?,
             motion_photo_offset: row.get(61)?,
             cloud_only: row.get(62)?,
             metadata_pending: row.get(63)?,
-            vl_annotated: row.get::<_, i64>(64)? != 0,
+            vl_annotated: row.get::<_, i64>(66)? != 0,
         })
     }
 
@@ -3988,11 +4011,12 @@ impl AFile {
 
         let sql = if params.person_id > 0 {
             format!(
-                "SELECT COUNT(*), SUM(size) FROM (SELECT a.id, a.size FROM afiles a
+                "SELECT COUNT(*), SUM(size) FROM (SELECT a.id, {item_size} AS size FROM afiles a
                 LEFT JOIN afolders b ON a.folder_id = b.id
                 LEFT JOIN albums c ON b.album_id = c.id
                 {}{}{} GROUP BY a.id)",
-                collection_join, joins, where_clause
+                collection_join, joins, where_clause,
+                item_size = Self::ITEM_SIZE_SQL
             )
         } else {
             format!(
@@ -4051,7 +4075,7 @@ impl AFile {
         let sql = format!(
             "SELECT group_id, group_id AS label, COUNT(*), COALESCE(SUM(size), 0)
              FROM (
-                SELECT DISTINCT a.id, a.size, {group_id_expr} AS group_id, {sort_expr} AS group_sort
+                SELECT DISTINCT a.id, {item_size} AS size, {group_id_expr} AS group_id, {sort_expr} AS group_sort
                 FROM afiles a
                 LEFT JOIN afolders b ON a.folder_id = b.id
                 LEFT JOIN albums c ON b.album_id = c.id
@@ -4060,7 +4084,8 @@ impl AFile {
              )
              GROUP BY group_id
              ORDER BY {}",
-            Self::group_order_clause(params)
+            Self::group_order_clause(params),
+            item_size = Self::ITEM_SIZE_SQL
         );
         let mut final_params: Vec<&dyn ToSql> = sql_params.iter().map(|p| p.as_ref()).collect();
         final_params.push(&collection_id);
@@ -4519,10 +4544,7 @@ impl AFile {
                 // for the mark-and-sweep deletion logic.
                 if let Some(file_id) = file.id {
                     let _ = Self::update_column(file_id, "last_scan_time", &last_scan_time);
-                    if file
-                        .comments
-                        .as_deref()
-                        .is_none_or(|comment| comment.trim().is_empty())
+                    if file.comments.is_none()
                     {
                         if let Some(comment) = t_ai_png::extract_comment(file_path) {
                             if let Ok(conn) = open_conn() {
@@ -4541,6 +4563,7 @@ impl AFile {
                         file_path,
                         crate::metadata::xmp::XmpImportMode::RescanNonDestructive,
                         None,
+                        None,
                     )? {
                         if let Some(refreshed) = Self::get_file_info(file_id)? {
                             file = refreshed;
@@ -4555,6 +4578,13 @@ impl AFile {
         let mut new_file_struct =
             Self::new_with_raw_info(folder_id, file_path, file_type, raw_info)?;
         new_file_struct.last_scan_time = Some(last_scan_time);
+        let embedded_text = crate::metadata::xmp::is_xmp_import_enabled().then(|| [
+            new_file_struct.e_title.take(),
+            new_file_struct.e_headline.take(),
+            new_file_struct.e_artist.take(),
+            new_file_struct.e_copyright.take(),
+            new_file_struct.comments.take(),
+        ]);
         let inserted = new_file_struct.insert()?;
 
         // A concurrent folder sync or album scan may have inserted the same
@@ -4573,6 +4603,7 @@ impl AFile {
                     file_path,
                     crate::metadata::xmp::XmpImportMode::InitialScan,
                     Some(new_file_struct.e_software.as_deref()),
+                    embedded_text.as_ref(),
                 )? {
                     if let Some(refreshed) = Self::fetch(folder_id, file_path)? {
                         return Ok((refreshed, 1));
@@ -4636,25 +4667,104 @@ impl AFile {
         Ok(files)
     }
 
+    /// Whether any catalog media row in a folder shares the sidecar's stem.
+    /// This catches cloud-only owners that are absent from the filesystem scan.
+    pub fn has_other_media_owner(folder_path: &str, stem: &str) -> Result<bool, String> {
+        let conn = open_conn()?;
+        conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM afiles a JOIN afolders f ON f.id = a.folder_id
+                WHERE f.path = ?1
+                  AND (lower(a.name) = lower(?2) OR lower(a.name) LIKE lower(?2) || '.%')
+            )",
+            params![folder_path, stem],
+            |row| row.get::<_, bool>(0),
+        ).map_err(|e| e.to_string())
+    }
+
+    /// Return primary media rows that still reference the given companion ids.
+    /// Used by deletion cleanup so a client request cannot orphan a retained
+    /// RAW/Live Photo sidecar or its metadata.
+    pub fn primary_files_for_companions(companion_ids: &[i64]) -> Result<Vec<(i64, String, i64)>, String> {
+        let mut ids = companion_ids.iter().copied().filter(|id| *id > 0).collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids.dedup();
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = open_conn()?;
+        let mut owners = Vec::new();
+        for ids in ids.chunks(500) {
+            let placeholders = std::iter::repeat_n("?", ids.len()).collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT a.id, f.path, a.name, a.live_photo_video_id
+                 FROM afiles a JOIN afolders f ON f.id = a.folder_id
+                 WHERE a.live_photo_video_id IN ({placeholders})
+                   AND a.media_subtype IN ('raw_jpeg_pair', 'live_photo')"
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(ids.iter()), |row| {
+                let folder: String = row.get(1)?;
+                let name: String = row.get(2)?;
+                Ok((row.get(0)?, t_utils::get_file_path(&folder, &name), row.get(3)?))
+            }).map_err(|e| e.to_string())?;
+            for row in rows {
+                owners.push(row.map_err(|e| e.to_string())?);
+            }
+        }
+        Ok(owners)
+    }
+
+    fn mark_metadata_import_failed(
+        conn: &Connection,
+        file_id: i64,
+        embedded_text: [Option<String>; 5],
+    ) -> Result<(), String> {
+        let [title, headline, artist, copyright, description] = embedded_text;
+        conn.execute(
+            "UPDATE afiles SET metadata_pending=1,
+                e_title=COALESCE(e_title, NULLIF(?2, '')),
+                e_headline=COALESCE(e_headline, NULLIF(?3, '')),
+                e_artist=COALESCE(e_artist, NULLIF(?4, '')),
+                e_copyright=COALESCE(e_copyright, NULLIF(?5, '')),
+                comments=COALESCE(comments, NULLIF(?6, ''))
+             WHERE id=?1",
+            params![file_id, title, headline, artist, copyright, description],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     fn import_scanned_xmp(
         file_id: i64,
         file_path: &str,
         mode: crate::metadata::xmp::XmpImportMode,
         extracted_software: Option<Option<&str>>,
+        embedded_text: Option<&[Option<String>; 5]>,
     ) -> Result<bool, String> {
         if !crate::metadata::xmp::is_xmp_import_enabled() {
             return Ok(false);
         }
         let conn = open_conn()?;
-        match crate::metadata::xmp::import_with_system(
-            file_id,
-            file_path,
-            &conn,
-            mode,
-            None,
-            extracted_software,
-            None,
-        ) {
+        let result = if let Some(text) = embedded_text {
+            crate::metadata::xmp::import_initial_scan(
+                file_id,
+                file_path,
+                &conn,
+                extracted_software,
+                text[4].as_deref(),
+            )
+        } else {
+            crate::metadata::xmp::import_with_system(
+                file_id,
+                file_path,
+                &conn,
+                mode,
+                None,
+                extracted_software,
+                None,
+            )
+        };
+        match result {
             Ok(changed) => {
                 if changed {
                     // The imported description has to be findable right away.
@@ -4665,11 +4775,11 @@ impl AFile {
                 Ok(changed)
             }
             Err(error) => {
-                conn.execute(
-                    "UPDATE afiles SET metadata_pending=1 WHERE id=?1",
-                    params![file_id],
-                )
-                .map_err(|e| e.to_string())?;
+                Self::mark_metadata_import_failed(
+                    &conn,
+                    file_id,
+                    embedded_text.cloned().unwrap_or_default(),
+                )?;
                 remember_refresh_failure(
                     refresh_failure_key("metadata", file_id),
                     metadata_failure_version(file_path),
@@ -4687,7 +4797,6 @@ impl AFile {
     /// Called under the file's generation guard by scan/refresh/viewport work.
     pub(crate) fn refresh_metadata(
         file_id: i64,
-        force_download: bool,
         force_metadata: bool,
     ) -> Result<MetadataRefresh, String> {
         let old = Self::get_file_info(file_id)?.ok_or("File not found")?;
@@ -4701,7 +4810,7 @@ impl AFile {
             });
         }
         let info = fs::metadata(path).map_err(|e| e.to_string())?;
-        let skipped = !force_download && t_utils::is_cloud_only(&info);
+        let skipped = t_utils::is_cloud_only(&info);
         let checked = chrono::Utc::now().timestamp_millis();
         let _scan = crate::metadata::xmp::sidecar_scan(checked);
         let version = metadata_failure_version(path);
@@ -4719,7 +4828,7 @@ impl AFile {
                 return Err(message);
             }
         }
-        if !skipped && (force_download || force_metadata || old.needs_extraction(&info)) {
+        if !skipped && (force_metadata || old.needs_extraction(&info)) {
             let (updated, warning) =
                 match Self::update_file_info_with_xmp_error(file_id, path, checked) {
                     Ok(result) => result,
@@ -4739,7 +4848,7 @@ impl AFile {
             }
             let file = updated.ok_or("File disappeared during refresh")?;
             return Ok(MetadataRefresh {
-                size_delta: file.size - old.size,
+                size_delta: Self::item_size(&file) - Self::item_size(&old),
                 file,
                 skipped: false,
                 warning,
@@ -4800,7 +4909,7 @@ impl AFile {
         Self::update_column(file_id, "last_scan_time", &checked)?;
         let file = Self::get_file_info(file_id)?.ok_or("File disappeared during refresh")?;
         Ok(MetadataRefresh {
-            size_delta: file.size - old.size,
+            size_delta: Self::item_size(&file) - Self::item_size(&old),
             file,
             skipped,
             warning,
@@ -4905,10 +5014,7 @@ impl AFile {
         new_file_info.is_favorite = old_file_info.is_favorite;
         new_file_info.rating = old_file_info.rating;
         new_file_info.rotate = old_file_info.rotate;
-        if old_file_info
-            .comments
-            .as_deref()
-            .is_some_and(|comment| !comment.trim().is_empty())
+        if old_file_info.comments.is_some()
         {
             new_file_info.comments = old_file_info.comments;
         }
@@ -4933,11 +5039,15 @@ impl AFile {
         // successful values if the sidecar cannot be imported after extraction.
         let import_xmp = crate::metadata::xmp::is_xmp_import_enabled();
         let mut extracted_software = None;
+        let mut embedded_text = Default::default();
         if import_xmp {
-            new_file_info.e_title = old_file_info.e_title.clone();
-            new_file_info.e_headline = old_file_info.e_headline.clone();
-            new_file_info.e_artist = old_file_info.e_artist.clone();
-            new_file_info.e_copyright = old_file_info.e_copyright.clone();
+            embedded_text = [
+                new_file_info.e_title.take(),
+                new_file_info.e_headline.take(),
+                new_file_info.e_artist.take(),
+                new_file_info.e_copyright.take(),
+                None,
+            ];
             extracted_software = std::mem::replace(
                 &mut new_file_info.e_software,
                 old_file_info.e_software.clone(),
@@ -4970,7 +5080,7 @@ impl AFile {
                 })
             }) {
                 // Keep successful metadata, but make the failed import retryable.
-                Self::update_column(file_id, "metadata_pending", &true)?;
+                Self::mark_metadata_import_failed(&*open_conn()?, file_id, embedded_text)?;
                 let message = format!("XMP import failed: {error}");
                 remember_refresh_failure(
                     refresh_failure_key("metadata", file_id),
@@ -5673,13 +5783,46 @@ impl AFile {
     }
 
     pub fn live_photo_component_files(file_id: i64) -> Result<Vec<Self>, String> {
+        Self::grouped_component_files(file_id, true)
+    }
+
+    pub(crate) fn grouped_component_files(file_id: i64, group_raw_pairs: bool) -> Result<Vec<Self>, String> {
         let Some(file) = Self::get_file_info(file_id)? else {
             return Ok(Vec::new());
         };
+        if file.media_subtype.as_deref() == Some("raw_jpeg_pair") && !group_raw_pairs {
+            return Ok(Vec::new());
+        }
         let Some(video_id) = file.live_photo_video_id.filter(|id| *id > 0) else {
             return Ok(Vec::new());
         };
-        Self::get_files_by_ids(&[video_id])
+        let mut components = Self::get_files_by_ids(&[video_id])?;
+        if file.media_subtype.as_deref() == Some("raw_jpeg_pair") {
+            components.retain(|component| component.media_subtype.as_deref() != Some("live_photo"));
+        }
+        Ok(components)
+    }
+
+    pub(crate) fn reconcile_raw_jpeg_pairs(enabled: bool) -> Result<(), String> {
+        if !enabled {
+            open_conn()?.execute(
+                "UPDATE afiles SET media_subtype = NULL, live_photo_video_id = NULL
+                 WHERE media_subtype = 'raw_jpeg_pair'",
+                [],
+            ).map_err(|error| error.to_string())?;
+            return Ok(());
+        }
+        // Visit every folder so pairs whose companion disappeared are cleared,
+        // not only the folders that still have both file types.
+        let folders = AFolder::get_all()?
+            .into_iter()
+            .filter(|folder| folder.album_id > 0)
+            .filter_map(|folder| folder.id)
+            .collect::<Vec<_>>();
+        for folder_id in folders {
+            Self::pair_raw_jpeg_in_folder(folder_id)?;
+        }
+        Ok(())
     }
 
     pub fn pair_raw_jpeg_in_folder(folder_id: i64) -> Result<usize, String> {
@@ -5712,10 +5855,12 @@ impl AFile {
             if !file.album_visible {
                 continue;
             }
-            if matches!(
-                ext(&file.name).as_str(),
-                "jpg" | "jpeg" | "heic" | "heif" | "hif"
-            ) {
+            if file.media_subtype.as_deref() != Some("live_photo")
+                && matches!(
+                    ext(&file.name).as_str(),
+                    "jpg" | "jpeg" | "heic" | "heif" | "hif"
+                )
+            {
                 if let (Some(id), Some(file_stem)) = (file.id, stem(&file.name)) {
                     companions.entry(file_stem).or_default().push(id);
                 }
@@ -5796,7 +5941,7 @@ impl AFile {
         path: &str,
         width: u32,
         height: u32,
-    ) -> Result<(), String> {
+    ) -> Result<usize, String> {
         let path = Path::new(path);
         let parent = path
             .parent()
@@ -5813,8 +5958,7 @@ impl AFile {
             AND (width IS NOT ?1 OR height IS NOT ?2)",
                 params![width, height, name.as_ref(), album_id, parent.as_ref()],
             )
-            .map_err(|e| e.to_string())?;
-        Ok(())
+            .map_err(|e| e.to_string())
     }
 
     /// delete unseen files in an album (database only)
@@ -6077,11 +6221,12 @@ impl AFile {
         let sql = if params.person_id > 0 {
             // Use subquery with GROUP BY to handle potential duplicate rows when joining faces
             format!(
-                "SELECT COUNT(*), SUM(size) FROM (SELECT a.id, a.size FROM afiles a
+                "SELECT COUNT(*), SUM(size) FROM (SELECT a.id, {item_size} AS size FROM afiles a
                 LEFT JOIN afolders b ON a.folder_id = b.id
                 LEFT JOIN albums c ON b.album_id = c.id
                 {}{} GROUP BY a.id)",
-                joins, where_clause
+                joins, where_clause,
+                item_size = Self::ITEM_SIZE_SQL
             )
         } else {
             format!("{}{}{}", Self::build_count_query(), joins, where_clause)
@@ -6249,7 +6394,7 @@ impl AFile {
         let sql = format!(
             "SELECT group_id, group_id AS label, COUNT(*), COALESCE(SUM(size), 0)
              FROM (
-                SELECT DISTINCT a.id, a.size, {group_id_expr} AS group_id, {sort_expr} AS group_sort
+                SELECT DISTINCT a.id, {item_size} AS size, {group_id_expr} AS group_id, {sort_expr} AS group_sort
                 FROM afiles a
                 LEFT JOIN afolders b ON a.folder_id = b.id
                 LEFT JOIN albums c ON b.album_id = c.id
@@ -6257,7 +6402,8 @@ impl AFile {
              )
              GROUP BY group_id
              ORDER BY {}",
-            Self::group_order_clause(params)
+            Self::group_order_clause(params),
+            item_size = Self::ITEM_SIZE_SQL
         );
         let final_params: Vec<&dyn ToSql> = sql_params.iter().map(|p| p.as_ref()).collect();
         let conn = open_conn()?;
@@ -6548,7 +6694,7 @@ impl AFile {
             1 => format!("a.created_at {}, a.id {}", dir, dir),
             2 => format!("a.modified_at {}, a.id {}", dir, dir),
             3 => format!("a.name_pinyin {}, a.id {}", dir, dir),
-            4 => format!("a.size {}, a.id {}", dir, dir),
+            4 => format!("{} {}, a.id {}", Self::ITEM_SIZE_SQL, dir, dir),
             5 => format!("a.width {}, a.height {}, a.id {}", dir, dir, dir),
             6 => format!("a.duration {}, a.id {}", dir, dir),
             // A seed makes random order stable for every request in one virtualized
@@ -6954,7 +7100,7 @@ impl AFile {
             }
             "size" => {
                 let mut conditions = Vec::new();
-                Self::push_numeric_rule(&mut conditions, sql_params, "a.size", operator, value)?;
+                Self::push_numeric_rule(&mut conditions, sql_params, Self::ITEM_SIZE_SQL, operator, value)?;
                 Ok(conditions.pop().unwrap_or_else(|| "1 = 1".to_string()))
             }
             "width" => {
@@ -7202,11 +7348,12 @@ impl AFile {
         let (joins, where_clause, sql_params, needs_group) = Self::build_smart_query_parts(params)?;
         let sql = if needs_group {
             format!(
-                "SELECT COUNT(*), SUM(size) FROM (SELECT a.id, a.size FROM afiles a
+                "SELECT COUNT(*), SUM(size) FROM (SELECT a.id, {item_size} AS size FROM afiles a
                 LEFT JOIN afolders b ON a.folder_id = b.id
                 LEFT JOIN albums c ON b.album_id = c.id
                 {}{} GROUP BY a.id)",
-                joins, where_clause
+                joins, where_clause,
+                item_size = Self::ITEM_SIZE_SQL
             )
         } else {
             format!("{}{}{}", Self::build_count_query(), joins, where_clause)
@@ -7254,7 +7401,7 @@ impl AFile {
         let sql = format!(
             "SELECT group_id, group_id AS label, COUNT(*), COALESCE(SUM(size), 0)
              FROM (
-                SELECT DISTINCT a.id, a.size, {group_id_expr} AS group_id, {sort_expr} AS group_sort
+                SELECT DISTINCT a.id, {item_size} AS size, {group_id_expr} AS group_id, {sort_expr} AS group_sort
                 FROM afiles a
                 LEFT JOIN afolders b ON a.folder_id = b.id
                 LEFT JOIN albums c ON b.album_id = c.id
@@ -7262,7 +7409,8 @@ impl AFile {
              )
              GROUP BY group_id
              ORDER BY {}",
-            Self::smart_group_order_clause(params)
+            Self::smart_group_order_clause(params),
+            item_size = Self::ITEM_SIZE_SQL
         );
         let final_params: Vec<&dyn ToSql> = sql_params.iter().map(|p| p.as_ref()).collect();
         let conn = open_conn()?;
@@ -7689,6 +7837,15 @@ impl AFile {
             Self::build_base_query()
         );
         Self::query_files(&sql, &[&folder_id])
+    }
+
+    pub(crate) fn file_stats_in_folder(folder_id: i64) -> Result<HashMap<String, (i64, Option<i64>)>, String> {
+        let conn = open_conn()?;
+        let mut stmt = conn.prepare("SELECT name, size, modified_at FROM afiles WHERE folder_id = ?1")
+            .map_err(|error| error.to_string())?;
+        let rows = stmt.query_map([folder_id], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))
+            .map_err(|error| error.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|error| error.to_string())
     }
 
     /// Recheck only the opened folder; avoid loading full catalog records or
@@ -9341,7 +9498,7 @@ impl AThumb {
         force_metadata: bool,
     ) -> Result<(MetadataRefresh, Option<String>), String> {
         Self::with_generation_guard(file_id, size, || {
-            let mut refresh = AFile::refresh_metadata(file_id, false, force_metadata)?;
+            let mut refresh = AFile::refresh_metadata(file_id, force_metadata)?;
             if refresh.skipped {
                 return Ok((refresh, None));
             }
@@ -9508,6 +9665,8 @@ pub struct ATag {
     pub count: Option<i64>,
     pub parent_id: Option<i64>,
     pub path: String,
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -9531,6 +9690,7 @@ impl ATag {
             count: row.get(2)?,
             parent_id: row.get(3)?,
             path: row.get(4)?,
+            source: row.get(5)?,
         })
     }
 
@@ -9549,6 +9709,7 @@ impl ATag {
         .map_err(|e| e.to_string())?;
         let id = tx.last_insert_rowid();
         let path = crate::t_tags::path(&tx, id)?;
+        crate::t_tags::clear_deleted_path(&tx, &path, parent_id.is_none())?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(Self {
             id,
@@ -9556,6 +9717,7 @@ impl ATag {
             parent_id,
             path,
             count: Some(0),
+            source: None,
         })
     }
 
@@ -9571,7 +9733,7 @@ impl ATag {
             _ => "atags.name COLLATE NOCASE ASC",
         };
         let query = format!(
-            "{} SELECT atags.id,atags.name,0,atags.parent_id,paths.path FROM atags JOIN paths ON paths.id=atags.id ORDER BY {order_clause},atags.id",
+            "{} SELECT atags.id,atags.name,0,atags.parent_id,paths.path,atags.source FROM atags JOIN paths ON paths.id=atags.id ORDER BY {order_clause},atags.id",
             crate::t_tags::PATHS
         );
         let mut stmt = conn.prepare(query.as_str()).map_err(|e| e.to_string())?;
@@ -9623,7 +9785,7 @@ impl ATag {
     pub fn get_tags_for_file(file_id: i64) -> Result<Vec<Self>, String> {
         let conn = open_conn()?;
         let query = format!(
-            "{} SELECT id,name,0,parent_id,path FROM paths WHERE ancestor_id IS NULL ORDER BY path COLLATE NOCASE,id",
+            "{} SELECT paths.id,paths.name,0,paths.parent_id,paths.path,atags.source FROM paths JOIN atags ON atags.id=paths.id WHERE paths.ancestor_id IS NULL ORDER BY paths.path COLLATE NOCASE,paths.id",
             crate::t_tags::FILE_PATHS
         );
         let mut stmt = conn.prepare(&query).map_err(|e| e.to_string())?;
@@ -9851,6 +10013,12 @@ impl ATag {
     /// Delete a tag on an existing connection.
     pub fn delete_with_conn(conn: &mut Connection, tag_id: i64) -> Result<usize, String> {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
+        if !tx.query_row("SELECT EXISTS(SELECT 1 FROM atags WHERE id=?1)", [tag_id], |row| row.get::<_, bool>(0))
+            .map_err(|e| e.to_string())?
+        {
+            return Ok(0);
+        }
+        crate::t_tags::remember_deleted_subtree(&tx, tag_id)?;
         let file_ids = {
             let mut stmt = tx
                 .prepare(&format!("{} SELECT DISTINCT ft.file_id FROM afile_tags ft JOIN descendants d ON d.id=ft.tag_id", crate::t_tags::DESCENDANTS))
@@ -9917,6 +10085,7 @@ impl ATag {
                 params![name, tag_id],
             )
             .map_err(|e| e.to_string())?;
+        crate::t_tags::clear_deleted_subtree(&tx, tag_id)?;
         // The renamed tag and the tags below it have to be findable right away.
         for file_id in files_of_tag_tree(&tx, tag_id)? {
             if let Err(e) = crate::t_fts::upsert_doc(&tx, file_id) {
@@ -11303,8 +11472,17 @@ fn is_corruption_error(err: &str) -> bool {
 /// A pooled connection that returns to the global pool on Drop.
 pub(crate) struct PooledConn(Option<(String, Connection)>, t_storage::DbConnectionLease);
 
+#[cfg(test)]
+thread_local! {
+    pub(crate) static TEST_DB_PATH: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
 impl Drop for PooledConn {
     fn drop(&mut self) {
+        #[cfg(test)]
+        if TEST_DB_PATH.with(|path| path.borrow().is_some()) {
+            return;
+        }
         if let Some(entry) = self.0.take() {
             if let Ok(mut pool) = CONN_POOL.lock() {
                 pool.push(entry);
@@ -11389,6 +11567,12 @@ pub(crate) fn open_readwrite_at(path: &str) -> Result<Connection, String> {
 
 pub(crate) fn open_conn() -> Result<PooledConn, String> {
     let lease = t_storage::DbConnectionLease::acquire()?;
+    #[cfg(test)]
+    if let Some(path) = TEST_DB_PATH.with(|path| path.borrow().clone()) {
+        let conn = Connection::open(&path).map_err(|e| e.to_string())?;
+        setup_conn(&conn)?;
+        return Ok(PooledConn(Some((path, conn)), lease));
+    }
     let current_path = t_storage::get_current_db_path()
         .map_err(|e| format!("Failed to get the database file path: {}", e))?;
     if is_path_corrupted(&current_path) {
@@ -12357,6 +12541,29 @@ mod album_filter_tests {
     }
 
     #[test]
+    fn paired_item_sizes_sum_components_without_changing_physical_sizes() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE afiles(id INTEGER PRIMARY KEY, size INTEGER, live_photo_video_id INTEGER);
+             INSERT INTO afiles VALUES (1,100,2),(2,200,NULL),(3,400,4),(4,50,NULL),(5,25,NULL);",
+        ).unwrap();
+        let query = format!(
+            "SELECT a.size, {} FROM afiles a WHERE a.id IN (1,3,5) ORDER BY a.id",
+            AFile::ITEM_SIZE_SQL,
+        );
+        let mut stmt = conn.prepare(&query).unwrap();
+        let sizes = stmt.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+            .unwrap().collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(sizes, [(100, 300), (400, 450), (25, 25)]);
+        conn.execute("UPDATE afiles SET live_photo_video_id = NULL WHERE id = 3", []).unwrap();
+        let size: i64 = conn.query_row(
+            &format!("SELECT {} FROM afiles a WHERE id = 3", AFile::ITEM_SIZE_SQL),
+            [], |row| row.get(0),
+        ).unwrap();
+        assert_eq!(size, 400);
+    }
+
+    #[test]
     fn album_filters_keep_photos_when_paired_raw_is_excluded() {
         let conn = fixture();
         conn.execute("UPDATE albums SET file_types=1 WHERE id=1", [])
@@ -12696,6 +12903,49 @@ mod raw_display_cache_tests {
             key(RawPreviewMode::Embedded, 6),
             key(RawPreviewMode::Embedded, 1)
         );
+    }
+}
+
+#[cfg(test)]
+mod file_move_tests {
+    use super::*;
+
+    #[test]
+    fn moving_a_pair_uses_its_final_names_and_keeps_unreplaced_files() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE afiles(
+                 id INTEGER PRIMARY KEY, folder_id INTEGER, name TEXT, name_pinyin TEXT,
+                 UNIQUE(folder_id, name)
+             );
+             CREATE TABLE athumbs(file_id INTEGER);
+             INSERT INTO afiles VALUES
+                 (1,1,'A.NEF','old'), (2,1,'A.JPG','old'),
+                 (3,2,'A.NEF','existing'), (4,2,'A.JPG','existing'),
+                 (5,2,'A(1).NEF','replaced');
+             INSERT INTO athumbs VALUES (1), (4), (5);",
+        ).unwrap();
+        let moved = [(1, "/destination/A(1).NEF"), (2, "/destination/A(1).JPG")];
+        assert_eq!(AFile::update_moved_file_group_on(&mut conn, &moved, &[5], 2).unwrap(), 2);
+
+        for (id, name) in [(1, "A(1).NEF"), (2, "A(1).JPG")] {
+            let actual = conn.query_row(
+                "SELECT folder_id, name, name_pinyin FROM afiles WHERE id=?1",
+                [id],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+            ).unwrap();
+            assert_eq!(actual, (2, name.to_owned(), t_utils::natural_sort_key(&name.to_lowercase())));
+        }
+        let remaining = conn.query_row(
+            "SELECT COUNT(*) FROM afiles WHERE id IN (3,4)",
+            [],
+            |row| row.get::<_, i64>(0),
+        ).unwrap();
+        assert_eq!(remaining, 2);
+        let thumbs = conn.prepare("SELECT file_id FROM athumbs ORDER BY file_id").unwrap()
+            .query_map([], |row| row.get::<_, i64>(0)).unwrap()
+            .collect::<Result<Vec<_>, _>>().unwrap();
+        assert_eq!(thumbs, [1, 4]);
     }
 }
 
@@ -13091,9 +13341,9 @@ mod file_refresh_policy_tests {
             file.comments = Some("Keep this comment".into());
             file.insert().unwrap();
             let id = AFile::fetch(folder, path).unwrap().unwrap().id.unwrap();
-            let background = AFile::refresh_metadata(id, false, false).unwrap();
+            let background = AFile::refresh_metadata(id, false).unwrap();
             assert!(background.file.e_lens_model.is_none());
-            let refreshed = AFile::refresh_metadata(id, false, true).unwrap();
+            let refreshed = AFile::refresh_metadata(id, true).unwrap();
             assert!(!refreshed.skipped);
             assert_eq!(refreshed.size_delta, 0);
             assert_eq!(
@@ -13289,6 +13539,12 @@ mod fts_hook_tests {
                  file_id INTEGER NOT NULL,
                  tag_id INTEGER NOT NULL,
                  PRIMARY KEY(file_id, tag_id)
+             );
+             CREATE TABLE axmp_tag_paths(
+                 kind INTEGER NOT NULL,
+                 path TEXT NOT NULL COLLATE NOCASE,
+                 tag_id INTEGER REFERENCES atags(id) ON DELETE SET NULL,
+                 PRIMARY KEY(kind, path)
              );
              CREATE TABLE axmp_imports(
                  file_id INTEGER PRIMARY KEY,

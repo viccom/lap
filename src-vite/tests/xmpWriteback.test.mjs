@@ -16,7 +16,8 @@ const deps = {
   libConfig: { album: { id: 1 }, activePane: 'album' }, SIDEBAR: { ALBUM: 1 },
   DEFAULT_PLATFORM: 'mac', getShortcutLabel: () => '', isWin: false,
   isOriginalUnavailable: file => !!file?.unavailable,
-  isOriginalStorageUnavailable: file => !!file?.unavailable, requiresOriginalAction,
+  isOriginalStorageUnavailable: file => !!file?.unavailable, requiresOriginalAction, requiresLocalContent: () => false,
+  isPreviewOnlyDocument: () => false,
 };
 const useFileMenuItems = new Function(...Object.keys(deps), menuCode + ';return useFileMenuItems;')(...Object.values(deps));
 
@@ -80,9 +81,10 @@ function transferFixture(options = {}) {
     if (options.commandError) throw options.commandError;
     return '/target/photo.jpg';
   };
-  const api = new Function('invoke', 'console', transferCode +
+  const api = new Function('invoke', 'console', 'config', transferCode +
     '; return { withFileTransferBatch, moveFile, copyFile, moveFileOutsideLibrary, renameFile };')(
-      invoke, { error: (...args) => errors.push(args), log() {} });
+      invoke, { error: (...args) => errors.push(args), log() {} },
+      { settings: { groupRawJpegPairs: false } });
   return { ...api, calls, errors };
 }
 

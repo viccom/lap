@@ -7,13 +7,13 @@
           ({{ tags.length.toLocaleString() }})</template
         ></span
       >
-      <SortMenuButton v-model="config.settings.tagSort" kind="category" />
       <TButton
-        :icon="IconAdd"
-        buttonSize="small"
-        :tooltip="$t('msgbox.new_tag.title')"
-        @click="clickAddTag()"
+      :icon="IconTagAdd"
+      buttonSize="small"
+      :tooltip="$t('msgbox.new_tag.title')"
+      @click="clickAddTag()"
       />
+      <SortMenuButton v-model="config.settings.tagSort" kind="category" />
     </div>
     <div v-if="tags.length > 0" class="mx-1 mb-2 px-1 shrink-0">
       <div
@@ -67,12 +67,14 @@
           <div
             :id="`tag-${tag.id}`"
             class="sidebar-item group select-none"
-            :class="{
-              'text-primary': libConfig.tag.id === tag.id,
-              'opacity-50': dragged === tag.id,
-              'bg-primary/10 ring-1 ring-inset ring-primary/40':
-                dropTarget === tag.id,
-            }"
+            :class="[
+              libConfig.tag.id === tag.id ? 'sidebar-item-selected' : 'sidebar-item-hover',
+              {
+                'opacity-50': dragged === tag.id,
+                'bg-primary/10 ring-1 ring-inset ring-primary/40':
+                  dropTarget === tag.id,
+              },
+            ]"
             :style="{ paddingLeft: `${4 + tag.depth * 16}px` }"
             :data-tag-drop-id="tag.id"
             tabindex="0"
@@ -165,6 +167,7 @@ import { emit as emitEvent, listen } from "@/common/transport";
 import { useI18n } from "vue-i18n";
 import { useToast } from "@/common/toast";
 import { useUIStore } from "@/stores/uiStore";
+import { useLibraryChangeRefresh } from "@/composables/useLibraryChangeRefresh";
 import { config, libConfig } from "@/common/config";
 import { SIDEBAR } from "@/common/constants";
 import {
@@ -184,7 +187,6 @@ import {
   type LibraryTag,
 } from "@/common/tagTree";
 import {
-  IconAdd,
   IconClose,
   IconMore,
   IconSearch,
@@ -345,7 +347,7 @@ async function saveEditor(value: string) {
 function tagMenu(tag: LibraryTag): any[] {
   return [
     {
-      label: t("tag.add_child"),
+      label: t("msgbox.new_tag.title"),
       icon: IconTagAdd,
       action: () => clickAddTag(tag.id),
     },
@@ -519,13 +521,15 @@ async function load() {
     if (current === request) loading.value = false;
   }
 }
+useLibraryChangeRefresh(load);
 onMounted(async () => {
-  const stop = await listen<{ source?: string }>(
+  const stop = await listen<{ source?: string; patchedTagId?: number; library?: string }>(
     "tags-changed",
     async (event) => {
       if (event.payload?.source === tagsChangeSource) return;
       await load();
-      if (!disposed && config.main.sidebarIndex === SIDEBAR.TAG)
+      if (!disposed && config.main.sidebarIndex === SIDEBAR.TAG
+        && !(event.payload?.library === libConfig._libraryId && event.payload?.patchedTagId === Number(libConfig.tag.id)))
         libConfig.tag.activateTick++;
     },
   );

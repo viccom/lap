@@ -30,6 +30,28 @@ const event = (overrides) => ({
 
 const cmd = (key, code, extra = {}) => event({ key, code, metaKey: true, ...extra });
 
+test("fullscreen follows the platform binding without intercepting Favorite", () => {
+  for (const platform of ["mac", "windows", "linux"]) {
+    const fullscreen = platform === "mac" ? cmd("f", "KeyF", { ctrlKey: true }) : event({ key: "F11" });
+    for (const context of ["content", "image-viewer"]) {
+      assert.deepEqual(findShortcutMatches(context, fullscreen, platform), ["view.toggleFullscreen"]);
+      assert.deepEqual(findShortcutMatches(context, event({ key: "f", code: "KeyF" }), platform), ["meta.favorite"]);
+    }
+  }
+});
+test("trash and permanent delete use distinct bindings", () => {
+  for (const platform of ["windows", "linux", "mac"]) {
+    const trash = event({ key: "Delete" });
+    const permanent = platform === "mac"
+      ? cmd("Backspace", "Backspace", { altKey: true })
+      : event({ key: "Delete", shiftKey: true });
+    assert.equal(matchesShortcut("file.trash", trash, platform), true);
+    assert.equal(matchesShortcut("file.deletePermanently", trash, platform), false);
+    assert.equal(matchesShortcut("file.trash", permanent, platform), false);
+    assert.equal(matchesShortcut("file.deletePermanently", permanent, platform), true);
+  }
+});
+
 test("QWERTY: Cmd-A selects all", () => {
   assert.equal(matchesShortcut("file.selectAll", cmd("a", "KeyA"), "mac"), true);
 });
@@ -147,5 +169,32 @@ test('macOS retains Shift-Cmd-C as copy while Windows and Linux reserve Ctrl-Shi
     const e = event({key:'C',code:'KeyC',ctrlKey:true,shiftKey:true});
     assert.equal(matchesShortcut('file.copy',e,platform),false);
     assert.equal(matchesShortcut('file.copyPath',e,platform),true);
+  }
+});
+
+test('editing, external opening and album moves have distinct bindings', () => {
+  for (const platform of ['mac', 'windows', 'linux']) {
+    const modifier = platform === 'mac' ? { metaKey: true } : { ctrlKey: true };
+    for (const [letter, shiftKey, action] of [
+      ['E', false, 'file.editImage'],
+      ['E', true, 'file.openExternalApp'],
+      ['M', true, 'file.moveTo'],
+      ['I', false, 'file.invertSelection'],
+    ]) {
+      const input = event({ key: letter.toLowerCase(), code: 'Key' + letter, ...modifier, shiftKey });
+      assert.deepEqual(findShortcutMatches('content', input, platform), [action]);
+    }
+    assert.deepEqual(findShortcutMatches('content', event({ key: 'i', code: 'KeyI' }), platform), ['meta.info']);
+    for (const context of ['content', 'media-viewer', 'image-viewer']) {
+      assert.deepEqual(findShortcutMatches(context, event({ key: 'm', code: 'KeyM' }), platform), ['meta.edit']);
+    }
+    for (const letter of ['A', 'D', 'E']) {
+      const input = event({ key: letter.toLowerCase(), code: 'Key' + letter });
+      assert.deepEqual(findShortcutMatches('content', input, platform), []);
+    }
+    for (const [letter, action] of [['A', 'view.toggleAfAreas'], ['R', 'view.cycleRawPreview']]) {
+      const input = event({ code: 'Key' + letter, altKey: true, key: platform === 'mac' ? (letter === 'A' ? 'å' : '®') : letter.toLowerCase() });
+      assert.deepEqual(findShortcutMatches('content', input, platform), [action]);
+    }
   }
 });
