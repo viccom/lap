@@ -281,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Inizia con un nuovo album",
-    "add_album_description": "Seleziona una cartella e lascia che Lap organizzi le tue foto e i tuoi video.",
+    "add_album_description": "Seleziona una cartella e lascia che lappp organizzi le tue foto e i tuoi video.",
     "smart_album_title": "Organizza con album intelligenti",
     "smart_album_description": "Usa le regole per raggruppare automaticamente le foto che corrispondono ai tuoi criteri.",
     "collection_title": "Raggruppa le foto in raccolte",
@@ -316,7 +316,7 @@
         "skip_once": "Ignora questo file e continua",
         "file_label": "Ultimo file scansionato",
         "message": "La scansione precedente non si è chiusa normalmente.",
-        "message_with_file": "L'attività di scansione precedente non si è interrotta correttamente.\n\nUltimo file scansionato:\n{file}\n\nSe continui, Lap ignorerà questo file una volta e riprenderà la scansione."
+        "message_with_file": "L'attività di scansione precedente non si è interrotta correttamente.\n\nUltimo file scansionato:\n{file}\n\nSe continui, lappp ignorerà questo file una volta e riprenderà la scansione."
       }
     },
     "mode": {
@@ -1411,7 +1411,7 @@
       "network": "Errore di rete durante il caricamento del video",
       "decode": "Errore di decodifica del video",
       "format": "Formato video non supportato o file danneggiato.",
-      "external_player_recommended": "Questo video richiede una transcodifica di compatibilità prima di poter essere riprodotto qui. Per i video lunghi, Lap consiglia di usare un lettore esterno invece di attendere l'elaborazione in background.",
+      "external_player_recommended": "Questo video richiede una transcodifica di compatibilità prima di poter essere riprodotto qui. Per i video lunghi, lappp consiglia di usare un lettore esterno invece di attendere l'elaborazione in background.",
       "unsafe_webview": "Questo formato video non è supportato per la riproduzione.",
       "open_in_external_app": "Apri nel lettore esterno",
       "open_in_external_app_named": "Apri video in {app}...",
@@ -1668,7 +1668,7 @@
       "multilingual_model_download_message": "Il modello di ricerca foto multilingue non è installato. Scaricalo per abilitare la ricerca in oltre 50 lingue.",
       "download": "Scarica",
       "downloading_multilingual_model": "Download del modello multilingue",
-      "multilingual_model_download_success": "Il modello di ricerca multilingue è pronto. Riavvia Lap per usarlo.",
+      "multilingual_model_download_success": "Il modello di ricerca multilingue è pronto. Riavvia lappp per usarlo.",
       "multilingual_model_download_failed": "Impossibile scaricare il modello di ricerca multilingue",
       "similarity": "Somiglianza della ricerca",
       "similarity_hint": "Controlla le corrispondenze visive per le ricerche per parola chiave",

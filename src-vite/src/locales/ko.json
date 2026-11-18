@@ -281,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "새 앨범으로 시작하세요",
-    "add_album_description": "폴더를 선택하고 Lap이 사진과 동영상을 정리하도록 하세요.",
+    "add_album_description": "폴더를 선택하고 lappp이 사진과 동영상을 정리하도록 하세요.",
     "smart_album_title": "스마트 앨범으로 정리",
     "smart_album_description": "규칙에 맞는 사진을 자동으로 그룹화합니다.",
     "collection_title": "컬렉션에 사진 모으기",
@@ -333,7 +333,7 @@
         "skip_once": "이 파일을 건너뛰고 계속",
         "file_label": "마지막으로 스캔한 파일",
         "message": "이전 스캔이 정상적으로 종료되지 않았습니다.",
-        "message_with_file": "이전 스캔이 정상적으로 종료되지 않았습니다.\n\n마지막으로 스캔한 파일:\n{file}\n\n계속하면 Lap이 이 파일을 한 번 건너뛰고 스캔을 다시 시작합니다."
+        "message_with_file": "이전 스캔이 정상적으로 종료되지 않았습니다.\n\n마지막으로 스캔한 파일:\n{file}\n\n계속하면 lappp이 이 파일을 한 번 건너뛰고 스캔을 다시 시작합니다."
       }
     }
   },
@@ -1386,7 +1386,7 @@
     "loading_compatible": "호환 재생을 준비 중...",
     "failed": "재생 실패",
     "errors": {
-      "playback_failed": "재생 실패",
+      "playback_failed": "Video playback failed",
       "aborted": "중단됨",
       "network": "네트워크 오류",
       "decode": "디코딩 오류",
@@ -1398,8 +1398,7 @@
       "use_external": "지원하지 않는 형식을 열려면 설정에서 외부 플레이어를 구성하세요.",
       "use_external_generic": "외부 플레이어에서 열어보세요.",
       "use_external_with_app": "대신 {app}에서 열어보세요.",
-      "unknown": "알 수 없는 오류",
-      "playback_failed": "Video playback failed"
+      "unknown": "알 수 없는 오류"
     }
   },
   "settings": {
@@ -1641,7 +1640,7 @@
       "multilingual_model_download_message": "다국어 사진 검색 모델이 설치되어 있지 않습니다. 다운로드하면 50개 이상 언어 검색을 사용할 수 있습니다.",
       "download": "다운로드",
       "downloading_multilingual_model": "다국어 모델 다운로드 중",
-      "multilingual_model_download_success": "다국어 검색 모델이 준비되었습니다. 사용하려면 Lap을 다시 시작하세요.",
+      "multilingual_model_download_success": "다국어 검색 모델이 준비되었습니다. 사용하려면 lappp을 다시 시작하세요.",
       "multilingual_model_download_failed": "다국어 검색 모델 다운로드 실패",
       "similarity": "검색 유사도",
       "similarity_hint": "키워드 검색의 시각적 일치 결과를 조절합니다",

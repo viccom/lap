@@ -281,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Zacznij od nowego albumu",
-    "add_album_description": "Wybierz folder i pozwól Lap uporządkować Twoje zdjęcia i filmy.",
+    "add_album_description": "Wybierz folder i pozwól lappp uporządkować Twoje zdjęcia i filmy.",
     "smart_album_title": "Porządkuj dzięki inteligentnym albumom",
     "smart_album_description": "Użyj reguł, aby automatycznie grupować zdjęcia spełniające Twoje kryteria.",
     "collection_title": "Grupuj zdjęcia w kolekcjach",
@@ -316,7 +316,7 @@
         "skip_once": "Pomiń ten plik i kontynuuj",
         "file_label": "Ostatnio skanowany plik",
         "message": "Poprzednie skanowanie nie zostało zakończone normalnie.",
-        "message_with_file": "Poprzednie zadanie skanowania nie zostało poprawnie zakończone.\n\nOstatnio skanowany plik:\n{file}\n\nJeśli kontynuujesz, Lap pominie ten plik jednokrotnie i wznowi skanowanie."
+        "message_with_file": "Poprzednie zadanie skanowania nie zostało poprawnie zakończone.\n\nOstatnio skanowany plik:\n{file}\n\nJeśli kontynuujesz, lappp pominie ten plik jednokrotnie i wznowi skanowanie."
       }
     },
     "mode": {
@@ -1411,7 +1411,7 @@
       "network": "Błąd sieci podczas wczytywania filmu",
       "decode": "Błąd dekodowania filmu",
       "format": "Nieobsługiwany format filmu lub plik jest uszkodzony.",
-      "external_player_recommended": "Ten film wymaga transkodowania pod kątem zgodności, zanim będzie można go tutaj odtworzyć. W przypadku długich filmów Lap zaleca użycie zewnętrznego odtwarzacza zamiast czekać na przetwarzanie w tle.",
+      "external_player_recommended": "Ten film wymaga transkodowania pod kątem zgodności, zanim będzie można go tutaj odtworzyć. W przypadku długich filmów lappp zaleca użycie zewnętrznego odtwarzacza zamiast czekać na przetwarzanie w tle.",
       "unsafe_webview": "Ten format filmu nie jest obsługiwany przy odtwarzaniu.",
       "open_in_external_app": "Otwórz w zewnętrznym odtwarzaczu",
       "open_in_external_app_named": "Otwórz film w {app}...",
@@ -1668,7 +1668,7 @@
       "multilingual_model_download_message": "Wielojęzyczny model wyszukiwania zdjęć nie jest zainstalowany. Pobierz go, aby włączyć wyszukiwanie w ponad 50 językach.",
       "download": "Pobierz",
       "downloading_multilingual_model": "Pobieranie modelu wielojęzycznego",
-      "multilingual_model_download_success": "Wielojęzyczny model wyszukiwania jest gotowy. Uruchom Lap ponownie, aby go użyć.",
+      "multilingual_model_download_success": "Wielojęzyczny model wyszukiwania jest gotowy. Uruchom lappp ponownie, aby go użyć.",
       "multilingual_model_download_failed": "Nie udało się pobrać wielojęzycznego modelu wyszukiwania",
       "similarity": "Podobieństwo wyszukiwania",
       "similarity_hint": "Kontroluje dopasowania wizualne dla wyszukiwania słowami kluczowymi",

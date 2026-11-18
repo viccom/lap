@@ -281,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Začněte novým albem",
-    "add_album_description": "Vyberte složku a nechte Lap uspořádat vaše fotografie a videa.",
+    "add_album_description": "Vyberte složku a nechte lappp uspořádat vaše fotografie a videa.",
     "smart_album_title": "Organizujte pomocí chytrých alb",
     "smart_album_description": "Pomocí pravidel automaticky seskupujte fotografie, které odpovídají vašim kritériím.",
     "collection_title": "Seskupujte fotografie do kolekcí",
@@ -316,7 +316,7 @@
         "skip_once": "Přeskočit tento soubor a pokračovat",
         "file_label": "Poslední skenovaný soubor",
         "message": "Předchozí skenování nebylo řádně ukončeno.",
-        "message_with_file": "Předchozí úloha skenování nebyla řádně ukončena.\n\nPoslední skenovaný soubor:\n{file}\n\nPokud budete pokračovat, Lap tento soubor jednou přeskočí a obnoví skenování."
+        "message_with_file": "Předchozí úloha skenování nebyla řádně ukončena.\n\nPoslední skenovaný soubor:\n{file}\n\nPokud budete pokračovat, lappp tento soubor jednou přeskočí a obnoví skenování."
       }
     },
     "mode": {
@@ -1411,7 +1411,7 @@
       "network": "Síťová chyba při načítání videa",
       "decode": "Chyba dekódování videa",
       "format": "Formát videa není podporován nebo je soubor poškozený.",
-      "external_player_recommended": "Aby bylo možné toto video přehrát, je nejprve nutný převod do kompatibilního formátu. U dlouhých videí Lap doporučuje použít externí přehrávač místo čekání na zpracování na pozadí.",
+      "external_player_recommended": "Aby bylo možné toto video přehrát, je nejprve nutný převod do kompatibilního formátu. U dlouhých videí lappp doporučuje použít externí přehrávač místo čekání na zpracování na pozadí.",
       "unsafe_webview": "Tento formát videa není podporován pro přehrávání.",
       "open_in_external_app": "Otevřít v externím přehrávači",
       "open_in_external_app_named": "Otevřít video v aplikaci {app}…",
@@ -1668,7 +1668,7 @@
       "multilingual_model_download_message": "Vícejazyčný model pro vyhledávání fotografií není nainstalován. Stáhněte jej, chcete-li povolit vyhledávání ve více než 50 jazycích.",
       "download": "Stáhnout",
       "downloading_multilingual_model": "Stahuje se vícejazyčný model",
-      "multilingual_model_download_success": "Vícejazyčný model vyhledávání je připraven. Chcete-li jej použít, restartujte Lap.",
+      "multilingual_model_download_success": "Vícejazyčný model vyhledávání je připraven. Chcete-li jej použít, restartujte lappp.",
       "multilingual_model_download_failed": "Nepodařilo se stáhnout vícejazyčný model vyhledávání",
       "similarity": "Hledat podobnost",
       "similarity_hint": "Ovlivňuje vizuální shody při vyhledávání podle klíčových slov",

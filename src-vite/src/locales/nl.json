@@ -281,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Begin met een nieuw album",
-    "add_album_description": "Kies een map en laat Lap je foto's en video's ordenen.",
+    "add_album_description": "Kies een map en laat lappp je foto's en video's ordenen.",
     "smart_album_title": "Ordenen met slimme albums",
     "smart_album_description": "Gebruik regels om foto's die aan je criteria voldoen automatisch te groeperen.",
     "collection_title": "Groepeer foto's in collecties",
@@ -316,7 +316,7 @@
         "skip_once": "Dit bestand overslaan en doorgaan",
         "file_label": "Laatst gescande bestand",
         "message": "De vorige scan is niet normaal afgesloten.",
-        "message_with_file": "De vorige scantaak is niet netjes afgesloten.\n\nLaatst gescande bestand:\n{file}\n\nAls je doorgaat, slaat Lap dit bestand eenmalig over en hervat het scannen."
+        "message_with_file": "De vorige scantaak is niet netjes afgesloten.\n\nLaatst gescande bestand:\n{file}\n\nAls je doorgaat, slaat lappp dit bestand eenmalig over en hervat het scannen."
       }
     },
     "mode": {
@@ -1411,7 +1411,7 @@
       "network": "Netwerkfout bij het laden van de video",
       "decode": "Fout bij het decoderen van de video",
       "format": "Niet-ondersteund videoformaat of het bestand is beschadigd.",
-      "external_player_recommended": "Deze video moet eerst worden omgezet voordat hij hier kan worden afgespeeld. Voor lange video's raadt Lap aan een externe speler te gebruiken in plaats van te wachten op de verwerking op de achtergrond.",
+      "external_player_recommended": "Deze video moet eerst worden omgezet voordat hij hier kan worden afgespeeld. Voor lange video's raadt lappp aan een externe speler te gebruiken in plaats van te wachten op de verwerking op de achtergrond.",
       "unsafe_webview": "Dit videoformaat wordt niet ondersteund voor afspelen.",
       "open_in_external_app": "Openen in externe speler",
       "open_in_external_app_named": "Video openen in {app}...",
@@ -1668,7 +1668,7 @@
       "multilingual_model_download_message": "Het meertalige zoekmodel voor foto's is niet geïnstalleerd. Download het om te kunnen zoeken in meer dan 50 talen.",
       "download": "Downloaden",
       "downloading_multilingual_model": "Meertalig model downloaden",
-      "multilingual_model_download_success": "Het meertalige zoekmodel is klaar. Start Lap opnieuw om het te gebruiken.",
+      "multilingual_model_download_success": "Het meertalige zoekmodel is klaar. Start lappp opnieuw om het te gebruiken.",
       "multilingual_model_download_failed": "Kan het meertalige zoekmodel niet downloaden",
       "similarity": "Zoekovereenkomst",
       "similarity_hint": "Bepaalt de visuele overeenkomsten bij zoeken op trefwoord",

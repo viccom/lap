@@ -281,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Bắt đầu với một album mới",
-    "add_album_description": "Chọn một thư mục và để Lap sắp xếp ảnh và video của bạn.",
+    "add_album_description": "Chọn một thư mục và để lappp sắp xếp ảnh và video của bạn.",
     "smart_album_title": "Sắp xếp bằng album thông minh",
     "smart_album_description": "Dùng quy tắc để tự động nhóm các ảnh khớp với tiêu chí của bạn.",
     "collection_title": "Nhóm ảnh vào bộ sưu tập",
@@ -316,7 +316,7 @@
         "skip_once": "Bỏ qua tệp này và tiếp tục",
         "file_label": "Tệp được quét cuối cùng",
         "message": "Lần quét trước không kết thúc bình thường.",
-        "message_with_file": "Tác vụ quét trước đó không thoát đúng cách.\n\nTệp được quét cuối cùng:\n{file}\n\nNếu tiếp tục, Lap sẽ bỏ qua tệp này một lần và tiếp tục quét."
+        "message_with_file": "Tác vụ quét trước đó không thoát đúng cách.\n\nTệp được quét cuối cùng:\n{file}\n\nNếu tiếp tục, lappp sẽ bỏ qua tệp này một lần và tiếp tục quét."
       }
     },
     "mode": {
@@ -1411,7 +1411,7 @@
       "network": "Lỗi mạng khi tải video",
       "decode": "Lỗi giải mã video",
       "format": "Định dạng video không được hỗ trợ hoặc tệp bị hỏng.",
-      "external_player_recommended": "Video này cần chuyển mã tương thích trước khi có thể phát tại đây. Với video dài, Lap khuyên dùng trình phát bên ngoài thay vì chờ xử lý nền.",
+      "external_player_recommended": "Video này cần chuyển mã tương thích trước khi có thể phát tại đây. Với video dài, lappp khuyên dùng trình phát bên ngoài thay vì chờ xử lý nền.",
       "unsafe_webview": "Định dạng video này không được hỗ trợ phát.",
       "open_in_external_app": "Mở bằng trình phát bên ngoài",
       "open_in_external_app_named": "Mở video bằng {app}...",
@@ -1668,7 +1668,7 @@
       "multilingual_model_download_message": "Chưa cài đặt mô hình tìm kiếm ảnh đa ngôn ngữ. Hãy tải xuống để tìm kiếm bằng hơn 50 ngôn ngữ.",
       "download": "Tải xuống",
       "downloading_multilingual_model": "Đang tải xuống mô hình đa ngôn ngữ",
-      "multilingual_model_download_success": "Mô hình tìm kiếm đa ngôn ngữ đã sẵn sàng. Hãy khởi động lại Lap để sử dụng.",
+      "multilingual_model_download_success": "Mô hình tìm kiếm đa ngôn ngữ đã sẵn sàng. Hãy khởi động lại lappp để sử dụng.",
       "multilingual_model_download_failed": "Không thể tải xuống mô hình tìm kiếm đa ngôn ngữ",
       "similarity": "Độ tương đồng khi tìm kiếm",
       "similarity_hint": "Điều chỉnh các kết quả khớp về hình ảnh khi tìm theo từ khóa",

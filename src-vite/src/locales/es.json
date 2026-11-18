@@ -281,7 +281,7 @@
   },
   "welcome": {
     "add_album_title": "Comienza con un álbum nuevo",
-    "add_album_description": "Selecciona una carpeta y deja que Lap organice tus fotos y videos.",
+    "add_album_description": "Selecciona una carpeta y deja que lappp organice tus fotos y videos.",
     "smart_album_title": "Organiza con álbumes inteligentes",
     "smart_album_description": "Usa reglas para agrupar automáticamente las fotos que cumplan tus criterios.",
     "collection_title": "Agrupa fotos en colecciones",
@@ -316,7 +316,7 @@
         "skip_once": "Omitir este archivo y continuar",
         "file_label": "Último archivo escaneado",
         "message": "El último escaneo no terminó correctamente.",
-        "message_with_file": "El escaneo anterior no finalizó correctamente.\n\nÚltimo archivo escaneado:\n{file}\n\nSi continúas, Lap omitirá este archivo una vez y reanudará el escaneo."
+        "message_with_file": "El escaneo anterior no finalizó correctamente.\n\nÚltimo archivo escaneado:\n{file}\n\nSi continúas, lappp omitirá este archivo una vez y reanudará el escaneo."
       }
     },
     "mode": {
@@ -1411,7 +1411,7 @@
       "network": "Error red",
       "decode": "Error decodificación",
       "format": "Formato de vídeo no admitido o el archivo está dañado.",
-      "external_player_recommended": "Este vídeo necesita una transcodificación de compatibilidad antes de poder reproducirse aquí. Para vídeos largos, Lap recomienda utilizar un reproductor externo en lugar de esperar al procesamiento en segundo plano.",
+      "external_player_recommended": "Este vídeo necesita una transcodificación de compatibilidad antes de poder reproducirse aquí. Para vídeos largos, lappp recomienda utilizar un reproductor externo en lugar de esperar al procesamiento en segundo plano.",
       "unsafe_webview": "Este formato de vídeo no es compatible con la reproducción.",
       "open_in_external_app": "Abrir en un reproductor externo",
       "open_in_external_app_named": "Abrir vídeo en {app}...",
@@ -1668,7 +1668,7 @@
       "multilingual_model_download_message": "El modelo de búsqueda de fotos multilingüe no está instalado. Descárgalo para habilitar la búsqueda en más de 50 idiomas.",
       "download": "Descargar",
       "downloading_multilingual_model": "Descargando modelo multilingüe",
-      "multilingual_model_download_success": "El modelo de búsqueda multilingüe está listo. Reinicia Lap para usarlo.",
+      "multilingual_model_download_success": "El modelo de búsqueda multilingüe está listo. Reinicia lappp para usarlo.",
       "multilingual_model_download_failed": "No se pudo descargar el modelo de búsqueda multilingüe",
       "similarity": "Similitud de búsqueda",
       "similarity_hint": "Controla las coincidencias visuales en búsquedas por palabras clave",
