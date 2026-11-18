@@ -704,7 +704,7 @@ const showAfAreas = computed({
   get: () => Boolean(config.mediaViewer.showAfAreas),
   set: (value: boolean) => {
     config.mediaViewer.showAfAreas = value;
-    void tauriEmit('af-area-display-changed', value).catch(console.error);
+    void Promise.resolve(tauriEmit('af-area-display-changed', value)).catch(console.error);
   },
 });
 const afAreaFeedbackRequest = ref<{ filePath: string; fileVersion: number } | null>(null);

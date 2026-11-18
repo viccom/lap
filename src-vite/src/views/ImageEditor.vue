@@ -621,7 +621,7 @@ function sendToParent(payload: Record<string, any>) {
     }
     return;
   }
-  void tauriEmit('message-from-image-editor', payload).catch((error: unknown) => {
+  void Promise.resolve(tauriEmit('message-from-image-editor', payload)).catch((error: unknown) => {
     console.error('Failed to notify parent from image editor:', error);
   });
 }

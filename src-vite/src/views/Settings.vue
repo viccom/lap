@@ -1266,7 +1266,7 @@ async function runVisionCheck() {
   try {
     visionCheckResult.value = await checkVlVision();
   } catch (error) {
-    visionCheckResult.value = { ok: false, answer: '', error: String(error?.message ?? error) };
+    visionCheckResult.value = { ok: false, answer: '', error: String((error as Error)?.message ?? error) };
   } finally {
     checkingVision.value = false;
   }
@@ -1349,7 +1349,7 @@ async function loadVlConfig() {
 /// The select options of the vision model: the gateway list by capability,
 /// with the current value kept even when the list does not carry it.
 const vlModelOptions = computed(() => {
-  const groups = partitionModels(vlModels.value);
+  const groups = partitionModels(vlModels.value) as { supported: any[]; unknown: any[]; unsupported: any[] };
   const known = new Set(vlModels.value.map(model => String(model?.id ?? '')));
   const options: Array<{ value: string; label: string; group: string }> = [];
   for (const model of groups.supported) {
@@ -2295,7 +2295,7 @@ const onImageSearchModelChange = async (event: Event) => {
       config.settings.imageSearch.model = nextModel;
     } catch (error) {
       select.value = String(previousModel);
-      toast.error(error?.message || String(error));
+      toast.error((error as Error)?.message || String(error));
     }
     return;
   }
@@ -2306,7 +2306,7 @@ const onImageSearchModelChange = async (event: Event) => {
       config.settings.imageSearch.model = nextModel;
     } catch (error) {
       select.value = String(previousModel);
-      toast.error(error?.message || String(error));
+      toast.error((error as Error)?.message || String(error));
     }
     return;
   }
@@ -2360,7 +2360,7 @@ const startMultilingualModelDownload = async (previousModel: number) => {
     }
     isDownloadingMultilingualModel.value = false;
     config.settings.imageSearch.model = previousModel;
-    const errorMessage = typeof error === 'string' ? error : error?.message;
+    const errorMessage = typeof error === 'string' ? error : (error as Error)?.message;
     toast.error(errorMessage || localeMsg.value.settings.image_search.multilingual_model_download_failed);
   }
 };
@@ -2635,7 +2635,7 @@ async function prepareThumbnailMigration(newDir: string | null) {
   } catch (error: any) {
     if (request !== thumbnailMigrationPreviewRequest || !showThumbnailMigrationDialog.value) return;
     thumbnailMigrationPreview.value = error?.code === 'SOURCE_UNAVAILABLE' ? 'unavailable' : 'error';
-    if (thumbnailMigrationPreview.value === 'error') thumbnailMigrationError.value = error?.message || String(error);
+    if (thumbnailMigrationPreview.value === 'error') thumbnailMigrationError.value = (error as Error)?.message || String(error);
   }
 }
 
@@ -2657,7 +2657,7 @@ async function cancelThumbnailMigration() {
   } catch (error: any) {
     if (thumbnailMigrationOperationId === operationId) {
       thumbnailMigrationCancelling.value = false;
-      thumbnailMigrationError.value = error?.message || String(error);
+      thumbnailMigrationError.value = (error as Error)?.message || String(error);
     }
   }
 }
@@ -2710,7 +2710,7 @@ async function moveThumbnailCache(newDir: string | null) {
       thumbnailMigrationCancelled.value = true;
       thumbnailCacheProgress.value = { ...thumbnailCacheProgress.value, completed: 0 };
     } else {
-      thumbnailMigrationError.value = error?.message || String(error);
+      thumbnailMigrationError.value = (error as Error)?.message || String(error);
     }
   } finally {
     isChangingThumbnailCache.value = false;

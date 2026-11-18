@@ -26,7 +26,9 @@ export const useViewerSessionStore = defineStore('viewerSession', {
     selectionIndex: -1,
     // One-shot "a save finished elsewhere" signal the grid consumes on mount.
     // tick is bumped on every request so a watcher can tell repeats apart.
-    pendingRefresh: null,      // { kind: 'editor' | 'montage', payload, tick }
+    // JSDoc cast: a bare null default narrows to never in TS consumers after
+    // the null-guard (Content.vue consumes this on mount).
+    pendingRefresh: /** @type {{ kind: 'editor' | 'montage', payload?: Record<string, any>, tick?: number } | null} */ (null),
     refreshTick: 0,
     // Save-as context the editor/montage needs but Content owns. Content
     // unmounts while those routes are open, so it snapshots the bits here.

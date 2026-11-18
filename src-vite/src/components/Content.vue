@@ -8976,9 +8976,12 @@ async function getAiSearchFileList(searchText: string, mode: string, requestId: 
 function buildNavigationState(albumRecord: any = null, sidebarIndex: number = config.main.sidebarIndex) {
   const calendar = libConfig.calendar;
   const hasYear = calendar.year !== null && calendar.year !== undefined;
-  const range = hasYear
+  // getCalendarDateRange returns a [start, end] tuple; normalize so both
+  // shapes below carry named fields.
+  const rawRange = hasYear
     ? getCalendarDateRange(calendar.year!, calendar.month!, calendar.date!)
     : { startDate: 0, endDate: 0 };
+  const range = Array.isArray(rawRange) ? { startDate: rawRange[0], endDate: rawRange[1] } : rawRange;
   const smartId = libConfig.library.smartId;
   return {
     sidebarIndex,
@@ -9137,7 +9140,7 @@ async function runAlbumNavigation(requestId: number) {
     if (album.is_accessible === false) {
       isCurrentFolderMissing.value = true;
     }
-    getFileList(albumPlan().params, requestId);
+    getFileList((albumPlan() as { params?: any }).params, requestId);
     return;
   }
 
@@ -9149,7 +9152,7 @@ async function runAlbumNavigation(requestId: number) {
   if (!folderAccessible) {
     isCurrentFolderMissing.value = true;
     contentTitle.value = resolveNavigationTitle(albumPlan().title);
-    getFileList(albumPlan().params, requestId);
+    getFileList((albumPlan() as { params?: any }).params, requestId);
     return;
   }
   getFolderSearchExcluded(folderPath).then(excluded => {
@@ -9187,7 +9190,7 @@ async function runAlbumNavigation(requestId: number) {
           pendingInitialSelectedIndex = selectedItemIndex.value;
           hasRestoredInitialSelection = false;
         }
-        getFileList(albumPlan().params, refreshRequestId).then(() => {
+        getFileList((albumPlan() as { params?: any }).params, refreshRequestId).then(() => {
           if (
             refreshRequestId !== currentContentRequestId ||
             visibleRange.start < 0 ||
@@ -9203,7 +9206,7 @@ async function runAlbumNavigation(requestId: number) {
       console.error('folder sync failed:', error);
     });
   }
-  getFileList(albumPlan().params, requestId);
+  getFileList((albumPlan() as { params?: any }).params, requestId);
 }
 
 /// The tag panel needs the name of the tag before the query can run.

@@ -34,7 +34,7 @@ export const useLibraryStore = defineStore('libraryStore', {
     /** @type {'main' | 'collection'} */
     activePane: 'main',
 
-    /** @type {{ item: 'all-files' | 'favorites' | 'ratings' | 'culling' | 'subjects' | 'on-this-day' | 'vl-annotated' | 'vl-unannotated', smartId: string | null, ratingsExpanded: boolean, cullingExpanded: boolean, vlExpanded: boolean, subjectsExpanded: boolean, subjectCounts: Record<string, number>, counts: { all: number, favorite: number, today: number, rated: number, unrated: number, vlAnnotated: number, ratings: Record<number, number>, culling: Record<string, number> } }} */
+    /** @type {{ item: 'all-files' | 'favorites' | 'ratings' | 'culling' | 'subjects' | 'on-this-day' | 'vl-annotated' | 'vl-unannotated', smartId: string | null, ratingsExpanded: boolean, cullingExpanded: boolean, vlExpanded: boolean, subjectsExpanded: boolean, activateTick: number, subjectCounts: Record<string, number>, counts: { all: number, favorite: number, today: number, rated: number, unrated: number, vlAnnotated: number, ratings: Record<number, number>, culling: Record<string, number> } }} */
     library: {
       item: LIB_ITEM.ALL,
       smartId: null,

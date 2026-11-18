@@ -824,7 +824,7 @@ function loadImageResource(filePath?: string) {
   // async executor is intentional: Web media URLs need an awaited HMAC
   // signature before img.src assignment (phase 4). resolve/reject still gate
   // the cached promise correctly.
-  const loadPromise = new Promise<{ src: string; naturalWidth: number; naturalHeight: number }>(async (resolve, reject) => {
+  const loadPromise = new Promise<LoadedImage>(async (resolve, reject) => {
     let src = '';
 
     const img = new Image();

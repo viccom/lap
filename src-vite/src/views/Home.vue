@@ -17,8 +17,10 @@
     <div class="flex-1 flex overflow-hidden">
 
       <!-- left pane -->
+      <!-- config.mediaViewer.isFullScreen: uiStore never carried this flag,
+           so the pane (and the splitter below) never hid in fullscreen. -->
       <div
-        v-if="!uiStore.isFullScreen"
+        v-if="!config.mediaViewer.isFullScreen"
         ref="leftPanelRootRef"
         tabindex="-1"
         :class="[
@@ -140,7 +142,7 @@
         </div>
       
       <!-- splitter -->
-      <div v-if="!uiStore.isFullScreen"
+      <div v-if="!config.mediaViewer.isFullScreen"
         class="w-1 shrink-0"
         :class="{
           'cursor-col-resize splitter-indicator splitter-vertical': leftPanelLayoutExpanded,

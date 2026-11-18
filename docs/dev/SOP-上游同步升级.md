@@ -197,6 +197,19 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    不为过关编造类型）。连带发现并修复：thumbnail-scheduler 测试把**未
    转译的 TS 源**直接 `new Function`（任何注解进入该区间都会炸），改为
    transpile 后注入，顺带免疫未来注解。
+   **第 5 批已落地（2026-11-19）：149 → 108**——TS2339×41 全清，其中挖出
+   **1 个真运行时 bug**：Home 左栏/分隔条 `v-if="!uiStore.isFullScreen"`
+   读错 store（标志在 `config.mediaViewer.isFullScreen`）→ 全屏时左栏
+   从不隐藏；修复后冒烟全绿。其余根因：libraryStore 的 JSDoc 类型漏
+   `activateTick` 字段（值在类型不在，×10）、viewerSessionStore
+   `pendingRefresh` 裸 null（判别联合 JSDoc）、日历区间元组/对象联合
+   （归一化）、`planNavigationQuery` 28 变体联合缺 params 收窄（调用点
+   cast）、Image.vue `new Promise<…>` 泛型没用现成 `LoadedImage`（×8
+   一词修复）、tauriEmit `void|Promise` 双态 `.catch`（Promise.resolve
+   包裹）、catch 参数 `.message`（Error cast）。**踩坑**：为修
+   `import.meta.env` 引入 `/// vite/client` 导致全局类型污染（一次
+   +162 错），改用 3 行手写 `global-env.d.ts` 只声明用到的 `env.DEV`
+   ——**引第三方类型前先 A/B**。
    教训沉淀：**从上游同步测试 ≠ 拿来就能绿**——上游自己的前端测试不在
    CI 里，取回后必须在本地全量跑一遍再合入。
 4. ~~`scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化~~ **已落地
