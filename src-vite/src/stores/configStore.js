@@ -2,6 +2,12 @@
  * Config Store - Global application configuration
 */
 import { defineStore } from 'pinia';
+// Side-effect import that ALSO loads pinia-plugin-persistedstate's module
+// type augmentation. Without it the `persist:` option below makes pinia's
+// defineStore overload resolution collapse, and every getter/action of this
+// store becomes invisible to TS consumers (the ~90 TS2339 class in
+// typecheck-baseline.json).
+import 'pinia-plugin-persistedstate';
 import { i18n, loadLanguage } from '@/common/i18n';
 let languageRequest = 0;
 let pendingUserLanguageRequest = 0;

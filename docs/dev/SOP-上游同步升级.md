@@ -153,6 +153,13 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    （Home.vue clickSidebar 参数补 `Sidebar` 类型）。教训：门禁 key 的消息必须
    **归一化砍掉内嵌类型串**（`on/to type 'Store<…>'`），否则无关类型改动会
    把健康修复误报成新错。
+   **第 2 批已落地（2026-11-18）：250 → 222**——TS2339 的 store 不可见大类，
+   根因不是"JS store 缺类型"，而是 `configStore.js` 的 `persist:` 选项在
+   **插件类型增强未加载**时让 pinia defineStore 重载解析崩塌（对照实验：
+   mini store + persist → 推断死；+ `import 'pinia-plugin-persistedstate'`
+   → 恢复）。修复 = store 顶部一行 side-effect import（零行为变更）。
+   剩余 TS2339×70 已换根因：36 个 `on type 'never'` 级联 + ImportMeta/env
+   等零星，留后续批次。
 3. 26 个孤儿测试接入 `test:*` + `npm run test` 聚合脚本；CI（pr-build.yml 目前只编译）加测试步骤。
 4. `scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化。
 5. `scripts/smoke-desktop.ps1`：§3.2 断言固化。
