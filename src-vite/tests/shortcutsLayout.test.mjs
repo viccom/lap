@@ -198,3 +198,28 @@ test('editing, external opening and album moves have distinct bindings', () => {
     }
   }
 });
+
+// Regression: a dangling action id used to be fatal. `fileMenu.ts` is evaluated
+// inside component render functions (Thumbnail, MediaViewer), and Vue turns a
+// render throw into an empty comment node — one stale id blanked the whole grid
+// and the media viewer. Labels must degrade to "no shortcut", never throw.
+test('shortcut label lookups are total for unknown action ids', () => {
+  assert.doesNotThrow(() => exports.getShortcutLabel('file.moveToFolder'));
+  assert.equal(exports.getShortcutLabel('file.moveToFolder'), '');
+  assert.deepEqual(exports.getShortcutLabels('file.moveToFolder'), []);
+});
+
+test('every action id referenced by the file menu is registered', async () => {
+  const menu = await readFile(
+    new URL('../src/common/fileMenu.ts', import.meta.url),
+    'utf8',
+  );
+  const ids = [...menu.matchAll(/shortcut\('([^']+)'\)/g)].map((m) => m[1]);
+  assert.ok(ids.length > 0, 'expected at least one shortcut() reference in fileMenu.ts');
+  for (const id of ids) {
+    assert.doesNotThrow(
+      () => exports.getShortcut(id),
+      `fileMenu.ts references an unregistered shortcut action: ${id}`,
+    );
+  }
+});

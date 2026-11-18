@@ -513,7 +513,13 @@ export function getShortcutLabels(
   actionId: ShortcutActionId,
   platform: ShortcutPlatform = DEFAULT_PLATFORM,
 ): string[] {
-  return getShortcut(actionId).defaultBindings
+  // Display path: menu builders call this while rendering. A stale or
+  // misspelled action id must render as "no shortcut" instead of throwing —
+  // Vue turns a render throw into an empty comment node, so one bad id would
+  // blank the whole grid or media viewer.
+  const shortcut = shortcutMap.get(actionId);
+  if (!shortcut) return [];
+  return shortcut.defaultBindings
     .filter((binding) => isBindingAvailableOnPlatform(binding, platform))
     .map((binding) => getBindingLabel(binding, platform));
 }

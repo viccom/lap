@@ -362,7 +362,6 @@ export const useFileMenuItems = (
           {
             // Picking an OS folder target needs the desktop shell's picker.
             label: translate('menu.file.move_to_folder'),
-            shortcut: shortcut('file.moveToFolder'),
             hidden: !native,
             action: createAction('move-to-folder')
           },
