@@ -146,7 +146,10 @@ export const useConfigStore = defineStore('configStore', {
       scale: 1,                   // root font-size scale
       showToolTip: true,          // show button tooltip
       showStatusBar: true,        // show status bar
-      autoCheckUpdates: true,      // automatically check for updates
+      // Fork builds run with the upstream-owned feed disabled (see
+      // common/updatesPolicy.js), so this defaults off; it only becomes
+      // meaningful once the fork owns both an endpoint and a signing key.
+      autoCheckUpdates: false,     // automatically check for updates
       fileDeleteBehavior: 'trash',
       debugMode: false,           // debug mode
 

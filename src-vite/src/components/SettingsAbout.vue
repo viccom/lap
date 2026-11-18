@@ -81,8 +81,11 @@
     <!-- updates (desktop shell only: the Web client is updated by refreshing
          the page when lapd serves a new build; there is nothing to check or
          install, so the whole section is hidden rather than showing a dead
-         button that claims "up to date"). -->
-    <div v-if="isNative" class="w-full rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
+         button that claims "up to date").
+         `updaterEnabled` is false on fork builds whose feed is still upstream's
+         (see common/updatesPolicy.js): installing such an artifact would
+         replace lappp with upstream Lap. -->
+    <div v-if="isNative && updaterEnabled" class="w-full rounded-box p-2 space-y-2 bg-base-300/30 border border-base-content/5 shadow-sm">
       <div class="flex items-center gap-2 text-base-content/30">
         <span class="font-bold uppercase text-[10px] tracking-widest">{{ $t('settings.about.section_updates') }}</span>
       </div>
@@ -156,6 +159,7 @@ const issuesUrl = computed(() => {
 const { locale, messages } = useI18n();
 const localeMsg = computed(() => messages.value[locale.value] as any);
 const {
+  updaterEnabled,
   isCheckingUpdate,
   isInstallingUpdate,
   isDownloadingUpdate,

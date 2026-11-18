@@ -3,6 +3,7 @@ import { check, type Update, type DownloadEvent } from '@tauri-apps/plugin-updat
 import { relaunch } from '@tauri-apps/plugin-process';
 import { openExternalUrl } from '@/common/api';
 import { capabilities } from '@/common/transport';
+import { resolveUpdaterEnabled } from '@/common/updatesPolicy';
 import { useToast, type ToastPlacement } from '@/common/toast';
 
 const UPDATE_CHECK_INTERVAL = 24 * 60 * 60 * 1000;
@@ -53,6 +54,10 @@ export function useAppUpdater(localeMsg: Ref<any>, options: AppUpdaterOptions = 
   const toast = useToast();
   const toastPlacement = options.toastPlacement ?? 'bottom-right';
   const silent = options.silent ?? false;
+  // Fork policy: false on this build, because the packaged update feed is still
+  // upstream's while both apps share one installer identifier. Surfaced so the
+  // About page can hide the section instead of showing a dead button.
+  const updaterEnabled = resolveUpdaterEnabled({ native: capabilities().native });
   const updateAvailable = ref(false);
   const isCheckingUpdate = ref(false);
   const isInstallingUpdate = ref(false);
@@ -192,9 +197,12 @@ export function useAppUpdater(localeMsg: Ref<any>, options: AppUpdaterOptions = 
   }
 
   async function checkForUpdates(manual = false) {
-    // The updater is a desktop-shell feature (§3.3); a Web client updates by
-    // refreshing the page, so there is nothing to check.
-    if (!capabilities().native) return;
+    // Two gates: the Web client never runs the desktop updater (§3.3), and a
+    // fork build must not talk to upstream's feed at all — see updatesPolicy
+    // (an upstream artifact would install over lappp and drop fork changes).
+    // The About page hides the update section entirely while disabled, so
+    // there is no dead button for the user to press.
+    if (!resolveUpdaterEnabled({ native: capabilities().native })) return;
     if (isCheckingUpdate.value || isInstallingUpdate.value) return;
 
     if (!manual) {
@@ -241,6 +249,9 @@ export function useAppUpdater(localeMsg: Ref<any>, options: AppUpdaterOptions = 
   }
 
   async function installAvailableUpdate() {
+    // Same policy gate as checkForUpdates: never install from a feed this
+    // fork does not own, even if some caller reached this function directly.
+    if (!updaterEnabled) return;
     if (isInstallingUpdate.value) return;
 
     if (isUpdateReadyToRestart.value) {
@@ -294,6 +305,7 @@ export function useAppUpdater(localeMsg: Ref<any>, options: AppUpdaterOptions = 
   loadReleaseNoteState();
 
   return {
+    updaterEnabled,
     updateAvailable,
     isCheckingUpdate,
     isInstallingUpdate,
