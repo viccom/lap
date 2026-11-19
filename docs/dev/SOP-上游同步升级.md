@@ -63,7 +63,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 |---|---|---|---|
 | 1 | 跨文件契约对账 | **`npm run test:crossrefs`**（`scripts/check-cross-refs.mjs`：invoke 命令↔generate_handler、i18n 字面量/动态前缀↔en.json、shortcut id↔SHORTCUTS 三类闭包，任一悬空即红） | **已具备**（含在聚合门禁内；快捷键另有 test:shortcuts 双保险） |
 | 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`** | **已具备（2026-11-19 全绿：基线 311→0 清零完成，现为硬门禁；`--update` 保留仅作事故后重建基线的应急口径）**；快捷键契约另有微型类型检查跑在 `test:shortcuts` |
-| 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（35 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本上（且拒绝 `.test.ts`——node 20 跑不了 TS 测试，等于永不执行） | **已具备**（本地聚合 + CI `frontend-gate` job） |
+| 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（36 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本上（且拒绝 `.test.ts`——node 20 跑不了 TS 测试，等于永不执行）；聚合 runner 自检 `tests/aggregateRunner.test.mjs`（`test:gate`）保证门禁本身能红 | **已具备**（本地聚合 + CI `frontend-gate` job） |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
 | 6 | 三件套构建 | `scripts/build-windows.ps1`（默认 release；`-BuildProfile debug` 出 `build/windows/debug/`） | 已具备 |
@@ -132,6 +132,8 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 | 改名残留（Lap→lappp：脚本/文档/关于页/updater） | §3.1 最后一行：改名类同步全仓 grep |
 | 排查期反复重启二进制无效 | 前端问题先解剖 vnode/组件树（读 `subTree`、包 `setup` 捕 render 异常），探针只读不改语义 |
 | 2026-11-19 主题（subject）计数全等于库总数（2,773） | **计数必须取自被计对象自己的查询**：主题是 CLIP 查询，计数走 `getSubjectCountAndSum(smartId)`（自带 prompt+threshold），不得复用「当前环境查询」——侧栏计数那条路径会把「无约束的库查询」当成文本腿并集，于是每个主题都等于库总数。配套：聚合量是运行时量（`toPersistedLibraryState` / `toRuntimeLibraryState`），不落盘、加载即清，否则错值会跨会话存活 |
+| 2026-11-19 聚合门禁「36/36 全绿」而一个测试都没跑 | **门禁必须能红才算门禁**：runner 用 `spawnSync(npm_execpath, …, {shell:true})` 拉起各域，Windows 上 cmd.exe 不执行 `npm-cli.js`，每个域秒退 0。修法：直接 `spawn(process.execPath, args)` 跑 `node …`；并用 `tests/aggregateRunner.test.mjs`（`test:gate`）钉住「失败域必须让 runner 退出 1」「域脚本必须真的执行」。**新门禁先证明它能红** |
+| 2026-11-19 上游合并带来新类型错（`statusBarFields: null`） | 类型基线为 0 时，**任何上游新增的类型错都是红的**——这是基线制门禁的价值所在；修法同既有套路：JS store 的 `null` 默认值要用 JSDoc 标注类型，否则收窄成 `null` |
 
 ## 7. 待建资产清单（按优先级）
 
@@ -182,7 +184,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    （**独立并行不加 needs**——`needs` 会让 workflow_dispatch 按平台跳过时
    连锁跳过构建 job）。
    **隔离区已清空并删除（同日续）**：6 文件 67 测试全部修复转入正域
-   （现 **34 域 / `npm run test` 34/34 绿**）。修复定性（无一为 fork 产品
+   （现 **36 域 / `npm run test` 36/36 绿**）。修复定性（无一为 fork 产品
    bug，但实锤两类上游债）：
    ① **CRLF 坑**：上游 offlineCatalog 的 import 剥离正则只锚 `\n`，
    Windows 检出带 `\r` → import 残留 → 整文件加载失败（上游 CI 全 LF
@@ -247,7 +249,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    教训沉淀：**从上游同步测试 ≠ 拿来就能绿**——上游自己的前端测试不在
    CI 里，取回后必须在本地全量跑一遍再合入。
 4. ~~`scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化~~ **已落地
-   （2026-11-19）**：`npm run test:crossrefs` 进聚合（35 域）。三类闭包
+   （2026-11-19）**：`npm run test:crossrefs` 进聚合（36 域）。三类闭包
    全绿：262 注册命令 ↔ 241 invoke 引用、1676 en.json 键 ↔ 全部字面量与
    动态前缀、62 shortcut id ↔ 47 引用（现存零悬空——本次是建防线，非还债）。
    实现要点：invoke 匹配须容忍泛型 `invoke<T>('cmd')`；i18n 的

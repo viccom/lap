@@ -11,7 +11,7 @@
 - 本仓库是 [julyx10/lap](https://github.com/julyx10/lap) v0.4.0 的 fork，产品名 **lappp**。
 - `main` = **上游镜像**，不在其上做任何自有提交；`develop` = **所有自有开发**；功能分支从 `develop` 切出。
 - `origin` = `github.com/viccom/lappp`，`upstream` = `julyx10/lap`。
-- 当前：`main` = `7cc9b295`（上游 v0.4.0 release，落后 `upstream/main` 一个提交 `02e1aa26`），`develop` 领先 `main` **157 个提交**。
+- 当前：`main` = `3e265ce5`（上游 v0.4.0 + 7 个提交：状态栏字段可定制、相似图按需计数、切视图不闪背景、智能相册/合集排序移入面板菜单等），`develop` 领先 `main` **160 个提交**（含上游合并）。
 - 产物三件套：`lappp.exe`（厚版/内嵌）、`lappp-client.exe`（薄客户端）、`lappp-server.exe`（无头服务端），由 `scripts/build-windows.ps1` 产出。
 - crate：`lappp`（Tauri 壳）/ `lappp-core`（Tauri-free 内核）/ `lappp-server`（axum）。
 
@@ -40,7 +40,7 @@
 | 命令 | `#[tauri::command]` 共 262 处，**全部已注册**：桌面 `generate_handler!` 257 条（`src/main.rs`）+ 客户端 5 条；服务端桥接白名单 **234** 条（`crates/lappp-server/src/bridge_gen.rs`，另有断言校验三者严格划分） |
 | 前端规模 | `src/common` 48 个逻辑模块、`src/components` 74 个 `.vue`、`src/views` 7 个路由视图、`src/locales` 17 种语言（en/zh-CN 各 1676 个 leaf key，其余 1660，ko 1634） |
 | Rust 测试 | `cargo test --workspace` → **690 passed / 0 failed / 12 ignored**（core 605+11 ignored、壳 12、server 71、drag 2+1 ignored） |
-| 前端测试 | 49 个 `*.test.mjs` 共 **517 用例**，分 35 个 `test:*` 域，聚合 `npm run test` 全绿 |
+| 前端测试 | 52 个 `*.test.mjs` 共 **547 用例**，分 **36 个 `test:*` 域**，聚合 `npm run test` 全绿 |
 | 类型门禁 | `npm run typecheck:gate` 基线 **0**（`src-vite/typecheck-baseline.json`）——已经是硬零错门禁 |
 | 支持格式 | **76** 个扩展名：图像 32（常规 14 + FFmpeg 14 + Affinity 4）、RAW 25（`x3f` 临时禁用）、视频 19（`crates/lappp-core/src/t_common.rs`） |
 | 推理 | ONNX Runtime `2.0.0-rc.10`，**仅 CPU**（全仓无任何 execution provider 配置）；嵌入维度由运行时探测（CLIP ViT-B/32 实测 512），不硬编码 |
@@ -135,6 +135,8 @@ pwsh -File scripts/build-windows.ps1 -BuildProfile release   # 默认 release
 8. **多语言 CLIP 塔不在 `resources/models` 里**：它按需下载到 `<appdata>/models/multilingual`，调试构建从 exe 目录解析资源（`target/debug/models`），缺模型时主题查询会直接报错「Image search model files are missing」。
 9. **debug 与 release 数据目录不同**（`com.julyx10.lap.debug` / `com.julyx10.lap`），`--data-dir` **原样使用不追加后缀**；测真实库必须显式指定，别让测试跑到另一个库上。
 10. **云端文件保护**：`is_cloud_only` 检查贯穿哈希/嵌入/缩略图/XMP 每条路径，新功能触碰文件内容前必须沿用。
+11. **门禁本身要有牙**：聚合 runner 曾用 `spawnSync(npm_execpath, …, {shell:true})` 拉起各域，在 Windows 上 cmd.exe 根本不执行 `npm-cli.js`，**每个域都秒退 0**，门禁长期报「35/35 全绿」而一个测试都没跑（是 2026-11-19 上游合并时被真机/单文件跑法对出来的）。现在 runner 直接 `spawn(process.execPath, args)` 跑 `node …`，并由 `tests/aggregateRunner.test.mjs`（`test:gate`）钉住「失败域必须让 runner 退出 1」「域脚本必须真的被执行」。**新增任何门禁脚本时，先证明它能红。**
+12. **两个 lappp 实例无法并存**：WebView2 的用户数据目录由 Tauri identifier（`com.julyx10.lap`）决定，与 `--data-dir` 无关；第二个实例的 webview 起不来（带调试端口时卡在 `setup-ready` 之前、CDP 无目标）。所以冒烟前必须先关掉用户自己的实例——**并且只能用 `taskkill /PID <pid>`，绝不能用 `taskkill /IM lappp.exe`**，后者会把用户的实例一起杀掉。
 
 ---
 
@@ -179,9 +181,9 @@ git checkout develop && git rebase main     # 或 merge；冲突只可能出现�
 
 ## 10. 开放事项（接手者可查证后再动）
 
-1. `src-vite/tests/imageNavigator.test.ts`、`montageLayout.test.ts` **未挂到任何 `test:*` 脚本**（孤儿守卫只扫 `.test.mjs`，看不见 `.ts`）——接进 package.json 并让守卫同时扫 `.ts`。
-2. `docs/dev/SOP-上游同步升级.md` §3.2 仍写着「待建 `scripts/smoke-desktop.ps1`」（实际是 `.mjs`，已落地）；文中「34 域」实际是 **35 域**。
-3. `scripts/README.md` 只介绍两个下载器，未收录 fork 新增的 5 个脚本（`build-windows.ps1`、`typecheck-gate.mjs`、`check-cross-refs.mjs`、`run-frontend-tests.mjs`、`smoke-desktop.mjs`）。
-4. `scripts/README.md` 称 PowerShell 模型下载脚本「只做存在性检查」——**已过时**，`scripts/download_models.ps1:20-27` 会校验 SHA-256。
-5. `main` 落后 `upstream/main` 一个提交（`02e1aa26` 缩略图缓存清理迁移），下次同步时带上。
-6. 根 `README.md` 是本 fork 的说明；上游英文原文见 [upstream](https://github.com/julyx10/lap#readme)，`i18n/README.*.md` 是上游译本。
+1. ~~`tests/imageNavigator.test.ts`、`montageLayout.test.ts` 未挂到任何 `test:*` 脚本~~ **已修（2026-11-19）**：两个文件移植为 `.mjs`（经 `tests/helpers/ts-module.mjs` 加载 TS 模块），分别接入 `test:navigator` / `test:montage`；孤儿守卫同时拒绝 `.test.ts`。
+2. ~~SOP §3.2 写着「待建 `scripts/smoke-desktop.ps1`」、「34 域」~~ **已修**（脚本是 `.mjs` 且已落地；域数现为 **36**）。
+3. ~~`scripts/README.md` 未收录 fork 新增脚本、且称 PS 模型下载脚本只做存在性检查~~ **已修**（五个 fork 脚本已补录，SHA-256 的说法已更正）。
+4. ~~`main` 落后 `upstream/main`~~ **已修**：`main` 已快进到 `3e265ce5` 并推送；7 个上游提交已合并进 `develop`（merge，非 rebase——不改写历史、不需要强推）。合并只冲突 `README.md` 一个文件（上游加了一张预览截图），其余自动合并；**上游新带进来 1 个类型错**（`statusBarFields: null` 默认值把类型收窄成 `null`），已用 JSDoc 标注修掉。
+5. 根 `README.md` 是本 fork 的说明；上游英文原文见 [upstream](https://github.com/julyx10/lap#readme)，`i18n/README.*.md` 是上游译本（上游这次同步了 16 份译本）。
+6. 仍未做：`contrib/aur` 配方还钉在上游 `lap` 0.3.2，fork 未维护；`docs/.vitepress` 文档站仍指向上游（发布页 base=`/lap/`）。

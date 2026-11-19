@@ -13,6 +13,10 @@
 //   LAP_SMOKE_DATA_DIR  default %LOCALAPPDATA%/com.julyx10.lap.debug
 //                       (must match the binary's build flavor: debug builds
 //                       read …lap.debug, release builds read …lap - SOP §4)
+//                       The gate needs the app to be closed: a second lappp
+//                       instance cannot come up while another one runs
+//                       (the WebView2 user data folder is keyed by the Tauri
+//                       identifier, not by the data dir).
 //   LAP_SMOKE_MIN_WIDTH viewer original must exceed this (default 800; the
 //                       grid thumbnails are ~768 wide, so anything above that
 //                       proves the full-resolution decode happened)
@@ -43,8 +47,9 @@ import os from 'node:os';
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), '..');
 const EXE = process.env.LAP_SMOKE_EXE || join(repo, 'src-tauri', 'target', 'debug', 'lappp.exe');
-const DATA_DIR = process.env.LAP_SMOKE_DATA_DIR ||
+const DEFAULT_DATA_DIR =
   join(process.env.LOCALAPPDATA || join(os.homedir(), 'AppData', 'Local'), 'com.julyx10.lap.debug');
+const DATA_DIR = process.env.LAP_SMOKE_DATA_DIR || DEFAULT_DATA_DIR;
 const MIN_WIDTH = Number(process.env.LAP_SMOKE_MIN_WIDTH || 800);
 const OUT_DIR = join(repo, 'build', 'smoke');
 const CONF = join(repo, 'src-tauri', 'tauri.windows.conf.json');
@@ -124,7 +129,11 @@ async function main() {
   if (!existsSync(DATA_DIR)) return fail(`data dir not found: ${DATA_DIR} (set LAP_SMOKE_DATA_DIR; debug builds read …lap.debug, release …lap)`);
 
   // Refuse to touch a running instance - killing the user's app is not ours
-  // to do, and two instances would fight over the library lock.
+  // to do, and a second instance cannot come up anyway: the WebView2 user
+  // data folder is keyed by the Tauri identifier (com.julyx10.lap), not by
+  // the data dir, so the second instance's webview never initializes (with
+  // the debug port embedded it stalls before "window-shown" and no CDP
+  // target appears). Close the app before running the gate.
   const procs = spawnSync('powershell', ['-NoProfile', '-Command',
     '(Get-Process lappp -ErrorAction SilentlyContinue | Measure-Object).Count'], { encoding: 'utf8' });
   if (Number(procs.stdout.trim()) > 0) return fail('a lappp process is already running - close it first');

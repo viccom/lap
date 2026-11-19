@@ -65,7 +65,7 @@ lappp-server --set-admin-password <PW>   # 首次设置，之后拒绝再次设�
 | **AI 搜索** | 精确 / 语义 / 全部三档，双路结果按 file id 去重，语义档走图片描述向量 | `src/common/aiSearch.js`、`src/components/AiSearchPanel.vue` |
 | **主题（Subjects）** | 8 个 CLIP 语义主题（家庭/孩子/宠物/人像/美食/运动/风景/夜景），侧栏计数取自主题自己的 CLIP 查询 | `src/common/smartTags.ts`、`src/components/Content.vue` |
 | **Web / PWA** | 同一套 Vue 应用可构建为 PWA（manifest + Service Worker，API 请求不进缓存） | `src-vite/public/manifest.webmanifest`、`sw.js` |
-| **同步门禁体系** | 类型基线门禁（当前 **0 错**）、35 域聚合测试、跨文件契约对账器、真机 CDP 冒烟 | `scripts/typecheck-gate.mjs`、`check-cross-refs.mjs`、`run-frontend-tests.mjs`、`smoke-desktop.mjs` |
+| **同步门禁体系** | 类型基线门禁（当前 **0 错**）、36 域聚合测试、跨文件契约对账器、真机 CDP 冒烟 | `scripts/typecheck-gate.mjs`、`check-cross-refs.mjs`、`run-frontend-tests.mjs`、`smoke-desktop.mjs` |
 
 ---
 
@@ -181,7 +181,7 @@ cd src-tauri && cargo test -p lappp --no-default-features --features client
 # 前端（src-vite/）
 npm run typecheck        # vue-tsc --noEmit
 npm run typecheck:gate   # 基线门禁：只许减少不许新增（当前基线 0 错）
-npm run test             # 聚合跑完 35 个 test:* 域（517 个用例）
+npm run test             # 聚合跑完 36 个 test:* 域（547 个用例）
 npm run test:crossrefs   # 命令 / i18n key / 快捷键 id 三方契约对账
 npm run smoke:desktop    # 真机 CDP 冒烟（会临时注入调试端口并自动回退）
 ```

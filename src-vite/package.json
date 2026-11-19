@@ -42,6 +42,7 @@
     "test:locale": "node --experimental-vm-modules --test tests/systemLocale.test.mjs",
     "test:video": "node --test tests/videoDirectStream.test.mjs",
     "test:meta": "node --test tests/orphanGuard.test.mjs",
+    "test:gate": "node --test tests/aggregateRunner.test.mjs",
     "test": "node ../scripts/run-frontend-tests.mjs",
     "test:clip": "node --test tests/copyFilePaths.test.mjs",
     "test:raw": "node --test tests/rawDisplay.test.mjs",

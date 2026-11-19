@@ -532,6 +532,9 @@ test('album recovery preserves similar pagination and selection while refreshing
   const deps = {
     libConfig, rawGroups: ref([]), similarGroups: groups, activeTab: ref('similar'),
     selectedSimilarGroupId: selected, selectedGroupId: ref(1),
+    // Upstream marks the similar candidates as changed when the album
+    // accessibility changes (a6ce653c) - the handler calls it directly.
+    markSimilarCandidatesChanged: () => {},
     hydrateSimilarThumbnails: async (list, id) => calls.push([list, id]),
     hydrateGroupThumbnails: () => { throw new Error('Inactive panel must not be reloaded'); },
   };
