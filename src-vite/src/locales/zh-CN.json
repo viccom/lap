@@ -577,7 +577,7 @@
         "title": "保留规则",
         "priority_order": "优先顺序",
         "folders": "首选保留文件夹",
-        "subfolders": "包含子文件夹。列表中越靠前，优先级越高。",
+        "subfolders": "包含子文件夹。列表中越靠前，优先级越高",
         "folders_skipped": "未设置，已跳过",
         "add_folder": "添加文件夹",
         "folder_already_added": "已添加",
@@ -604,27 +604,27 @@
       },
       "scanning": "扫描重复项中...",
       "error_title": "无法扫描重复项",
-      "error_desc": "扫描未能完成，请更新文件列表后重试。",
+      "error_desc": "扫描未能完成，请更新文件列表后重试",
       "empty_title": "未发现重复项",
-      "empty_desc": "可以添加更多文件，或更新当前筛选范围后再试。",
-      "similar_title": "相似照片功能将在下一步提供",
-      "similar_desc": "这个标签页将用于视觉上相似的照片分组，当前先保留完全重复的清理流程。",
+      "empty_desc": "可以添加更多文件，或更新当前筛选范围后再试",
+      "similar_title": "相似图片功能将在下一步提供",
+      "similar_desc": "这个标签页将用于视觉上相似的图片分组，当前先保留完全重复的清理流程",
       "similar": {
-        "description": "查找当前视图中的相似照片。",
-        "analyze": "分析 {count} 张照片",
-        "large_scan_confirm": "要分析 {count} 张照片吗？这可能需要几分钟。",
+        "analyze_images": "分析相似图片",
+        "analyze": "分析",
+        "no_eligible_photos": "没有可分析的图片",
+        "large_scan_confirm": "要分析 {count} 张图片吗？这可能需要几分钟",
         "cancel": "取消",
         "preparing": "准备当前结果",
         "finding_matches": "查找最接近的图片",
         "building_sets": "建立相似组",
-        "analyzing": "分析相似照片",
+        "analyzing": "分析相似图片",
         "groups_title": "相似组",
         "results": "结果",
         "groups_count": "{count} 个相似组",
         "load_more": "加载更多",
-        "error_title": "无法加载相似照片",
-        "empty_title": "未发现相似照片",
-        "analyze_confirm": "分析",
+        "error_title": "无法加载相似图片",
+        "empty_title": "未发现相似图片",
         "reanalyze": "重新分析"
       },
       "reclaimable_size": "可回收",
@@ -741,6 +741,12 @@
     }
   },
   "statusbar": {
+    "name_and_size": "文件名 (大小)",
+    "color_info": "色彩信息",
+    "customize": "自定义状态栏…",
+    "customize_title": "自定义状态栏",
+    "restore_defaults": "恢复默认",
+    "selection_summary": "已选 {count} 项（{size}）",
     "files_summary": "{count} 个文件 ({size})",
     "items_summary": "{count} 项 ({size})"
   },
@@ -922,8 +928,6 @@
       "library_file_path": "库文件路径",
       "library_file_size": "库文件大小",
       "created_at": "创建时间",
-      "clean_cache": "清理未使用的缓存",
-      "cache_cleaned": "已清理 {count} 张缩略图，释放 {size}。",
       "cache_size": "缩略图缓存 {size}"
     },
     "remove_library": {
@@ -1680,9 +1684,9 @@
       ]
     },
     "similar_photos": {
-      "title": "相似照片",
+      "title": "相似图片",
       "grouping_strictness": "分组严格度",
-      "grouping_strictness_hint": "控制照片需多相似才会归入同一个相似组",
+      "grouping_strictness_hint": "控制图片需多相似才会归入同一个相似组",
       "grouping_strictness_options": [
         "极严格",
         "严格",
@@ -1802,6 +1806,16 @@
         "tianditu_token_status_empty": "未配置"
       },
       "thumbnail_cache": {
+        "cleanup": {
+          "title": "清理未使用的缓存",
+          "hint": "清理列表中各库的未使用缩略图缓存",
+          "button": "清理",
+          "progress": "正在处理 {current} / {total} · {name}",
+          "freed": "已释放 {size} 空间。",
+          "empty": "没有可清理的未使用缩略图缓存。",
+          "failed": "以下库清理失败：",
+          "list_error": "无法加载库列表。"
+        },
         "rolling_back": "正在回滚…",
         "cancelled": "已取消，原缓存已保留。",
         "new_location": "新位置：{path}",

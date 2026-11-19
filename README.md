@@ -48,8 +48,16 @@ lappp-server --set-admin-password <PW>   # 首次设置，之后拒绝再次设�
 
 ---
 
-## 相对上游的自有特性
+## 截图
 
+<p align="center">
+  <img src="docs/public/screenshots/lap_library.png" alt="资料库" width="900">
+  <img src="docs/public/screenshots/lap_map_view.png" alt="地图视图" width="900">
+  <img src="docs/public/screenshots/lap_montage.png" alt="拼贴" width="900">
+  <img src="docs/public/screenshots/lap_preview.png" alt="照片预览" width="900">
+</p>
+
+## 相对上游的自有特性
 | 特性 | 说明 | 主要位置 |
 |---|---|---|
 | **图片理解（VL）** | 走 Anthropic Messages 兼容网关（也可切 OpenAI Chat Completions），不可变提示词模板 + 带溯源的调用台账；识别出的标签写入「AI理解」标签树，不覆盖手写标签 | `crates/lappp-core/src/t_vl*.rs`、`src-vite/src/views/VlLab.vue` |

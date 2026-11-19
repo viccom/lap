@@ -577,7 +577,7 @@
         "title": "Keep rules",
         "priority_order": "Priority order",
         "folders": "Preferred folders",
-        "subfolders": "Includes subfolders. Higher in the list wins.",
+        "subfolders": "Includes subfolders. Higher in the list wins",
         "folders_skipped": "None set, skipped",
         "add_folder": "Add folder",
         "folder_already_added": "Already added",
@@ -604,27 +604,27 @@
       },
       "scanning": "Scanning duplicates...",
       "error_title": "Unable to scan duplicates",
-      "error_desc": "The scan could not be completed. Try again after updating the file list.",
+      "error_desc": "The scan could not be completed. Try again after updating the file list",
       "empty_title": "No duplicates found",
-      "empty_desc": "Try adding more files or updating the current filter range.",
-      "similar_title": "Similar photos are coming next",
-      "similar_desc": "This tab will be used for visually similar photos after the exact-duplicate workflow is expanded.",
+      "empty_desc": "Try adding more files or updating the current filter range",
+      "similar_title": "Similar images are coming next",
+      "similar_desc": "This tab will be used for visually similar images after the exact-duplicate workflow is expanded",
       "similar": {
-        "description": "Find visually similar photos in the current view.",
-        "analyze": "Analyze {count} photos",
-        "large_scan_confirm": "Analyze {count} photos to find visually similar ones? This may take several minutes.",
+        "analyze_images": "Analyze similar images",
+        "analyze": "Analyze",
+        "no_eligible_photos": "No images to analyze",
+        "large_scan_confirm": "Analyze {count} images to find visually similar ones? This may take several minutes",
         "cancel": "Cancel",
         "preparing": "Preparing current results",
         "finding_matches": "Finding nearest matches",
         "building_sets": "Building similar sets",
-        "analyzing": "Analyzing similar photos",
+        "analyzing": "Analyzing similar images",
         "groups_title": "Similar Sets",
         "results": "Results",
         "groups_count": "{count} similar sets",
         "load_more": "Load more",
-        "error_title": "Unable to load similar photos",
-        "empty_title": "No similar photos found",
-        "analyze_confirm": "Analyze",
+        "error_title": "Unable to load similar images",
+        "empty_title": "No similar images found",
         "reanalyze": "Reanalyze"
       },
       "reclaimable_size": "Reclaimable",
@@ -741,6 +741,12 @@
     }
   },
   "statusbar": {
+    "name_and_size": "File name (size)",
+    "color_info": "Color information",
+    "customize": "Customize Status Bar…",
+    "customize_title": "Customize Status Bar",
+    "restore_defaults": "Restore Defaults",
+    "selection_summary": "{count} selected ({size})",
     "files_summary": "{count} files ({size})",
     "items_summary": "{count} items ({size})"
   },
@@ -922,8 +928,6 @@
       "library_file_path": "Library file path",
       "library_file_size": "Library file size",
       "created_at": "Created at",
-      "clean_cache": "Clean Unused Cache",
-      "cache_cleaned": "Cleaned {count} thumbnails, freed {size}.",
       "cache_size": "thumbnail cache {size}"
     },
     "remove_library": {
@@ -1680,9 +1684,9 @@
       ]
     },
     "similar_photos": {
-      "title": "Similar photos",
+      "title": "Similar images",
       "grouping_strictness": "Grouping strictness",
-      "grouping_strictness_hint": "Controls how closely photos must match to appear in the same set",
+      "grouping_strictness_hint": "Controls how closely images must match to appear in the same set",
       "grouping_strictness_options": [
         "Very strict",
         "Strict",
@@ -1802,6 +1806,16 @@
         "tianditu_token_status_empty": "Not configured"
       },
       "thumbnail_cache": {
+        "cleanup": {
+          "title": "Clean unused cache",
+          "hint": "Clean unused thumbnails from listed libraries",
+          "button": "Clean",
+          "progress": "Processing {current} / {total} · {name}",
+          "freed": "Freed {size}.",
+          "empty": "No unused thumbnail cache to clean.",
+          "failed": "Could not clean these libraries:",
+          "list_error": "Could not load the library list."
+        },
         "rolling_back": "Rolling back…",
         "cancelled": "Cancelled. Original cache retained.",
         "new_location": "New location: {path}",

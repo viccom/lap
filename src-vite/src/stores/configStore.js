@@ -154,6 +154,12 @@ export const useConfigStore = defineStore('configStore', {
       darkTheme: 0,               // dark theme color index
       scale: 1,                   // root font-size scale
       showToolTip: true,          // show button tooltip
+      // The visible status-bar fields; null means "not configured yet" and is
+      // normalized to the default set on read. The annotation matters: a plain
+      // `null` default narrows to `null` for TS consumers, and the settings
+      // dialog assigns a StatusBarField[] back into it.
+      /** @type {import('@/common/statusBarFields').StatusBarField[] | null} */
+      statusBarFields: null,
       showStatusBar: true,        // show status bar
       // Fork builds run with the upstream-owned feed disabled (see
       // common/updatesPolicy.js), so this defaults off; it only becomes
