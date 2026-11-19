@@ -1199,6 +1199,11 @@ export function renameFile(fileId, filePath, newName) {
 }
 
 // One explicit action owns the backend directory index, including early failures.
+/**
+ * The batch id is null when the backend batch could not be opened; transfers
+ * proceed unbatched in that case.
+ * @param {(batchId: number | null) => any} action
+ */
 export async function withFileTransferBatch(action) {
   let batchId = null;
   try {
@@ -1240,6 +1245,13 @@ export async function moveFile(fileId, filePath, newFolderId, newFolderPath, con
   return null;
 }
 
+/**
+ * @param {number} fileId
+ * @param {string} filePath
+ * @param {string} newFolderPath
+ * @param {string} [conflictPolicy]
+ * @param {number | null} [batchId]
+ */
 export async function moveFileOutsideLibrary(fileId, filePath, newFolderPath, conflictPolicy = 'keep_both', batchId = null) {
   try {
     return await invoke('move_file_outside_library', { fileId, filePath, newFolderPath, conflictPolicy, batchId, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
@@ -1316,6 +1328,16 @@ export function editFileMetadata(libraryId, fileIds, changes) {
 }
 
 // get file thumb
+/**
+ * @param {number} fileId
+ * @param {string} filePath
+ * @param {number} fileType
+ * @param {number} orientation
+ * @param {number} thumbnailSize
+ * @param {boolean} forceRegenerate
+ * @param {number | null} [thumbnailSeekPercent]
+ * @param {number} [albumId]
+ */
 export async function getFileThumb(fileId, filePath, fileType, orientation, thumbnailSize, forceRegenerate, thumbnailSeekPercent = null, albumId = 0) {
   try {
     const result = await invoke('get_file_thumb', { fileId, filePath, fileType, orientation, thumbnailSize, rawDisplayOptions: getRawDisplayOptions(), forceRegenerate, thumbnailSeekPercent, albumId });
@@ -1389,7 +1411,11 @@ export async function updateFileInfo(fileId, filePath) {
   return null;
 }
 
-// Regenerate a video thumbnail without refreshing metadata.
+/**
+ * @param {string | null} libraryId
+ * @param {number} fileId
+ * @param {number | null} seekPercent
+ */
 export async function changeVideoThumbnail(libraryId, fileId, seekPercent) {
   return invoke('change_video_thumbnail', { libraryId, fileId, seekPercent, thumbnailSize: config.settings.thumbnailSize });
 }
@@ -2149,6 +2175,15 @@ export async function listenDedupScanProgress(callback) {
   return await listen('dedup-scan-progress', callback);
 }
 
+/**
+ * @param {string} scopeKey
+ * @param {number} sourceVersion
+ * @param {number} similarityThreshold
+ * @param {Record<string, any> | null} [params]
+ * @param {number | null} [collectionId]
+ * @param {number[] | null} [fileIds]
+ * @param {Record<string, any> | null} [keepRules]
+ */
 export async function similarStartScan(scopeKey, sourceVersion, similarityThreshold, params = null, collectionId = null, fileIds = null, keepRules = null) {
   return await invoke('similar_start_scan', { scopeKey, sourceVersion, similarityThreshold, params, collectionId, fileIds, keepRules, groupRawPairs: Boolean(config.settings.groupRawJpegPairs) });
 }

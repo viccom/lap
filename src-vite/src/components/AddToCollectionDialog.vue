@@ -118,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance } from 'vue';
 import { emit as tauriEmit } from '@/common/transport';
 import { useI18n } from 'vue-i18n';
 import { useToast } from '@/common/toast';
@@ -218,8 +218,10 @@ function isIntermediate(id: number) {
   return count > 0 && count < props.fileIds.length;
 }
 
-function setCollectionRowRef(id: number, element: Element | null) {
-  if (element) collectionRowRefs.set(id, element);
+function setCollectionRowRef(id: number, element: Element | ComponentPublicInstance | null) {
+  // Vue's function refs may hand back a component instance; only DOM rows are
+  // what the scroll-into-view logic wants, everything else clears the slot.
+  if (element instanceof Element) collectionRowRefs.set(id, element);
   else collectionRowRefs.delete(id);
 }
 

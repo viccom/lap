@@ -82,11 +82,11 @@ import {
 
 type SelectValue = string | number;
 
-function onOptionHover(event: MouseEvent, index: number, label: string) {
-  activeIndex.value = index;
+function onOptionHover(event: MouseEvent, index: number | string, label: string | number) {
+  activeIndex.value = Number(index);
   const row = event.currentTarget as HTMLElement;
   const text = row.querySelector<HTMLElement>('[data-option-label]');
-  row.title = text && text.scrollWidth > text.clientWidth ? label : '';
+  row.title = text && text.scrollWidth > text.clientWidth ? String(label) : '';
 }
 
 interface SelectOption {

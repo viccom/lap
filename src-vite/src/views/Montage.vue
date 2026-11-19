@@ -289,7 +289,7 @@ import { useViewerSessionStore } from '@/stores/viewerSessionStore';
 import { config } from '@/common/config';
 import { isWin, isLinux, getFolderPath, getFullPath, combineFileName, getSelectOptions, getThumbUrl, signMediaUrl, isValidFileName, formatFileSize, formatDimensionText, formatTimestamp, formatCameraInfo, formatCaptureSettings } from '@/common/utils';
 import { getFileInfo, checkFileExists, renderMontage } from '@/common/api';
-import { computeMontageLayout, shuffled, type MontageItem } from '@/common/montageLayout';
+import { computeMontageLayout, shuffled, type MontageItem, type MontageMode } from '@/common/montageLayout';
 import { getAspectRatio } from '@/common/layout';
 import { getCurrentWebviewWindow, webviewWindow, webRouteForWindowLabel, closeOrBack } from '@/common/transport/window.js';
 import { emit as tauriEmit, capabilities, transportMode } from '@/common/transport';
@@ -356,12 +356,12 @@ const pageOptions = computed(() => [
 ]);
 
 const pageSize = computed(() => {
-  const [long, short] = MONTAGE_PAGE_SIZES[pageKey.value];
+  const [long, short] = MONTAGE_PAGE_SIZES[pageKey.value as keyof typeof MONTAGE_PAGE_SIZES];
   return landscape.value ? [long, short] : [short, long];
 });
 
 const exportLabel = computed(() =>
-  `${pageSize.value[0]} × ${pageSize.value[1]} px${PRINT_PAGES.includes(pageKey.value) ? ' · 300 dpi' : ''}`);
+  `${pageSize.value[0]} × ${pageSize.value[1]} px${PRINT_PAGES.includes(pageKey.value as never) ? ' · 300 dpi' : ''}`);
 
 // a % of the page width, in pixels of the exported image
 function toExportPx(percent: number) {
@@ -376,7 +376,7 @@ const baseLayout = computed(() => mode.value === 'pile' && preservedFreeformLayo
   : computeMontageLayout(
   files.value.map(file => ({ fileId: Number(file.id), ratio: getAspectRatio(file) })),
   pageSize.value[0] / pageSize.value[1],
-  mode.value,
+  mode.value as MontageMode,
   { spacing: spacing.value / 100, border: borderOn.value ? border.value / 100 : 0, rotation: maxRotation.value },
   seed.value,
 ));

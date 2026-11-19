@@ -744,7 +744,7 @@ const filteredAlbumResults = computed<FilteredAlbumResult[]>(() => {
       visibleFolderPaths: new Set<string>(),
       matchedFolderPaths: new Set<string>(),
       hasMatches: false,
-      folderTree: [],
+      folderTree: [] as Folder[],
     }));
   }
 
@@ -757,7 +757,7 @@ const filteredAlbumResults = computed<FilteredAlbumResult[]>(() => {
       path: album.path,
     };
     const rootFolderMatches = query.length > 0
-      && (!favoriteFoldersOnly.value || rootFolder.is_favorite)
+      && (!favoriteFoldersOnly.value || !!rootFolder.is_favorite)
       && getFolderName(album.path).toLocaleLowerCase().includes(query);
     const rootFolderVisible = rootFolderMatches
       || (!query && favoriteFoldersOnly.value && rootFolder.is_favorite);

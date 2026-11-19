@@ -62,7 +62,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 | # | 门禁 | 命令 / 方法 | 状态 |
 |---|---|---|---|
 | 1 | 跨文件契约对账 | **`npm run test:crossrefs`**（`scripts/check-cross-refs.mjs`：invoke 命令↔generate_handler、i18n 字面量/动态前缀↔en.json、shortcut id↔SHORTCUTS 三类闭包，任一悬空即红） | **已具备**（含在聚合门禁内；快捷键另有 test:shortcuts 双保险） |
-| 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`**（基线制：不许新增，存量见 `src-vite/typecheck-baseline.json`，清零后 `--update` 收缩） | **已具备（基线制）**；快捷键契约另有微型类型检查跑在 `test:shortcuts`；全绿为最终目标 |
+| 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`** | **已具备（2026-11-19 全绿：基线 311→0 清零完成，现为硬门禁；`--update` 保留仅作事故后重建基线的应急口径）**；快捷键契约另有微型类型检查跑在 `test:shortcuts` |
 | 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（34 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本上 | **已具备**（本地聚合 + CI `frontend-gate` job） |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
@@ -221,6 +221,24 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    需要跟进拓宽，属诚实建模（切库瞬间就是 null）。踩坑：JSDoc `@param`
    **不能标注匿名解构参数**（dedupeGroups 实测参数类型反而劣化），
    解构参数要么命名、要么调用点 cast。
+   **第 7 批收官已落地（2026-11-19）：59 → 0，基线清零**——vue-tsc 全绿，
+   typecheck:gate 升级为硬门禁。收官批再挖出 **2 个上游真 bug + 1 个
+   健壮性洞**：① `cancelIndexing()` 引用了从未定义的
+   `normalizedAlbumQueue`（上游同样只有这一处引用——点"取消索引"必抛
+   ReferenceError，改读 `libConfig.index.albumQueue`）；② FileInfo 的
+   `toast(...)` 把 toast 对象当函数调（复制 VL 描述必抛 "not a
+   function"，改 `toast.success`）；③ `listVlModels` 失败路径返回
+   undefined 而调用方无守卫读 `.models`（catch 改返回空 shape）。
+   其余修法：openFolderDialog 源头收窄 `multiple:false` 的返回
+   （string|string[]→string|null，4 处调用面消）；v-model 索引 typed
+   settings 的用可写 computed 代理（模板无法既 v-model 又 cast）；
+   getImageStyle 显式 `CSSProperties` 返回（推断的字面量宽化被 Vue
+   StyleValue 拒收）；video.js 的 core/CSS 入口 3 行 d.ts 垫片
+   （不引 @types/video.js）；MediaViewer/Content 模板 null→undefined
+   prop 差值用 `?? undefined`。
+   **类型债战役总结：311 → 0（七批），挖出真 bug 5 个**
+   （Home 全屏读错 store、cancelIndexing、toast 不可调用、listVlModels
+   undefined、+ i18n CRLF 加载炸），全部修在门禁体系内。
    教训沉淀：**从上游同步测试 ≠ 拿来就能绿**——上游自己的前端测试不在
    CI 里，取回后必须在本地全量跑一遍再合入。
 4. ~~`scripts/check-cross-refs.mjs`：§3.1 全仓对账脚本化~~ **已落地

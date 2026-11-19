@@ -202,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, triggerRef, watch, onMounted, onBeforeUnmount, computed, nextTick } from 'vue';
+import { ref, shallowRef, triggerRef, watch, onMounted, onBeforeUnmount, computed, nextTick, type CSSProperties } from 'vue';
 import { invoke, transportMode, signedAssetUrl } from '@/common/transport';
 import { useUIStore } from '@/stores/uiStore';
 import { config, libConfig } from '@/common/config';
@@ -455,7 +455,10 @@ const transitionName = computed(() => {
   return '';
 });
 
-const getImageStyle = (index: number) => ({
+// CSSProperties return: the template binds this straight to :style, and the
+// inferred object literal widens e.g. backfaceVisibility to plain string,
+// which Vue's StyleValue rejects.
+const getImageStyle = (index: number): CSSProperties => ({
   position: 'absolute',
   // RAW placeholders and full previews can have different intrinsic sizes.
   // Use the same layout box as the centering, zoom and rotation calculations.

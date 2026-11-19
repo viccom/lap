@@ -203,9 +203,9 @@
           :active="isMapContentVisible"
           :query-params="mapQueryParams"
           :query-source="currentQuerySource"
-          :collection-id="currentCollectionId"
-          :file-ids="currentSearchFileIds"
-          :restore-view="mapTempViewState"
+            :collection-id="currentCollectionId ?? undefined"
+            :file-ids="currentSearchFileIds"
+            :restore-view="mapTempViewState ?? undefined"
           :selected-file="fileList[selectedItemIndex]"
           @open-cluster="openMapClusterTempView"
           @select-file="selectMapFile"
@@ -851,7 +851,7 @@
   <div class="hidden">
     <ContextMenu
       ref="moreActionMenuRef"
-      :iconMenu="null"
+      :iconMenu="undefined"
       :menuItems="moreActionMenuItems"
     >
       <template #trigger><span></span></template>
@@ -3565,7 +3565,7 @@ async function clearContentInternalDrag(event?: PointerEvent) {
   const dragViewRequestId = currentContentRequestId;
   const dragLibraryId = libConfig._libraryId;
   const target = pointerDropTarget;
-  let files = pointerDragFiles;
+  let files: any[] = pointerDragFiles ?? [];
   const usesSelection = pointerDragUsesSelection;
   const copy = event ? isCopyDragModifier(event) : false;
   const shouldDrop = event?.type !== 'pointercancel';
@@ -3644,7 +3644,7 @@ async function clearContentInternalDrag(event?: PointerEvent) {
       const affectedAlbumIds = new Set<number>([albumId]);
       const affectedFolderPaths = new Set<string>([destPath]);
       const movedFiles: Array<{ id: number; path: string }> = [];
-      await withFileTransferBatch(async (batchId: number) => {
+      await withFileTransferBatch(async (batchId: number | null) => {
         for (const file of files) {
           if (!copy && file.folder_id === selected.id) continue;
           const conflict = await resolveConflictPolicy(
@@ -3889,8 +3889,9 @@ const hasLoadedInitialResult = ref(false); // avoid showing "No files found" bef
 const contentCountIsAuthoritative = ref(false);
 const dedupSourceVersion = ref(0);
 
-// Store current query params for virtual scrolling
-const currentQueryParams = ref({
+// Store current query params for virtual scrolling. Wide on purpose: search,
+// GPS and smart sources each build a differently-shaped param bag here.
+const currentQueryParams = ref<Record<string, any>>({
   searchFileType: 0,
   sortType: 0,
   sortOrder: 0,
@@ -4209,7 +4210,8 @@ const gridViewLayoutClass = computed(() => {
 });
 
 // ai image search params
-const currentImageSearchParams = ref({
+// fileType rides along for the similar/temp views; keep the bag open.
+const currentImageSearchParams = ref<Record<string, any> | null>({
   searchText: "",
   fileId: 0,
   threshold: 0,
@@ -4291,7 +4293,7 @@ const currentTitleIcon = computed(() => {
             switch (libConfig.library.item) {
               case LIB_ITEM.ALL: return IconFiles;
               case LIB_ITEM.FAV: return IconHeartFilled;
-              case LIB_ITEM.RATINGS: return libConfig.rating.item > 0 || libConfig.rating.item === RATE.ALL ? IconStarFilled : IconStar;
+              case LIB_ITEM.RATINGS: return (libConfig.rating.item ?? -1) > 0 || libConfig.rating.item === RATE.ALL ? IconStarFilled : IconStar;
               case LIB_ITEM.CULLING:
                 return libConfig.culling.item === CULLING.PICK
                   ? IconFlagFilled
@@ -4714,7 +4716,7 @@ async function handleGroupSelectToggled(groupRow: any, selected: boolean) {
     if (!ids || ids.length === 0) return;
 
     selectMode.value = true;
-    const idSet = new Set(ids.map((id: number | string) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0));
+    const idSet = new Set<number>(ids.map((id: number | string) => Number(id)).filter((id: number) => Number.isFinite(id) && id > 0));
     const loadedById = new Map<number, number>();
     fileList.value.forEach((file, index) => {
       const fileId = Number(file?.id || 0);
@@ -6201,7 +6203,9 @@ watch(
 // Cancel indexing for current album
 async function cancelIndexing() {
   const albumId = libConfig.album.id;
-  const index = normalizedAlbumQueue.value.findIndex((id: number) => id === Number(albumId || 0));
+  // normalizedAlbumQueue never existed (upstream bug: clicking cancel while
+  // indexing threw ReferenceError). The queue lives on the library store.
+  const index = (libConfig.index.albumQueue as number[]).findIndex((id: number) => id === Number(albumId || 0));
   if (index === -1) return;
 
   showIndexRecoveryMsgbox.value = false;
@@ -8029,12 +8033,12 @@ async function getFileList(
     cullingFlag = -1,
     tagId = 0,
     personId = 0,
-    vlAnnotated = null,
-    gpsMinLat = null,
-    gpsMaxLat = null,
-    gpsMinLon = null,
-    gpsMaxLon = null
-  } = {},
+    vlAnnotated = null as number | null,
+    gpsMinLat = null as number | null,
+    gpsMaxLat = null as number | null,
+    gpsMinLon = null as number | null,
+    gpsMaxLon = null as number | null
+  } = {} as Record<string, any>,
   requestId: number,
   sourceContext: { source: 'collection' | 'smart'; collectionId?: number | null; smartParams?: any } | null = null,
 ) { 
@@ -8946,7 +8950,7 @@ async function getAiSearchFileList(searchText: string, mode: string, requestId: 
         semanticHits: semanticMatches.length,
         ftsHits: preciseMatches.length,
         semanticFailed,
-      });
+      } as any);
       if (hint) {
         const hintText = hint === 'no-annotations'
           ? localeMsg.value.aiSearch?.empty_no_annotations
@@ -10046,7 +10050,7 @@ const onMoveTo = async () => {
     const items = await getActionableSelectedItemsForAction();
     if (!items) return;
     if (!await confirmLargeBatch(items.length)) return;
-    const moves = await withFileTransferBatch(async (batchId: number) => runWithKeyedConcurrency(
+    const moves = await withFileTransferBatch(async (batchId: number | null) => runWithKeyedConcurrency(
       items,
       item => getTransferDestinationKey(item),
       async item => {
@@ -10232,7 +10236,7 @@ const onMoveToFolder = async () => {
     if (conflict.policy === 'skip') continue;
     operations.push({ file, policy: conflict.policy });
   }
-  const moveResults = await withFileTransferBatch(async (batchId: number) => runWithKeyedConcurrency(
+  const moveResults = await withFileTransferBatch(async (batchId: number | null) => runWithKeyedConcurrency(
     operations,
     ({ file }) => getTransferDestinationKey(file),
     async ({ file, policy }) => {
@@ -10318,7 +10322,7 @@ const onCopyToFolder = async () => {
     if (conflict.policy === 'skip') continue;
     operations.push({ file, policy: conflict.policy });
   }
-  const copyResults = await withFileTransferBatch(async (batchId: number) => runWithKeyedConcurrency(
+  const copyResults = await withFileTransferBatch(async (batchId: number | null) => runWithKeyedConcurrency(
     operations,
     ({ file }) => getTransferDestinationKey(file),
     async ({ file, policy }) => {
@@ -12393,7 +12397,7 @@ async function openImageViewer(
     if (compareMode && compareSplitCount === 4) {
       const emitComparisonPane = async (pane: 'bottomLeft' | 'bottomRight', paneIndex: number) => {
         const paneFile = getRealFileAt(paneIndex);
-        await imageWindow.emit('update-img', {
+        await imageWindow?.emit('update-img', {
           fileId: paneFile?.id || 0,
           fileIndex: paneFile ? paneIndex : -1,
           fileCount,

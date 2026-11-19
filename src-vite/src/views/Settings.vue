@@ -316,7 +316,7 @@
                 <span>{{ $t('settings.raw.' + field.key) }}</span>
                 <span v-if="field.hint" class="text-xs text-base-content/30">{{ $t('settings.raw.' + field.hint) }}</span>
               </label>
-              <select :id="field.key" class="select select-bordered select-sm w-48 shrink-0 max-w-full" v-model="config.settings[field.key]">
+              <select :id="field.key" class="select select-bordered select-sm w-48 shrink-0 max-w-full" v-model="rawPreviewFieldModel(field.key).value">
                 <option v-for="option in field.options" :key="option" :value="option">{{ $t('settings.raw.option_' + option) }}</option>
               </select>
             </div>
@@ -1715,6 +1715,12 @@ watch(() => config.settings.tabIndex, (tabIndex) => {
 const rawPreviewFields = [
   { key: 'rawPreviewSource', hint: 'preview_source_hint', options: ['embedded', 'rendered', 'brightened'] },
 ];
+// v-model needs a settable expression; indexing the typed settings object by
+// a runtime string key goes through this writable computed instead.
+const rawPreviewFieldModel = (key: string) => computed({
+  get: () => (config.settings as Record<string, any>)[key],
+  set: (value: any) => { (config.settings as Record<string, any>)[key] = value; },
+});
 
 const appWindow = getCurrentWebviewWindow()
 let unlistenCloseRequested: (() => void) | null = null;

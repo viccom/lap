@@ -206,8 +206,8 @@ const displayMarkers = computed(() => {
         showTick: true,
         isLabelMarker: false
       });
-      lastYear = year;
-      lastMonth = month;
+      lastYear = year ?? null;
+      lastMonth = month ?? null;
     } else if (month !== null && month !== lastMonth) {
       candidates.push({
         label: String(month).padStart(2, '0'),
@@ -218,7 +218,7 @@ const displayMarkers = computed(() => {
         showTick: true,
         isLabelMarker: false
       });
-      lastMonth = month;
+      lastMonth = month ?? null;
     }
   }
 

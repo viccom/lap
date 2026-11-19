@@ -337,7 +337,7 @@
           :isSlideShow="isSlideShow"
           :isActive="isPlaybackActive && isLivePhotoPlaying"
           :playOnActivate="true"
-          :viewportState="livePhotoViewport"
+          :viewportState="livePhotoViewport ?? undefined"
           :showControls="false"
           :showPlayOverlay="false"
           @message-from-video-viewer="handleMessageFromImageViewer"
@@ -361,7 +361,7 @@
         <Image
           ref="mediaRef"
           :showAfAreas="showAfAreas"
-          :afAreaFeedbackRequest="afAreaFeedbackRequest"
+          :afAreaFeedbackRequest="afAreaFeedbackRequest ?? undefined"
           :filePath="file?.file_path"
           :fileId="file?.id"
           :fileType="file?.file_type"

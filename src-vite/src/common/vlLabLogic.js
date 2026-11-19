@@ -139,6 +139,7 @@ export function deriveFileOutcome({
 }
 
 /// The i18n key of every outcome status.
+/** @type {Record<string, string>} */
 export const OUTCOME_LABEL_KEYS = {
   success: 'vl.lab.outcome_success',
   skipped: 'vl.lab.outcome_skipped',

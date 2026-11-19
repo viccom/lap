@@ -79,6 +79,9 @@ export async function listVlModels(invoker = invoke) {
   } catch (error) {
     fail('list the gateway models', error);
   }
+  // Callers read .models unguarded; return the empty shape instead of
+  // undefined so a gateway failure does not turn into a TypeError.
+  return { models: [], authRequired: false };
 }
 
 /// Every persisted run across the configured libraries, newest first.
@@ -93,6 +96,7 @@ export async function listVlRuns(invoker = invoke) {
 }
 
 /// The call evidence of one run, oldest first.
+/** @param {number | string} runId @returns {Promise<any[]>} */
 export async function listVlRunCalls(runId, invoker = invoke) {
   try {
     const calls = await invoker('list_vl_run_calls', { runId: String(runId ?? '') });
@@ -262,6 +266,7 @@ export async function getVlAnnotations(fileId, invoker = invoke) {
 }
 
 /// The call evidence of one file, newest first.
+/** @param {number | string} fileId @returns {Promise<any[]>} */
 export async function getVlCalls(fileId, invoker = invoke) {
   try {
     const calls = await invoker('get_vl_calls', { fileId: Number(fileId) });

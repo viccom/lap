@@ -813,7 +813,7 @@ export const isValidFileName = (name: string) => {
 };
 
 // Function to select a folder
-export async function openFolderDialog(title?: string) {
+export async function openFolderDialog(title?: string): Promise<string | null> {
   // Native directory picker is a desktop-shell feature (§3.3); Web clients
   // choose server-side paths through settings instead.
   if (!capabilities().native) return null;
@@ -824,11 +824,15 @@ export async function openFolderDialog(title?: string) {
   });
 
   if (selected) {
-    console.log('Selected folder:', selected);
-    return selected;
-  } else {
-    console.log('No folder selected.');
+    // multiple:false still types the result as string | string[]; take the
+    // first entry so callers receive the promised single path.
+    const path = Array.isArray(selected) ? selected[0] : selected;
+    if (path) {
+      console.log('Selected folder:', path);
+      return path;
+    }
   }
+  console.log('No folder selected.');
   return null;
 }
 

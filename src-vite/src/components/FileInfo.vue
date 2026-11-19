@@ -101,7 +101,7 @@
                   v-if="hasPreviewNavigator"
                   class="h-full w-full"
                   :source="fileInfo.thumbnail"
-                  :viewport="navigatorViewport"
+                  :viewport="(navigatorViewport as any)"
                   :sharpness="config.settings.navigatorSharpnessGrid"
                   @navigate="emit('navigator-navigate', $event)"
                   @zoom="emit('navigator-zoom', $event)"
@@ -1393,7 +1393,9 @@ onBeforeUnmount(() => {
 
 function copyVlDescription(text: string) {
   void navigator.clipboard?.writeText(text);
-  toast(t('file_info.vl_copied'));
+  // The app toast helper exposes info/success/error; there is no callable
+  // default (upstream bug: this line threw "toast is not a function").
+  toast.success(t('file_info.vl_copied'));
 }
 
 const quickSave = async (): Promise<boolean> => {

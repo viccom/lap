@@ -365,7 +365,7 @@ function toggleVl() {
 
 // The VL group is a single-select view like ratings: picking one side leaves
 // the other, and rating/culling, untouched.
-function selectVl(item: string) {
+function selectVl(item: 'vl-annotated' | 'vl-unannotated') {
   libConfig.library.item = item;
   uiStore.requestCountUpdate({ source: 'library', item });
   libConfig.library.activateTick = Number(libConfig.library.activateTick || 0) + 1;

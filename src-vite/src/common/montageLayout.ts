@@ -2,7 +2,7 @@
 // Pure functions: the result is expressed relative to the page (0..1 on each axis),
 // so the preview and the backend render (render_montage) share one layout.
 
-import { calculateMasonryLayout } from './layout.ts';
+import { calculateMasonryLayout } from './layout';
 
 export type MontageMode = 'card' | 'grid' | 'mosaic' | 'masonry' | 'pile';
 

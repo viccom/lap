@@ -71,7 +71,7 @@ const externalAppGroups = computed(() => ['image', 'video'].map((kind) => ({
     ? localeMsg.value.settings.advanced.external_app.external_image_editor
     : localeMsg.value.settings.advanced.external_app.external_video_app,
   apps: config.externalAppsFor(kind),
-  defaultId: config.settings.externalApps?.[kind]?.defaultId || null,
+  defaultId: (config.settings.externalApps as Record<string, { defaultId?: string | null } | undefined> | undefined)?.[kind]?.defaultId || null,
 })));
 
 onMounted(() => {

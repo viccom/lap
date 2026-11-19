@@ -34,7 +34,9 @@ export const useViewerSessionStore = defineStore('viewerSession', {
     // unmounts while those routes are open, so it snapshots the bits here.
     editorSaveAsContexts: new Map(),   // fileId -> SaveAsContext
     montageSourceFolder: '',
-    montageSaveAsContext: null,
+    // Content hands its SaveAsContext here before unmounting; bare null would
+    // narrow to null and reject the real context assignment.
+    montageSaveAsContext: /** @type {any} */ (null),
   }),
   actions: {
     /// Snapshot the ordered ids + index a viewer session starts from.

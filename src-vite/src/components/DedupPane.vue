@@ -699,11 +699,11 @@ const activeGroup = computed(() => {
 });
 const activeSimilarGroup = computed(() => similarGroups.value.find(group => Number(group.id) === selectedSimilarGroupId.value && Array.isArray(group.items)) || null);
 const hasSimilarKeep = computed(() => activeSimilarGroup.value?.items?.some((item: any) => item.is_keep === 1) || false);
-const similarProgressLabel = computed(() => ({
+const similarProgressLabel = computed(() => (({
   preparing: t('info_panel.dedup.similar.preparing'),
   finding_matches: t('info_panel.dedup.similar.finding_matches'),
   building_sets: t('info_panel.dedup.similar.building_sets'),
-})[similarStatus.value.phase] || t('info_panel.dedup.similar.analyzing'));
+}) as Record<string, string>)[similarStatus.value.phase] || t('info_panel.dedup.similar.analyzing'));
 const visibleDuplicateGroups = computed(() => duplicateGroups.value.slice(0, loadedDuplicateGroupCount.value));
 const visibleSimilarGroups = computed(() => similarGroups.value);
 
