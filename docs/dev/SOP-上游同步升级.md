@@ -63,7 +63,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 |---|---|---|---|
 | 1 | 跨文件契约对账 | **`npm run test:crossrefs`**（`scripts/check-cross-refs.mjs`：invoke 命令↔generate_handler、i18n 字面量/动态前缀↔en.json、shortcut id↔SHORTCUTS 三类闭包，任一悬空即红） | **已具备**（含在聚合门禁内；快捷键另有 test:shortcuts 双保险） |
 | 2 | 类型检查 | 全量 `npm run typecheck`（vue-tsc --noEmit）；**同步门禁用 `npm run typecheck:gate`** | **已具备（2026-11-19 全绿：基线 311→0 清零完成，现为硬门禁；`--update` 保留仅作事故后重建基线的应急口径）**；快捷键契约另有微型类型检查跑在 `test:shortcuts` |
-| 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（34 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本上 | **已具备**（本地聚合 + CI `frontend-gate` job） |
+| 3 | 前端全量测试 | 各域 `npm run test:*`；**聚合 `npm run test`**（35 域顺序执行、汇总、任一红即失败）；孤儿守卫 `tests/orphanGuard.test.mjs` 保证任何测试文件必须挂在某个脚本上（且拒绝 `.test.ts`——node 20 跑不了 TS 测试，等于永不执行） | **已具备**（本地聚合 + CI `frontend-gate` job） |
 | 4 | Rust 测试 | `cargo test --workspace` | 已具备 |
 | 5 | 前端构建 | `npm run build`（src-vite/） | 已具备 |
 | 6 | 三件套构建 | `scripts/build-windows.ps1`（默认 release；`-BuildProfile debug` 出 `build/windows/debug/`） | 已具备 |
@@ -75,9 +75,9 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 
 | 契约类型 | 注册处 | 引用处 | 对账方法 |
 |---|---|---|---|
-| 快捷键动作 id | `common/shortcuts.ts`（SHORTCUTS + ShortcutActionId） | `shortcut('…')` / `getShortcutLabel` / `matchesActionShortcut` 全仓字面量 | 回归测试已钉 fileMenu；全仓扫描脚本化（`scripts/check-cross-refs.mjs`，待建，今天手搓版：正则收 31 个字面量 → 逐个 `getShortcut` 验证） |
-| i18n key | `locales/*.json` | `t('…')` / `localeMsg…menu…` 字面量 | 上游增删 key 后全仓对账（v0.4.0 曾出 17 语言包漏改，af894bbf） |
-| Tauri 命令白名单 | lappp-server `SKIP`/bridge 注册表（257 命令） | 前端 `invoke('…')` 字面量 | 已有 `bridge_whitelist_covers_the_registration_exactly` 测试；前端侧字面量对账待脚本化 |
+| 快捷键动作 id | `common/shortcuts.ts`（SHORTCUTS + ShortcutActionId） | `shortcut('…')` / `getShortcutLabel` / `matchesActionShortcut` 全仓字面量 | 已脚本化：`scripts/check-cross-refs.mjs` 第三类闭包（字面量 ↔ SHORTCUTS），另有 `tests/shortcutsLayout.test.mjs` 钉 fileMenu 引用、`tests/shortcutActionIdType.test.mjs` 钉类型契约 |
+| i18n key | `locales/*.json` | `t('…')` / `localeMsg…menu…` 字面量 | 已脚本化：`scripts/check-cross-refs.mjs` 第二类闭包（字面量 ↔ en.json，动态拼接按前缀校验）（v0.4.0 曾出 17 语言包漏改，af894bbf） |
+| Tauri 命令白名单 | lappp-server `SKIP`/bridge 注册表（桌面 257 + 客户端 5 = 262 注册，桥接 234） | 前端 `invoke('…')` 字面量 | 已脚本化：`scripts/check-cross-refs.mjs` 第一类闭包（前端 invoke ↔ `generate_handler!` 两个 feature 变体取并集）；Rust 侧另有 `bridge_whitelist_covers_the_registration_exactly` 测试 |
 | 事件名 / 协议名 | `t_events` / SSE / `lapd.lock` 等约定常量 | 字面量引用 | 上游动过就 grep |
 | 数据目录/标识符 | `t_config.rs get_app_data_folder_name` | 部署脚本、文档里的硬编码路径 | 同步后 grep 一遍（改名事故：Lap→lappp 后脚本里残留旧名） |
 
@@ -98,7 +98,9 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    窗口——只测主窗口流程；子窗口用 UIA。**冒烟用的构建不得带该参数发布**
    （tauri.windows.conf.json 的 `additionalBrowserArgs` 用完必须回退）。
 
-> 待建：`scripts/smoke-desktop.ps1` 固化上述断言（临时参数自动注入/回退）。
+> 已落地：`scripts/smoke-desktop.mjs` 固化了上述断言（CDP 参数临时注入 / `finally` 逐字节回退 + 清洁重建）。
+> 尚未脚本化的两条：**侧栏「主题」计数断言**（需多语言 CLIP 塔在场，见下）与截图归档到 `docs/dev/`。
+> 跑冒烟前确认 `<exe>/models/multilingual/{text_model.onnx,tokenizer.json}` 存在，否则主题查询直接报错（`Image search model files are missing`），断言会误判为功能缺陷。
 
 ## 4. 部署（D:\LapPortable，便携测试形态）
 
