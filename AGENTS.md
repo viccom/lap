@@ -1,110 +1,187 @@
-# lappp 项目说明（julyx10/lap fork · 功能演进基线）
+# lappp 项目规约（AI 协作者向）
 
-> 本仓库是 julyx10/lap v0.3.3 的 fork，现已以 **lappp** 命名（2026-11-18，见下方命名约定）；在 `develop` 分支上做自有功能演进；`main` 跟随上游。
-> 代码事实来自 2026-11-11 对 v0.3.3 源码的深读（file:line 锚点），上游更新后锚点会漂移，以代码为准。
+> 面向在本仓库干活的 AI 协作者与新同事：**只写项目特有的事实**——分支与红线、可执行命令、架构边界、已踩过的坑。
+> 通用工程纪律见全局 `AGENTS.md`；机器事实（工具链版本、路径）见 `~/.zcode/machine-profile.md`。
+> 数字与锚点核对于 2026-11-19（提交 `e87aa3d1`）。上游一更新锚点就会漂移，**以代码为准**，发现对不上就改本文。
 
-## 命名约定（阶段 7 · 2026-11-18）
+---
 
-- **产品名/产物**：`lappp`。三个 Windows 二进制由 [scripts/build-windows.ps1](scripts/build-windows.ps1) 产出：`lappp.exe`（厚版/内嵌）、`lappp-client.exe`（薄版/连远端）、`lappp-server.exe`（服务端）。**默认 `-BuildProfile release` → `build/windows/`**（产品发布用）；`-BuildProfile debug` → `build/windows/debug/`（仅调试/测试，两者数据目录不同、产物不互相覆盖）。
-- **crate**：`lappp`（桌面包/根）、`lappp-core`（内核）、`lappp-server`（服务端）；Rust 路径 `lappp_core::`。
-- **刻意不改（零风险/数据兼容）**：数据目录标识符 `com.julyx10.lap`（= 真实图库所在目录，改则数据失联）；内部协议名 `lapd.lock`、`lapd_token` cookie、`lap-shell-v1` SW 缓存名。
-- **上游 URL 未换**：`julyx10/lap`、`lap-binaries`、updater endpoint 仍指上游——**改名后不应启用自动更新**。
+## 0. 这是什么 / 分支怎么用
 
-## 分支与同步策略（跟随官方更新的关键）
+- 本仓库是 [julyx10/lap](https://github.com/julyx10/lap) v0.4.0 的 fork，产品名 **lappp**。
+- `main` = **上游镜像**，不在其上做任何自有提交；`develop` = **所有自有开发**；功能分支从 `develop` 切出。
+- `origin` = `github.com/viccom/lappp`，`upstream` = `julyx10/lap`。
+- 当前：`main` = `7cc9b295`（上游 v0.4.0 release，落后 `upstream/main` 一个提交 `02e1aa26`），`develop` 领先 `main` **157 个提交**。
+- 产物三件套：`lappp.exe`（厚版/内嵌）、`lappp-client.exe`（薄客户端）、`lappp-server.exe`（无头服务端），由 `scripts/build-windows.ps1` 产出。
+- crate：`lappp`（Tauri 壳）/ `lappp-core`（Tauri-free 内核）/ `lappp-server`（axum）。
 
-| 分支/远程 | 用途 |
+---
+
+## 1. 红线
+
+1. **GPL-3.0-or-later**：fork 整体受此约束，分发构建物须开源；上游署名不得移除。
+2. **InsightFace buffalo_s（`det_500m` / `w600k_mbf`）是「仅限非商业研究」许可**（`THIRD_PARTY_NOTICES.txt:416`）。**分发带人脸功能的构建物前必须先处理模型许可**（替换或取得授权）。自用无碍。
+3. **不得改 Tauri 标识符 `com.julyx10.lap`**（`src-tauri/tauri.conf.json`）：它指向真实图库所在的数据目录，改了用户的数据就失联。代价是 WebView2 缓存与已安装版共用——这是已知取舍，不是 bug。
+4. **VL 网关密钥（`vl-api-key`）是用户私有资产**：不提交、不打印、不写进日志或错误信息；后端已用 `#[serde(skip_serializing)]` + 脱敏保护，改动时不得破坏。
+5. **不自动更新**：in-app updater 已关闭（`src/common/updatesPolicy.js`，`UPDATER_FEED_IS_FORK_OWNED = false`）——上游签名的产物会覆盖本 fork。在 fork 拥有自己的发布端点与 minisign 密钥前不得开启。
+6. **不破坏用户资产**：真实图库（2,773 项）、`D:\LapPortable` 便携目录、`%LOCALAPPDATA%\com.julyx10.lap[.debug]` 都是用户资产，覆盖前先备份并说明替换了什么。
+7. **不改上游既有行为**，除非功能方案里明确列为「适配点」并有测试保护。
+8. **只在被要求时 commit/push**。
+
+---
+
+## 2. 事实基线
+
+| 维度 | 现状（2026-11-19） |
 |---|---|
-| `main` = upstream | 镜像官方 julyx10/lap 的 main，**不在上面做任何自有提交** |
-| `origin` | github.com/viccom/lappp（fork，2026-11-18 由 viccom/lap 改名；旧 URL 自动重定向，勿依赖） |
-| `develop` | **所有自有开发在这里**；功能分支从 develop 切出，PR/merge 回 develop |
+| 版本 | `0.4.0`（`src-tauri/Cargo.toml:4`、`src-vite/package.json:4`） |
+| DB schema | 迁移 **v31**（`crates/lappp-core/src/t_migration.rs:374`）；上游 v23/v24 占位，fork 自有迁移重编号 v25–v30，v31 是 v0.4.0 同步的补偿迁移。**新迁移从 v32 起** |
+| 连接 | WAL / `synchronous=NORMAL` / `foreign_keys=ON` / `busy_timeout=5s`（`t_sqlite.rs:11522`） |
+| 命令 | `#[tauri::command]` 共 262 处，**全部已注册**：桌面 `generate_handler!` 257 条（`src/main.rs`）+ 客户端 5 条；服务端桥接白名单 **234** 条（`crates/lappp-server/src/bridge_gen.rs`，另有断言校验三者严格划分） |
+| 前端规模 | `src/common` 48 个逻辑模块、`src/components` 74 个 `.vue`、`src/views` 7 个路由视图、`src/locales` 17 种语言（en/zh-CN 各 1676 个 leaf key，其余 1660，ko 1634） |
+| Rust 测试 | `cargo test --workspace` → **690 passed / 0 failed / 12 ignored**（core 605+11 ignored、壳 12、server 71、drag 2+1 ignored） |
+| 前端测试 | 49 个 `*.test.mjs` 共 **517 用例**，分 35 个 `test:*` 域，聚合 `npm run test` 全绿 |
+| 类型门禁 | `npm run typecheck:gate` 基线 **0**（`src-vite/typecheck-baseline.json`）——已经是硬零错门禁 |
+| 支持格式 | **76** 个扩展名：图像 32（常规 14 + FFmpeg 14 + Affinity 4）、RAW 25（`x3f` 临时禁用）、视频 19（`crates/lappp-core/src/t_common.rs`） |
+| 推理 | ONNX Runtime `2.0.0-rc.10`，**仅 CPU**（全仓无任何 execution provider 配置）；嵌入维度由运行时探测（CLIP ViT-B/32 实测 512），不硬编码 |
+| 内置模型 | 5 个：`text_model.onnx`、`vision_model.onnx`、`tokenizer.json`、`det_500m.onnx`、`w600k_mbf.onnx` → `src-tauri/resources/models/`；多语言塔（540MB）按需下载到 `<appdata>/models/multilingual`；`bge-local` 描述嵌入模型为可选 |
 
-**同步上游**（保持"我们的改动全部在 develop 的独立提交里"是低摩擦合并的前提）：
+---
+
+## 3. 门禁命令（改完必跑，顺序即成本递增）
+
+```bash
+# 前端（src-vite/）
+npm run typecheck:gate      # vue-tsc 基线门禁：只许减少不许新增（--update 重新基线化）
+npm run test                # 聚合跑完 35 个 test:* 域
+npm run test:crossrefs      # 命令 / i18n key / 快捷键 id 三方契约对账
+npm run build               # 桌面 bundle（src-vite/dist）
+
+# Rust（src-tauri/）
+cargo test --workspace
+cargo test -p lappp --no-default-features --features client   # 薄客户端裁剪腿
+
+# 真机冒烟（重建+起 GUI+CDP，会临时注入调试端口并自动回退）
+npm run smoke:desktop
+
+# Windows 三件套
+pwsh -File scripts/build-windows.ps1 -BuildProfile release   # 默认 release
+```
+
+`npm run test` 已含 `test:crossrefs`；`smoke:desktop` **不在** `npm run test` 内（它要重建并起窗口），属同步/发布门禁。
+
+**退出码纪律**：不要用 `cmd | head` 之类的管道判成败（会吞真实退出码）；失败时贴原始 stderr。
+
+---
+
+## 4. 架构地图：改哪先读哪
+
+| 目标 | 去哪 |
+|---|---|
+| 桌面命令（`#[tauri::command]`） | `src-tauri/src/t_*.rs`（壳）→ 实现落在 `src-tauri/crates/lappp-core/src/t_*.rs` |
+| 内核逻辑（SQLite / 索引 / AI / 文件操作） | `src-tauri/crates/lappp-core/src/`（**Tauri-free**，见下） |
+| HTTP 服务端（桥接 / SSE / 鉴权 / 媒体 / 静态站点） | `src-tauri/crates/lappp-server/src/`（`bridge_gen.rs` 是命令白名单真源） |
+| 前端可测逻辑（纯函数层） | `src-vite/src/common/`（48 个模块，**必须可测**） |
+| 前端 UI | `src-vite/src/components/`（74 个）、`src-vite/src/views/`（7 个） |
+| 前端状态 | `src-vite/src/stores/`：`configStore`（全局设置→localStorage）、`libraryStore`（每库状态→后端 `saveLibraryState`）、`uiStore`/`viewerSessionStore`（纯运行时，不落盘） |
+| 传输缝（桌面 ⇄ Web 切换点） | `src-vite/src/common/transport/`（`mode.js` 决定 tauri/http；`capabilities.js` 决定原生能力可见性） |
+| 导航→查询决策 | `src-vite/src/common/queryDispatch.js`（纯函数，Content.vue 只执行不决策） |
+
+**边界规则**：`lappp-core` **不允许出现 `#[tauri::command]`**——`crates/lappp-core/src/guard.rs` 是构建期守卫，会扫每个源文件。命令只能在 `src-tauri/src/` 里定义，再注册进 `generate_handler!`；服务端要暴露则加进 `bridge_gen::COMMANDS` + `EXPOSURES`（read/write/admin）。
+
+**巨石文件**：`t_sqlite.rs` 约 1.4 万行、`t_utils.rs` 约 5.8 千行、`Content.vue` 约 1.28 万行。**新代码放新文件**，不要继续加厚它们。
+
+---
+
+## 5. 编码规范
+
+### Rust
+
+- 模块按 `t_<域>.rs` 平铺，新功能建新文件，不往 `t_cmds.rs`/`t_sqlite.rs` 里堆。
+- 错误风格：`Result<T, String>`（仓库一致风格，**不用** thiserror/anyhow）。
+- schema 变更**必须**走 `t_migration.rs` 的版本化迁移（新库从 v32 起），不要手改既有库。
+- 后台任务：`State` 持 `AtomicBool` 取消标志 + `Mutex` 状态，进度走 `app.emit`。
+- 并发纪律：同相册扫描单实例；动相册 DB 前等扫描结束；库级操作持库锁。
+- 单元测试与实现同文件 `#[cfg(test)] mod tests`；新逻辑必须带测试；需要真实外部依赖的用 `#[ignore]` 并写清复现命令。
+
+### 前端
+
+- 所有后端调用封装进 `src/common/api.js`（222 个导出函数），组件不直接 `invoke`。
+- 状态：全局设置进 `configStore`；每库 UI 状态进 `libraryStore`。
+- 文案**必须**走 i18n：新增 key 至少 `en` + `zh-CN` 同步加，其余语言可后补但 key 要先占位；命名空间现状：en/zh-CN 共 31 个，其余 30 个。
+- 测试：`tests/*.test.mjs`（`node --test`）只测**纯逻辑模块**；可测逻辑抽到 `src/common/` 再测，不测 `.vue` 单文件。**新增 `tests/*.test.mjs` 必须挂到 package.json 的某个 `test:*` 脚本**，否则孤儿守卫（`tests/orphanGuard.test.mjs`）会让门禁变红。
+- 类型：`.vue`/`.ts` 里 **JSDoc 断言被忽略**（`/** @type {X} */ (v)` 不生效），必须用 TS 语法（`null as number | null`、`{} as Record<string, any>`）；`.js` 文件里 JSDoc `@param/@returns` 有效，但**不要给匿名解构参数加 `@param`**（会劣化推断）。
+- 组件放 `src/components/`，独立全屏功能用 `WebviewWindow` + router 新路由（见 `src/common/transport/window.js` 的 `webRouteForWindowLabel`）。
+
+### 新增测试的固定要求（历史踩坑）
+
+1. 读源码文件必须归一化 CRLF（本机 `autocrlf=true`）：`.replace(/\r\n/g, '\n')`。
+2. 锚点不得依赖跨行 `\n` 形态、位置索引（`menu.value[2]`）或注释挂位巧合。
+3. 尽量 `import` 纯模块直接测；必须用 `new Function(ts.transpile(...))` 时先转译再执行。
+4. 涉及文件系统时间戳的测试，变更前 `sleep ≥ 25ms`（Windows ~15.6ms tick 合并）。
+5. 断言行为，不断言实现细节。
+
+---
+
+## 6. 已知陷阱（事故沉淀，动手前扫一遍）
+
+1. **悬空 action id 会静默毁掉整个视图**：上游删了 `file.moveToFolder` 动作，菜单里还引用着它的快捷键；`getShortcut` 在渲染期抛错，Vue 把组件根替换成注释节点 → 宫格出现空白格、双击看不到原图。**规则**：任何 `shortcut('…')` / `getShortcutLabel(s)` 的 id 必须在 `SHORTCUTS` 注册；标签查询必须**全函数**（未知 id 返回空，不抛）。`scripts/check-cross-refs.mjs` 与 `tests/shortcutsLayout.test.mjs` 已把这条钉死。
+2. **计数必须取自被计对象自己的查询**。侧栏主题计数曾复用「当前环境查询」，把无约束的库查询当成文本腿并集 → 每个主题都显示库总数（2,773）。**规则**：被计对象是主题/智能体时，计数走它自己的查询（`getSubjectCountAndSum`）。
+3. **聚合量是运行时量**：`counts` / `activateTick` / `subjectCounts` 不落盘、加载即清（`src/common/libraryState.js`）。否则错值会跨会话存活（本次就残留了 8 个 2,773）。
+4. **JS store 的类型陷阱**：字面量不拓宽（`'1' === '5'` 恒假）；`null` 默认值让守卫之后收窄成 `never`，一次放大几十个 TS2339；`persist:` 选项在 `pinia-plugin-persistedstate` 的类型增强未加载时会让 `defineStore` 重载解析崩塌（`configStore.js` 顶部的 `import 'pinia-plugin-persistedstate';` 就是为此，**别删**）。
+5. **类型门禁的 key 必须归一化**：诊断消息里内嵌整段 store 类型串，直接拿原文当 key 会把无关的类型改动误报成新错；现按 `file :: TScode :: 归一化消息` 取键（`scripts/typecheck-gate.mjs`）。
+6. **WebView2 的 CDP 只能从 `additionalBrowserArgs` 注入**：wry 总会自己传浏览器参数，此时 WebView2 **忽略** `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` 环境变量。发布用的包绝不能带 `--remote-debugging-port`（`scripts/smoke-desktop.mjs` 在 `finally` 里逐字节还原配置并重建干净二进制）。
+7. **`src-vite/dist` 是桌面包与 Web 包共用的 outDir**，`build` 与 `build:http` 会互相覆盖且 `emptyOutDir` 清空。交付给 `lappp-server --web-dir` 前**最后跑 `build:http`**。
+8. **多语言 CLIP 塔不在 `resources/models` 里**：它按需下载到 `<appdata>/models/multilingual`，调试构建从 exe 目录解析资源（`target/debug/models`），缺模型时主题查询会直接报错「Image search model files are missing」。
+9. **debug 与 release 数据目录不同**（`com.julyx10.lap.debug` / `com.julyx10.lap`），`--data-dir` **原样使用不追加后缀**；测真实库必须显式指定，别让测试跑到另一个库上。
+10. **云端文件保护**：`is_cloud_only` 检查贯穿哈希/嵌入/缩略图/XMP 每条路径，新功能触碰文件内容前必须沿用。
+
+---
+
+## 7. 上游同步流程
+
+**必须**走 [`docs/dev/SOP-上游同步升级.md`](docs/dev/SOP-上游同步升级.md)（含基线记录、跨文件契约对账、七道门禁、真库冒烟断言、部署/回滚矩阵、事故索引）。要点：
+
 ```bash
 git fetch upstream
 git checkout main && git merge --ff-only upstream/main && git push origin main
-git checkout develop && git rebase main        # 或 merge；冲突只可能出现在自有提交
+git checkout develop && git rebase main     # 或 merge；冲突只可能出现在自有提交
 ```
-自有改动纪律：**每个功能一个独立小提交系列**，改动集中在新增文件 + 少数标记过的既有文件锚点（见下文「允许触碰的既有文件」），不重排不重构上游代码——rebase 时冲突面就小。
 
-**同步执行必须走 [docs/dev/SOP-上游同步升级.md](docs/dev/SOP-上游同步升级.md)**：含基线记录、跨文件契约对账（上游删除符号→全仓搜残留引用）、七道门禁与真库冒烟断言、部署/回滚矩阵。红线：门禁不过、或清单存在「未确证」项，不得合入。
+- 自有改动纪律：**每个功能一个小提交系列**，改动集中在新增文件 + 少数标记过的既有文件锚点，不重排上游代码——rebase 时冲突面才小。
+- 上游删除符号后必须全仓搜残留引用（`scripts/check-cross-refs.mjs` 只覆盖命令/i18n key/快捷键三类，其余靠 §3.1 的人工清单）。
+- 上游可能带着**自己没跑过的红测试**（v0.4.0 的 `offlineCatalog` 就是），先在干净上游工作树复现再决定隔离还是修复——**不要默认上游是对的，也不要默认自己错了**。
+- 门禁不过、或清单里存在「未确证」项，**不得合入**。
 
-## 红线
+---
 
-- **GPL-3.0**：fork 整体仍受 GPL-3.0-or-later 约束；分发构建物须开源。
-- **InsightFace buffalo_s（det_500m/w600k_mbf）是非商业研究许可**（THIRD_PARTY_NOTICES.txt:416）：分发带人脸功能的构建物前必须先处理模型许可（替换或取得授权）；自用无碍。
-- 不改动上游代码的既有行为，除非功能方案里明确列为"适配点"并有对应测试保护。
+## 8. 部署与回滚
 
-## 上游代码规范（新增代码必须匹配）
+| profile | 二进制 | 数据目录 | 用途 |
+|---|---|---|---|
+| debug | `build\windows\debug\*` | `%LOCALAPPDATA%\com.julyx10.lap.debug` | 调试 / 真库实测（用户的 2,773 项库在此） |
+| release | `build\windows\*` | `%LOCALAPPDATA%\com.julyx10.lap` | 产品形态；直接换 exe 会看到另一个库 |
 
-从现有代码提炼，贡献前先看相邻文件：
+- 覆盖 `D:\LapPortable` 前**必须**时间戳备份（`backup-<ts>/` 目录或 `.bak-<ts>` 后缀），替换后核对：内嵌 bundle hash 与本次构建一致、`grep -a -c remote-debugging-port` = 0。
+- `lappp-server.exe` 不内嵌前端（运行时读 `--web-dir`/`resources/web`），前端变更时无需更新它。
+- 回滚：代码 `git revert`；部署把备份改回原名；同步本身不改库数据，但上游含 SQLite 迁移时回滚前先备份 `libraries\`。
 
-**Rust（src-tauri/src/）**
-- 模块按 `t_<域>.rs` 命名平铺；新功能建新文件（如 `t_vl.rs`），不往 `t_cmds.rs`/`t_sqlite.rs` 里堆。
-- command 定义在功能模块内（`#[tauri::command]`），在 `main.rs` 的 `generate_handler!` 注册（main.rs:208-454）；按注释分组插入。
-- 错误风格：`Result<T, String>`（仓库一致风格，无 thiserror/anyhow）——跟随，不自创错误框架。
-- DB：模型与 SQL 用关联函数挂在类型上（`AFile::`/`Album::`），`open_conn()` 取池连接；schema 变更**必须走 `t_migration.rs` 版本化迁移**（**2026-11-18 同步 v0.4.0 后当前 v31**：上游 v0.4.0 占 23=atags.source/v24=搜索排除索引，fork 自有迁移重编号为 25~30，31=v0.4.0 同步补偿迁移；新表从 v32 起追加，基于 `user_version`）；连接 PRAGMA 已设 WAL/NORMAL/foreign_keys。
-- 后台任务模式：`State` 持 `is_scanning/cancel_flag(AtomicBool) + status(Mutex<...>)`，进度走 `app.emit`（参照 t_dedup.rs:77-120、t_similar.rs:45-49）。
-- 并发纪律：同相册扫描单实例（`AlbumScanGuard`）；动相册 DB 前 `AlbumRemovalGuard` + 等扫描结束；库级操作持 `FILE_REFRESH_LIBRARY_LOCK`。
-- 单元测试：同文件 `#[cfg(test)] mod tests`（仓库 334 个测试皆此风格）；新逻辑必须带测试。
-- 托管 State 在 `main.rs` `.manage()` 注册；进程级配置锁参照 `CONFIG_IO_LOCK`。
+---
 
-**前端（src-vite/）**
-- invoke 调用统一封装进 `common/api.js`（2,271 行主封装层）；新命令按域追加 export 函数。
-- 状态：`configStore`（全局设置，persist 到 localStorage）/ `libraryStore`（每库 UI 状态，经 `saveLibraryState` 存后端）；新设置键进 configStore 的 `settings` 对象并给默认值。
-- UI：Tailwind + daisyUI 类名；文案**必须**走 i18n——17 个 locale 文件同步加 key（至少 en + zh-CN，其余可后补但 key 要先占位）；组件放 `components/`，独立全屏功能（如拼贴）用 WebviewWindow 新窗口 + router 新路由。
-- 测试：`tests/*.test.mjs`（node --test）测纯逻辑模块；可测逻辑抽成独立模块再测，不测 .vue 单文件。跑法：`npm run test:<域>`，按 package.json 追加 script。
+## 9. 协作方式（用户明确要求）
 
-### 前端测试基线（2026-11-15 阶段 0 修复后全绿）
+- **前端问题先解剖代码，不要反复重启二进制**：Vue 渲染期抛错会把组件根换成注释节点（`subTree === Symbol(v-cmt)`），从 vnode/组件树层查起；探针只读不改语义。
+- **用户的实测就是事实**，不要先怀疑「是不是误报」再去找解释；先复现到同一条代码路径上。
+- 报告要带**实际命令与真实输出**，不写「应该可以 / 理论上」。
+- 破坏性或对外动作（覆盖用户目录、删数据、推送发布）先确认目标并回显。
 
-**41 个测试文件 / 453 tests 全部通过**（Rust 同批全绿：647/0/10 ignored；证据与复现命令见 [docs/dev/BASELINE-阶段0-服务化拆分基线.md](docs/dev/BASELINE-阶段0-服务化拆分基线.md)）。历史上的「8 个失败文件」已在阶段 0 全部根因修复，真实根因与 F0 初判不同：
+---
 
-| 真实根因 | 影响面 | 修复 |
-|---|---|---|
-| **CRLF 工作区 vs LF 锚定正则**：本机 autocrlf=true，import 剥离正则以 `\n` 结尾全部失配 → `new Function` SyntaxError | 7 文件 27 测试（afAreaPersistence / albumRecovery / cloudFileRefresh / offlineCatalog / xmpWriteback / fileInfoMetadata / filterSelection 的加载与内部失败） | 读取处统一 `.replace(/\r\n/g, '\n')` |
-| 菜单位置索引漂移（`menu.value[2]`，vl-analyze-selected 挤位） | offlineCatalog 1 项 | 按子项 actionName 反查分组 |
-| 切片锚点巧合被 f707fc68 打破（注释移位 → query-context watcher 掉出装置；产品无回归） | filterSelection 3 项 | 锚点改为意图明确的注释对 |
+## 10. 开放事项（接手者可查证后再动）
 
-**新测试必须遵守**：①读源码文件必须归一化 CRLF；②锚点不得依赖跨行 `\n` 形态、位置索引、注释挂位巧合；③TS 源码避免 `new Function(ts.transpile(...))` 模式（能 import 模块就直接 import，或用 `vm.SourceTextModule`）；④涉及文件系统时间戳的测试注入变更前 `sleep ≥25ms`（Windows ~15.6ms tick 合并，t_storage/metadata 的两个 transfer_batch 测试因此修过）。
-
-**i18n / 构建 / 依赖**
-- 支持格式/扩展名常量在 `t_common.rs`；构建脚本 build.rs 负责第三方 C++ 静态编译，不轻易动。
-- 新依赖需说明理由并锁版本（Cargo.toml + package.json 现状即范例）。
-
-## 架构速查（改哪先读哪）
-
-- **两级模型**：`AppConfig.libraries`（每库独立 `{db_dir}/{library_id}.db`）→ 库内 `albums`（相册 = folder_path，唯一性/防重叠是应用层校验 t_sqlite.rs:407-432）。
-- **连接池**（非单写连接）：`CONN_POOL` + WAL（t_sqlite.rs:10138, 10234-10246）。
-- **索引流水线** `index_album_worker`（t_utils.rs:4145 起）：并发预算 `cores*0.7`、embedding 闸门 `Semaphore(1)`；**mark-and-sweep 只在 scan_complete**（取消/失败不删记录，t_utils.rs:4454-4524）。
-- **AI 推理全程 CPU**：`ort` 未配置任何执行提供者；向量 512 维 f32 LE 存 `afiles.embeds`；维度不匹配静默 0 分（t_sqlite.rs:7366-7374）。
-- **搜索入口**：统一搜索 = 文件名/EXIF LIKE（`get_query_files`，t_sqlite.rs:5339-5355）∥ 向量搜索（`search_similar_images`，全表扫描打分）并行，编排在前端 Content.vue:8051-8145 与 8303-8581。
-- **云文件保护**：`is_cloud_only` 检查贯穿哈希/嵌入/缩略图/XMP 每条路径，新功能触碰文件内容前必须沿用（t_utils.rs:483-500）。
-- 巨石文件警示：`t_sqlite.rs` 11,726 行、`Content.vue` 439KB、`t_cmds.rs` 4,277 行——新代码放新文件，尽量不增大它们。
-
-## 本地环境
-
-- 程序 `D:\Lap`（安装版）；开发库数据 `C:\Users\viccom\AppData\Local\com.julyx10.lap\`（debug 构建带 `.debug` 后缀，与安装版数据隔离）。
-- 构建：Node 20+/pnpm/Rust stable/tauri-cli ^2/cmake/nasm；`git submodule update --init --recursive` → `scripts/download_models.ps1` → `cd src-vite && pnpm install` → `cargo tauri dev`。
-- **本机编译环境要点（F0 实测）**：
-  - MSVC BuildTools 2022 + Windows SDK 已装；**cmake 用 VS 自带的那份**（`Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin`，不在全局 PATH）；**nasm 需另装**（scoop `nasm`，libjpeg-turbo 需要）；`rc.exe` 在 Windows Kits `10.0.26100.0/x64`。
-  - **cargo 走 Clash 代理必须关 multiplexing**：`CARGO_HTTP_MULTIPLEXING=false CARGO_HTTP_VERSION=HTTP/1.1`，否则 sparse index 挂起（进程有连接、CPU≈0、crate 缓存 0 文件）。
-  - 模型可直接从安装版 `D:\Lap\models` 复制到 `src-tauri/resources/models`（脚本会校验 SHA-256，5 个文件全部一致）。
-- 测试基线（改动前后都要对照，失败集合不得新增）：`cargo test --workspace`（src-tauri 内，**2026-11-18 HTTP 集成层落地后 690 过/0 败/12 ignored**：lappp-core 603 + lappp 壳 12 + lappp-server 71（66 对象级 + **5 个真实 HTTP 集成测试** `crates/lappp-server/src/http_integration.rs`——经 `build_router` 起真服务（随机回环端口+临时数据目录）钉线上契约：鉴权 401/403/409/429/503、标签/收藏集/相册 CRUD、签名媒体链路（导入→签名→出图→防篡改）、SSE Last-Event-ID 续传、限流与读/写预算隔离）+ drag vendor 2）；前端 `cd src-vite && npm run test:<域>`（13 个脚本全绿；3 个上游孤儿测试 rawDisplay/copyFilePaths/offlineCatalog 未接入脚本、在纯上游基线也失败，不计入门禁）。**阶段 6 引入 feature 拆分**：默认 `embedded`（完整桌面版，链 `lappp-core`）；`cargo build --no-default-features --features client` 产出**薄客户端**（不链 `lappp-core`，实测 165MB→16MB；`cargo test -p lappp --no-default-features --features client` 跑 `servers` 单测 5/5）。前端 `cd src-vite && node --experimental-vm-modules --test tests/*.test.mjs`（43 文件 **475** 测试全绿；阶段 4 传输层/签名/门控 + 批次 4.5 `afterNextPaint` + 批次 4.6 限流状态 + 批次 4.8「二级页退出入口」+ 批次 4.9「跨页会话/视频按 id」+ 批次 4.10「嵌入状态行 / Web 路径复制 / Web 隐藏 native-only 菜单 / 网格缩略图批量 / server_info+设备端点 / addAlbum host 路由」+ 批次 5a「PWA manifest+SW+favicon 守卫（含 5a-fix：SW 注册不得只挂 'load' 事件——await 过的 checkSession/serverInfo 可能晚于 'load'，须 readyState==='complete' 时立即注册）」+ 批次 5b-fix「Web 新增相册两处缺陷：主界面按钮须路由到服务器设置页 / 服务器页新增相册 fileTypes 须为 1..=7」+ 批次 5c「E2E 发现：Web 编辑器预览须按 file id 取源 / onImageLoad 须用 afterNextPaint 而非裸 rAF / 保存成功须 closeOrBack 回网格」+ 批次 5d「E2E 补测人脸/图片理解；理解完成后须刷新语义索引状态行」测试计入；跑 `node --experimental-vm-modules --test tests/`（含 2 个 `.ts` 测试文件）为 501 全绿；基线详情见上方「前端测试基线」）。前端 Web 构建：`cd src-vite && npm run build:http`（`VITE_LAP_TRANSPORT=http`，同源托管于 lappp-server `--web-dir`）。**`dist/` 是两个构建共用的 outDir**：`npm run build`（桌面）与 `build:http`（Web）互相覆盖，交给 lapd 托管前必须最后跑一次 `build:http`。
-- 调试手法：Python `sqlite3` 只读查库（`LENGTH(embeds)/4` 看向量维度等）。
-- **两个桌面产物（阶段 6 feature 拆分）**：默认 `cargo build`/`cargo tauri build` = **完整桌面版**（内嵌 `lappp-core`，只做本机；启动遇活锁即报错退出防撞库 R2）。薄客户端 = `cargo build -p lappp --no-default-features --features client`（不链 `lappp-core`，窗口加载远端 `lappp-server` Web UI；服务器列表存 `<data>/lappp-servers.json`，`LAP_DATA_DIR` 可覆盖；原生菜单切换服务器）。薄客户端源码：`src-tauri/src/servers.rs`（列表持久化）+ `client_cmds.rs`（命令/协议/导航）+ `t_menu.rs`（client 菜单）+ `src-vite/public/picker.html`（本地选择页，Rust `include_str!` 内嵌）。
-- **端到端验收**：可测功能的 E2E 清单 + 复现手册 + 基线台账 + 变更影响矩阵见 [docs/dev/E2E-端到端测试清单.md](docs/dev/E2E-端到端测试清单.md)。改动前先看 §11「改了 X 必测 Y」，改动后按 §0 起临时 lapd 逐条复跑；**运行时真跑 + 磁盘/DB 复核**才是通过证据（门禁是单元层，二者都要过）。
-
-## 自有功能规划（详见 docs/dev/F1-图片理解技术方案.md 等）
-
-- **F1 图片理解**（✅ 已实现并通过真实网关验收）：云端 VL（走局域网 magpie 网关，**Anthropic Messages 协议**）+ 不可变提示词模板（prompt 与 system 分离）+ 带溯源标注存储。
-  - 后端：`src-tauri/src/t_vl.rs`（模型/客户端/编排/10 个 command）+ 迁移 **v23**（`vl_templates`/`vl_annotations`/`vl_calls`）+ `t_config.rs` 的 `VlConfig`。
-  - 前端：`src-vite/src/common/vlApi.js`（薄封装）+ `vlLogic.js`（纯逻辑，可测）+ `components/VlTemplateManager.vue`（设置页模板管理）+ Settings 新标签页。
-  - **入口模型（2026-11-11 起）**：F1/F2 的功能界面集中在**独立实验台窗口** `views/VlLab.vue`（路由 `/vl-lab`，独立 WebviewWindow，capabilities 已授权该窗口 label）。唯一入口 = 设置 → 图片理解 → 「打开实验台」。FileInfo.vue / ImageSearch.vue 的嵌入挂点已撤（与上游零 diff）；`VlPanel.vue` 已于 2026-11-14 删除（零引用死代码，git 历史即素材）；`searchMode` 三档逻辑保留在 Content.vue 但无切换 UI（恒为默认 all，与上游行为一致）。**验证通过后再谈融合回原有页面**。
-  - 密钥：`api_key` 存 **sidecar 文件** `<appdata>/vl-api-key`，`#[serde(skip_serializing)]` 保证 **webview 永远拿不到**；错误信息经 `redact()` 脱敏。
-  - 手动验收工具（`#[ignore]`，需真实网关）：`cargo test -- --ignored real_gateway_probe --nocapture`（直连一张本地图）、`real_library_e2e`（走真实库 → 缩略图 → 网关 → 标注入库）。
-  - 实测：**缩略图路径 5.3 秒，原图路径 95 秒**（vision token 差一个量级）——多图场景必须走缩略图。
-- **F2 搜索扩展**（✅ 已实现并验收）：FTS5 精确档（**中文双字切分**，自研 `tokenize`，无新依赖）+ 三档搜索（全部/精确/语义，默认 all=现状）。
-  - 后端：`src-tauri/src/t_fts.rs` + 迁移 **v24**（`files_fts`，rowid=file_id，自动回填）+ **20 处写入钩子**（「写入即检索」；完整核对表在 `docs/dev/F2-搜索扩展技术方案.md` §7.2——**rebase 上游时按它逐一复核**）。
-  - 前端：`common/searchMode.js`（三档纯逻辑）+ `common/queryDispatch.js`（**导航→查询决策从 Content.vue 抽出**，Content.vue 只剩执行/展示）。档位切换 UI 已从 ImageSearch 撤下（回上游零 diff），精确检索的界面出口在实验台 `VlLab.vue` 的 F2 区块（含 `fts_status` 索引一致性显示与「重建索引」按钮——`fts_reindex` 的唯一 UI 出口）。
-  - 实测：真实库 404 文档全回填，搜「葡萄」命中 F1 标注的照片（F1×F2 闭环）。
-  - 已知边界：CJK 扩展 B 生僻字不覆盖；单字 CJK 查询走 LIKE 兜底（慢）；FTS5 列一次定死，加列只能 DROP+RENAME。
-- **F3 多图叙事**（未开始）：多图 + 模板 → 云端讲故事，依赖 F1 基建；协议上 Anthropic 单请求已支持多图，**不需要新端点**。
+1. `src-vite/tests/imageNavigator.test.ts`、`montageLayout.test.ts` **未挂到任何 `test:*` 脚本**（孤儿守卫只扫 `.test.mjs`，看不见 `.ts`）——接进 package.json 并让守卫同时扫 `.ts`。
+2. `docs/dev/SOP-上游同步升级.md` §3.2 仍写着「待建 `scripts/smoke-desktop.ps1`」（实际是 `.mjs`，已落地）；文中「34 域」实际是 **35 域**。
+3. `scripts/README.md` 只介绍两个下载器，未收录 fork 新增的 5 个脚本（`build-windows.ps1`、`typecheck-gate.mjs`、`check-cross-refs.mjs`、`run-frontend-tests.mjs`、`smoke-desktop.mjs`）。
+4. `scripts/README.md` 称 PowerShell 模型下载脚本「只做存在性检查」——**已过时**，`scripts/download_models.ps1:20-27` 会校验 SHA-256。
+5. `main` 落后 `upstream/main` 一个提交（`02e1aa26` 缩略图缓存清理迁移），下次同步时带上。
+6. 根 `README.md` 是本 fork 的说明；上游英文原文见 [upstream](https://github.com/julyx10/lap#readme)，`i18n/README.*.md` 是上游译本。
