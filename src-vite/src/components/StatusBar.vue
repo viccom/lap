@@ -33,6 +33,12 @@
           <span v-if="field.key === 'name'" class="shrink-0">({{ formatFileSize(getMediaItemSize(currentFile)) }})</span>
         </div>
       </div>
+      <!-- On-screen zoom percentage: shown only in Quick View / Filmstrip /
+           the viewer, where a live scale exists. Not a customizer field. -->
+      <div v-if="showScale && !selectionCount && hasRealSelectedFile" class="flex shrink-0 items-center gap-1">
+        <component :is="imageScale >= 1 ? IconZoomIn : IconZoomOut" class="t-icon-size-xs" aria-hidden="true" />
+        <span>{{ Math.round(imageScale * 100) }}%</span>
+      </div>
     </div>
     <ContextMenu ref="menu" :menu-items="menuItems"><template #trigger></template></ContextMenu>
     <StatusBarFieldsDialog v-if="showFieldsDialog" @cancel="showFieldsDialog = false" />
@@ -79,6 +85,8 @@ import {
   IconFile,
   IconFolder,
   IconFolders,
+  IconZoomIn,
+  IconZoomOut,
 } from '@/common/icons';
 
 const props = defineProps({
@@ -103,6 +111,16 @@ const props = defineProps({
   selectedFile: {
     type: Object as () => any,
     default: null,
+  },
+  // Live on-screen zoom percentage (Quick View / Filmstrip / viewer). Only the
+  // callers that own a scale pass `showScale`; the grid leaves it off.
+  imageScale: {
+    type: Number,
+    default: 1,
+  },
+  showScale: {
+    type: Boolean,
+    default: false,
   },
   isEmbedded: {
     type: Boolean,

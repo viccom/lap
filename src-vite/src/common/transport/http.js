@@ -19,6 +19,21 @@
  * URL, and refreshes before the 10-minute TTL elapses. `assetUrl` returns the
  * raw path for backward compatibility; the media helper calls the signed one.
  */
+/**
+ * Browser Fetch Metadata headers, declared by the Web transport so the server
+ * can tell a browser request (which gets an HttpOnly cookie and must NOT
+ * receive the raw token in the JSON body) from a non-browser client (no cookie
+ * jar, so it needs the token in the body). Browsers attach these automatically
+ * and strip script-set copies, so on the wire the values are the engine's; the
+ * explicit declaration keeps the intent documented and makes the contract
+ * observable under Node, where no engine fills them in.
+ */
+const BROWSER_FETCH_METADATA = {
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-origin',
+  'Sec-Fetch-Dest': 'empty',
+};
+
 export function createHttpTransport({
   baseUrl = '',
   fetchImpl = globalThis.fetch?.bind(globalThis),
@@ -44,7 +59,7 @@ export function createHttpTransport({
     const url = `${baseUrl}/api/cmd/${name}`;
     const res = await fetchImpl(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...BROWSER_FETCH_METADATA },
       body: JSON.stringify(args ?? {}),
     });
     if (res.status === 401) {
@@ -132,7 +147,7 @@ export function createHttpTransport({
   async function authRequest(path, body) {
     const res = await fetchImpl(`${baseUrl}/api/auth/${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...BROWSER_FETCH_METADATA },
       body: JSON.stringify(body ?? {}),
     });
     const text = await res.text();

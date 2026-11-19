@@ -562,6 +562,8 @@
       :selection-size="selectedSize"
       :total-file-count="totalFileCount"
       :total-file-size="totalFileSize"
+      :image-scale="imageDisplayScale"
+      :show-scale="showQuickView || showFilmstripLayout"
       :scan-text="statusBarScanText"
       :show-update-icon="statusBarShowUpdateIcon"
       :is-update-animating="statusBarIsUpdateAnimating"
@@ -2317,6 +2319,8 @@ function setPreviewViewBackground(value: number) {
 
 // toolbar state for MediaViewer
 const imageScale = ref(1);
+// On-screen zoom percentage for the Quick View / Filmstrip status bar readout.
+const imageDisplayScale = ref(1);
 const imageMinScale = ref(0);
 const imageMaxScale = ref(10);
 const isSlideShow = ref(false);
@@ -2331,6 +2335,9 @@ let currentContentRequestId = 0;
 
 const onScale = (event: any) => {
   imageScale.value = event.scale;
+  // The status bar shows the on-screen percentage (scale × devicePixelRatio),
+  // which is what `displayScale` carries; fall back to the raw scale.
+  imageDisplayScale.value = event.displayScale ?? event.scale;
   imageMinScale.value = event.minScale;
   imageMaxScale.value = event.maxScale;
 };

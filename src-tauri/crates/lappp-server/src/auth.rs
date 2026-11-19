@@ -503,6 +503,24 @@ pub fn session_cookie(token: &str) -> String {
     format!("{COOKIE_NAME}={token}; HttpOnly; SameSite=Strict; Path=/")
 }
 
+/// A browser page (§3.6): a request carrying the Fetch Metadata headers, or
+/// one whose `Origin` is present, comes from a browser context that also gets
+/// (and uses) the HttpOnly cookie. The raw token must NOT be serialized back
+/// to such a caller — page script can read a JSON body but not the cookie, so
+/// echoing the token would hand any XSS a long-lived bearer credential.
+fn is_browser_request(headers: &HeaderMap) -> bool {
+    const FETCH_METADATA: [&str; 4] = [
+        "sec-fetch-mode",
+        "sec-fetch-site",
+        "sec-fetch-dest",
+        "sec-fetch-user",
+    ];
+    if FETCH_METADATA.iter().any(|name| headers.contains_key(*name)) {
+        return true;
+    }
+    headers.contains_key(axum::http::header::ORIGIN)
+}
+
 // -- endpoint handlers ----------------------------------------------------
 //
 // Auth endpoints are intentionally open (rate-limited): the client must be
@@ -560,6 +578,7 @@ pub async fn auth_setup(
 pub async fn auth_login(
     State(auth): State<std::sync::Arc<AuthService>>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
     body: String,
 ) -> Result<Response, AuthError> {
     let body = parse_json_object(&body)?;
@@ -570,13 +589,14 @@ pub async fn auth_login(
         .unwrap_or("device")
         .to_string();
     let (token, scope, id) = auth.login(&password, &device_name, &addr.ip().to_string())?;
-    credential_response(&token, scope, &device_name, id)
+    credential_response(&token, scope, &device_name, id, &headers)
 }
 
 /// POST /api/auth/pair {code, deviceName} — issues an admin-scope token.
 pub async fn auth_pair(
     State(auth): State<std::sync::Arc<AuthService>>,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
     body: String,
 ) -> Result<Response, AuthError> {
     let body = parse_json_object(&body)?;
@@ -587,7 +607,7 @@ pub async fn auth_pair(
         .unwrap_or("device")
         .to_string();
     let (token, scope, id) = auth.pair(&code, &device_name, &addr.ip().to_string())?;
-    credential_response(&token, scope, &device_name, id)
+    credential_response(&token, scope, &device_name, id, &headers)
 }
 
 impl AuthService {
@@ -655,18 +675,26 @@ pub async fn whitelist_middleware(
     next.run(request).await
 }
 
-fn credential_response(token: &str, scope: &str, device_name: &str, id: i64) -> Result<Response, AuthError> {
+fn credential_response(
+    token: &str,
+    scope: &str,
+    device_name: &str,
+    id: i64,
+    request_headers: &HeaderMap,
+) -> Result<Response, AuthError> {
     let cookie = session_cookie(token);
-    let mut response = (
-        StatusCode::OK,
-        axum::Json(serde_json::json!({
-            "token": token,
-            "scope": scope,
-            "deviceName": device_name,
-            "deviceId": id,
-        })),
-    )
-        .into_response();
+    // A browser gets the token only through the HttpOnly cookie; echoing it in
+    // the JSON body would defeat HttpOnly (page script can read the body). A
+    // non-browser client has no cookie jar, so it receives the token here.
+    let mut payload = serde_json::json!({
+        "scope": scope,
+        "deviceName": device_name,
+        "deviceId": id,
+    });
+    if !is_browser_request(request_headers) {
+        payload["token"] = serde_json::Value::String(token.to_string());
+    }
+    let mut response = (StatusCode::OK, axum::Json(payload)).into_response();
     let value = axum::http::HeaderValue::from_str(&cookie)
         .map_err(|_| AuthError::Internal("building cookie header".into()))?;
     response
@@ -866,6 +894,20 @@ mod tests {
         assert!(cookie.contains("Path=/"));
         // No `Secure` until TLS exists (§3.6).
         assert!(!cookie.contains("Secure"));
+    }
+
+    #[test]
+    fn browser_requests_are_recognized_by_fetch_metadata_or_origin() {
+        let bare = HeaderMap::new();
+        assert!(!is_browser_request(&bare), "a bare client is not a browser");
+
+        let mut fetch_meta = HeaderMap::new();
+        fetch_meta.insert("sec-fetch-mode", "cors".parse().unwrap());
+        assert!(is_browser_request(&fetch_meta));
+
+        let mut origin = HeaderMap::new();
+        origin.insert(axum::http::header::ORIGIN, "http://127.0.0.1".parse().unwrap());
+        assert!(is_browser_request(&origin));
     }
 
     #[test]

@@ -1,5 +1,8 @@
 import { onBeforeUnmount, onMounted } from 'vue';
-import { listen } from '@tauri-apps/api/event';
+// Transport seam: the desktop reaches Tauri's event bus, the Web client the
+// SSE / local bus. Importing `@tauri-apps/api/event` directly here broke the
+// sidebar refresh in the browser (the event never arrived).
+import { listen } from '@/common/transport';
 
 /**
  * Refresh sidebar data after catalog mutations. Debounces bursts so a single

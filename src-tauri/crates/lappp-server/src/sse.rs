@@ -200,8 +200,14 @@ pub async fn events_handler(
             loop {
                 if let Some(stamped) = replay.pop() {
                     last_seen = stamped.id;
+                    // The `id:` field is what makes the browser resend
+                    // `Last-Event-ID` on reconnect; without it the EventSource
+                    // cannot resume and the server replays the whole retained
+                    // buffer. The JSON envelope also carries `id` (phase-1
+                    // contract), so both stay in sync.
                     let frame = SseFrame::default()
                         .event("message")
+                        .id(stamped.id.to_string())
                         .data(render_frame(&stamped));
                     return Some((Ok(frame), (bus, last_seen, replay, None)));
                 }

@@ -416,3 +416,41 @@ test('StatusBar shows a Live Photo as one item with the combined size', async ()
   assert.match(html, /2 \/ 4 items \(500 B\)/);
   assert.match(html, /IMG\.HEIC.*LIVE.*300 B/s);
 });
+
+test('StatusBar shows the zoom percentage only when the caller owns a scale', async () => {
+  // Quick View / Filmstrip / the viewer pass `show-scale` and a live scale;
+  // the grid does not. The readout was dropped by the status-bar rework, so
+  // this pins it back: the percentage renders with showScale, and is absent
+  // without it.
+  const statusBar = await readFile(new URL('../src/components/StatusBar.vue', import.meta.url), 'utf8');
+  const templateStart = statusBar.indexOf('<div class="flex h-full');
+  const templateEnd = statusBar.indexOf('<ContextMenu', templateStart);
+  const template = statusBar.slice(templateStart, templateEnd);
+  // The zoom block must be gated on showScale and rendered as a percentage.
+  assert.match(template, /v-if="showScale && !selectionCount && hasRealSelectedFile"/);
+  assert.match(template, /Math\.round\(imageScale \* 100\)/);
+
+  const render = async (showScale, imageScale) => {
+    const app = createSSRApp({
+      data: () => ({
+        fileList: [{ name: 'a.jpg', file_type: 1, size: 10 }], selectedFile: null,
+        selectionCount: 0, emptyMessage: '', hasRealSelectedFile: true,
+        itemPosition: '1 / 1', totalFileSize: 10, isLivePhoto: false, rawPairBadge: '',
+        showScale, imageScale,
+        formatFileSize: n => `${n} B`, getMediaItemSize: () => 10,
+        visibleFields: [], currentFile: {},
+        // The zoom block selects between these two icons.
+        IconZoomIn: { render: () => null }, IconZoomOut: { render: () => null },
+      }),
+      render: compile(template),
+    });
+    app.config.globalProperties.$t = (key, args) => (key === 'statusbar.items_summary'
+      ? `${args.count} items (${args.size})` : key);
+    for (const name of ['IconList', 'IconZoomIn', 'IconZoomOut', 'IconLivePhoto']) {
+      app.component(name, { render: () => null });
+    }
+    return renderToString(app);
+  };
+  assert.match(await render(true, 2), /200%/);
+  assert.doesNotMatch(await render(false, 2), /200%/);
+});

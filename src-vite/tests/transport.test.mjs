@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { resolveTransportMode } from '../src/common/transport/mode.js';
 import { resolveCapabilities } from '../src/common/transport/capabilities.js';
@@ -221,6 +222,66 @@ test('the Web add-album entry sends a valid 1..=7 file_types bitmask', async () 
   assert.ok(m, 'SettingsServer must pass an explicit fileTypes');
   const ft = Number(m[1]);
   assert.ok(ft >= 1 && ft <= 7, `fileTypes must be 1..=7 (got ${ft})`);
+});
+
+test('only the transport seam imports @tauri-apps/api/event', () => {
+  // The desktop reaches Tauri's event bus; the Web client has no Tauri. Any
+  // component/composable importing the Tauri event API directly works on the
+  // desktop and silently fails in the browser (the event never arrives). The
+  // transport seam is the single allowed importer.
+  const srcDir = fileURLToPath(new URL('../src/', import.meta.url));
+  const offenders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(path); continue; }
+      if (!/\.(ts|js|vue)$/.test(entry.name)) continue;
+      const text = readFileSync(path, 'utf8');
+      if (!/from ['"]@tauri-apps\/api\/event['"]/.test(text)) continue;
+      const rel = path.replace(/\\/g, '/').split('/src/')[1];
+      // The seam itself, and type-only imports (`import type { Event }`) which
+      // erase at compile time and never call the runtime.
+      if (rel.startsWith('common/transport/')) continue;
+      if (/import type\s*\{[^}]*\}\s*from ['"]@tauri-apps\/api\/event['"]/.test(text)) continue;
+      offenders.push(rel);
+    }
+  };
+  walk(srcDir);
+  assert.deepEqual(offenders, [], `direct @tauri-apps/api/event imports bypass the transport seam: ${offenders.join(', ')}`);
+});
+
+test('auth requests carry browser Fetch-Metadata headers', async () => {
+  // The server omits the raw token from the login/pair JSON body when the
+  // caller looks like a browser (it then relies on the HttpOnly cookie). The
+  // Web transport must therefore send the Fetch-Metadata headers so it is
+  // recognized as a browser; otherwise the token would be echoed into JS.
+  const calls = [];
+  const t = createHttpTransport({
+    fetchImpl: async (url, opts) => {
+      calls.push({ url, opts });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ scope: 'standard' }) };
+    },
+  });
+  await t.login('pw', 'browser');
+  const { opts } = calls[0];
+  assert.equal(opts.headers['Sec-Fetch-Mode'], 'cors');
+  assert.equal(opts.headers['Sec-Fetch-Site'], 'same-origin');
+  assert.ok(opts.headers['Sec-Fetch-Dest'], 'Sec-Fetch-Dest must be present');
+});
+
+test('the Web client redirects to /login when the session expires', () => {
+  // A 401 on any command calls auth.markExpired(), which notifies subscribers.
+  // The router guard only checks the session during navigation, so without a
+  // subscriber that redirects, an expired/revoked token would leave the user
+  // on a dead page until they happened to navigate.
+  const main = readFileSync(new URL('../src/main.js', import.meta.url), 'utf8');
+  const subscribe = main.indexOf('subscribeAuth(');
+  assert.ok(subscribe >= 0, 'main.js must subscribe to the auth state');
+  // Include the enclosing `if (transportMode === 'http')` that precedes the call.
+  const block = main.slice(Math.max(0, subscribe - 200), subscribe + 260);
+  assert.match(block, /authenticated\b/, 'the subscriber must react to the authenticated flag');
+  assert.match(block, /router\.replace\('\/login'\)/, 'an expired session must route to /login');
+  assert.match(block, /transportMode === 'http'/, 'the redirect is Web-only');
 });
 
 test('the Web shell routes the add-album request to the server-path entry', async () => {

@@ -134,6 +134,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 | 2026-11-19 主题（subject）计数全等于库总数（2,773） | **计数必须取自被计对象自己的查询**：主题是 CLIP 查询，计数走 `getSubjectCountAndSum(smartId)`（自带 prompt+threshold），不得复用「当前环境查询」——侧栏计数那条路径会把「无约束的库查询」当成文本腿并集，于是每个主题都等于库总数。配套：聚合量是运行时量（`toPersistedLibraryState` / `toRuntimeLibraryState`），不落盘、加载即清，否则错值会跨会话存活 |
 | 2026-11-19 聚合门禁「36/36 全绿」而一个测试都没跑 | **门禁必须能红才算门禁**：runner 用 `spawnSync(npm_execpath, …, {shell:true})` 拉起各域，Windows 上 cmd.exe 不执行 `npm-cli.js`，每个域秒退 0。修法：直接 `spawn(process.execPath, args)` 跑 `node …`；并用 `tests/aggregateRunner.test.mjs`（`test:gate`）钉住「失败域必须让 runner 退出 1」「域脚本必须真的执行」。**新门禁先证明它能红** |
 | 2026-11-19 上游合并带来新类型错（`statusBarFields: null`） | 类型基线为 0 时，**任何上游新增的类型错都是红的**——这是基线制门禁的价值所在；修法同既有套路：JS store 的 `null` 默认值要用 JSDoc 标注类型，否则收窄成 `null` |
+| 2026-11-19 前端深度审查：Web 鉴权把长期令牌交给页面脚本；SSE 未设协议层 `id:` 致重连重放；会话失效不跳登录页；上游状态栏改版丢失缩放百分比；两处直连 `@tauri-apps/api/event` 绕过传输缝 | **跨形态契约要在两端都对**：①令牌只经 HttpOnly Cookie 下发浏览器（服务端按 `Sec-Fetch-*`/`Origin` 识别浏览器，非浏览器才回 body，`credential_response` 依此分支）；②SSE 帧必须写协议层 `id:`（浏览器据此回传 `Last-Event-ID`，否则重放整段缓冲）；③`auth.markExpired` 之后要有订阅者把 Web 端路由到 `/login`（router 守卫只在导航时读会话）；④上游改版删掉的 UI 能力（缩放百分比）要在合并后回归；⑤事件 API 只能从 `common/transport` 进（`tests/transport.test.mjs` 已加「只有传输缝可 import `@tauri-apps/api/event`」的守卫） |
 
 ## 7. 待建资产清单（按优先级）
 

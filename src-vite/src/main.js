@@ -166,6 +166,19 @@ if (transportMode === 'http') {
 app.use(router)
 app.use(i18n)
 
+// Web client: a 401 on any command invalidates the session (auth.markExpired).
+// The router guard only reads the session during navigation, so without this
+// subscriber an expired/revoked token would leave the user on a dead page
+// until they happened to navigate. Redirect as soon as the session drops.
+if (transportMode === 'http') {
+  const { subscribeAuth } = await import('@/common/auth')
+  subscribeAuth((authenticated) => {
+    if (!authenticated && router.currentRoute.value.path !== '/login') {
+      void router.replace('/login')
+    }
+  })
+}
+
 // Mount the app
 app.mount('#app')
 performance.mark('startup-app-mounted')

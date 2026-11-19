@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from 'vue';
-import { emit as emitWindowEvent } from '@tauri-apps/api/event';
+import { emit as emitWindowEvent } from '@/common/transport';
 import { VueDraggable } from 'vue-draggable-plus';
 import ModalDialog from '@/components/ModalDialog.vue';
 import { config } from '@/common/config';

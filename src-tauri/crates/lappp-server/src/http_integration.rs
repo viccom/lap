@@ -237,21 +237,48 @@ async fn login(server: &TestServer, password: &str) -> HttpReply {
     .await
 }
 
+/// A login carrying the Fetch Metadata headers a browser sends. The token
+/// must NOT come back in the JSON body for such a caller — only the HttpOnly
+/// cookie may carry it (§3.6: page script can read the body, not the cookie).
+async fn browser_login(server: &TestServer, password: &str) -> HttpReply {
+    send(
+        server,
+        "POST",
+        "/api/auth/login",
+        &[
+            ("sec-fetch-mode", "cors".to_string()),
+            ("sec-fetch-site", "same-origin".to_string()),
+            ("origin", "http://127.0.0.1".to_string()),
+        ],
+        Some(format!(r#"{{"password": "{password}", "deviceName": "it-browser"}}"#).into_bytes()),
+    )
+    .await
+}
+
 async fn login_token(server: &TestServer) -> String {
     let reply = login(server, ADMIN_PW).await;
     assert_eq!(reply.status, 200, "login failed: {}", reply.text());
     reply.json()["token"].as_str().expect("token in login reply").to_string()
 }
 
+/// One SSE frame as read off the wire: the protocol-level `id:` line (what the
+/// browser echoes back as `Last-Event-ID`) and the decoded `data:` envelope.
+#[derive(Debug)]
+struct SseFrameView {
+    id: Option<String>,
+    data: serde_json::Value,
+}
+
 /// Read `want` data frames off a live `/api/events` socket (no
 /// `Connection: close` — the stream never ends, so we read until enough
-/// frames arrived or the deadline passes), decoding `data: <json>` lines.
+/// frames arrived or the deadline passes), decoding `data: <json>` lines and
+/// capturing each frame's `id:` line.
 async fn sse_read_frames(
     server: &TestServer,
     token: &str,
     last_event_id: Option<u64>,
     want: usize,
-) -> Vec<serde_json::Value> {
+) -> Vec<SseFrameView> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let mut stream =
         tokio::time::timeout(CONNECT_TIMEOUT, tokio::net::TcpStream::connect(server.addr))
@@ -269,16 +296,22 @@ async fn sse_read_frames(
 
     let deadline = tokio::time::Instant::now() + READ_TIMEOUT;
     let mut buf: Vec<u8> = Vec::new();
-    let mut frames: Vec<serde_json::Value> = Vec::new();
+    let mut frames: Vec<SseFrameView> = Vec::new();
+    // A frame's `id:` line precedes its `data:` line; hold it until the data
+    // arrives so the two always pair up.
+    let mut pending_id: Option<String> = None;
     let mut chunk = [0u8; 4096];
     loop {
         while let Some(newline) = buf.iter().position(|b| *b == b'\n') {
             let line: Vec<u8> = buf.drain(..=newline).collect();
             let line = String::from_utf8_lossy(&line[..line.len() - 1]).into_owned();
-            if let Some(data) = line.trim_end_matches('\r').strip_prefix("data: ") {
+            let line = line.trim_end_matches('\r');
+            if let Some(id) = line.strip_prefix("id: ") {
+                pending_id = Some(id.to_string());
+            } else if let Some(data) = line.strip_prefix("data: ") {
                 let parsed: serde_json::Value = serde_json::from_str(data)
                     .unwrap_or_else(|e| panic!("unreadable SSE frame ({e}): {data}"));
-                frames.push(parsed);
+                frames.push(SseFrameView { id: pending_id.take(), data: parsed });
             }
         }
         if frames.len() >= want {
@@ -367,6 +400,17 @@ async fn setup_login_and_the_denial_matrix_over_live_http() {
     assert!(cookie.contains("HttpOnly"));
     assert!(cookie.contains("SameSite=Strict"));
     let token = body["token"].as_str().unwrap().to_string();
+
+    // A browser login gets the cookie but NOT the token in the body: page
+    // script reads the body, so echoing a bearer token would defeat HttpOnly.
+    let web = browser_login(&server, ADMIN_PW).await;
+    assert_eq!(web.status, 200);
+    let web_body = web.json();
+    assert_eq!(web_body["scope"], "standard");
+    assert!(web_body["token"].is_null(), "browser login must not serialize the token: {web_body}");
+    let web_cookie = web.header("set-cookie").expect("Set-Cookie on browser login");
+    assert!(web_cookie.starts_with("lapd_token="), "browser still gets the cookie");
+    assert!(web_cookie.contains("HttpOnly"));
 
     // Config query through the bridge hits the real config layer.
     let config = cmd(&server, &token, "get_app_config", serde_json::json!({})).await;
@@ -767,21 +811,31 @@ async fn sse_stream_and_last_event_id_resume_over_live_http() {
     assert_eq!(frames.len(), 3, "unexpected frames: {frames:?}");
     let ids: Vec<u64> = frames
         .iter()
-        .map(|f| f["id"].as_str().expect("string id").parse().expect("numeric id"))
+        .map(|f| f.data["id"].as_str().expect("string id").parse().expect("numeric id"))
         .collect();
     assert!(ids.windows(2).all(|w| w[0] < w[1]), "ids must be strictly increasing: {ids:?}");
-    assert_eq!(frames[0]["event"], "itest-event-a");
-    assert_eq!(frames[1]["event"], "itest-event-b");
-    assert_eq!(frames[2]["event"], "itest-event-c");
-    assert_eq!(frames[0]["payload"]["n"], 1);
-    let data_shape = frames[0].as_object().expect("envelope object");
+    // The protocol-level `id:` line must carry the same value as the JSON
+    // envelope: it is what the browser echoes as `Last-Event-ID`. Without it
+    // the client cannot resume and a reconnect replays the whole buffer.
+    for (frame, id) in frames.iter().zip(&ids) {
+        assert_eq!(
+            frame.id.as_deref(),
+            Some(id.to_string().as_str()),
+            "SSE id: line must match the envelope id"
+        );
+    }
+    assert_eq!(frames[0].data["event"], "itest-event-a");
+    assert_eq!(frames[1].data["event"], "itest-event-b");
+    assert_eq!(frames[2].data["event"], "itest-event-c");
+    assert_eq!(frames[0].data["payload"]["n"], 1);
+    let data_shape = frames[0].data.as_object().expect("envelope object");
     assert_eq!(data_shape.len(), 3, "envelope carries exactly event/id/payload");
 
     // Resume from the first id: only b and c replay.
     let resumed = sse_read_frames(&server, &token, Some(ids[0]), 2).await;
     assert_eq!(resumed.len(), 2);
-    assert_eq!(resumed[0]["event"], "itest-event-b");
-    assert_eq!(resumed[1]["event"], "itest-event-c");
+    assert_eq!(resumed[0].data["event"], "itest-event-b");
+    assert_eq!(resumed[1].data["event"], "itest-event-c");
 }
 
 #[tokio::test]

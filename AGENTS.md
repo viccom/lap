@@ -137,6 +137,7 @@ pwsh -File scripts/build-windows.ps1 -BuildProfile release   # 默认 release
 10. **云端文件保护**：`is_cloud_only` 检查贯穿哈希/嵌入/缩略图/XMP 每条路径，新功能触碰文件内容前必须沿用。
 11. **门禁本身要有牙**：聚合 runner 曾用 `spawnSync(npm_execpath, …, {shell:true})` 拉起各域，在 Windows 上 cmd.exe 根本不执行 `npm-cli.js`，**每个域都秒退 0**，门禁长期报「35/35 全绿」而一个测试都没跑（是 2026-11-19 上游合并时被真机/单文件跑法对出来的）。现在 runner 直接 `spawn(process.execPath, args)` 跑 `node …`，并由 `tests/aggregateRunner.test.mjs`（`test:gate`）钉住「失败域必须让 runner 退出 1」「域脚本必须真的被执行」。**新增任何门禁脚本时，先证明它能红。**
 12. **两个 lappp 实例无法并存**：WebView2 的用户数据目录由 Tauri identifier（`com.julyx10.lap`）决定，与 `--data-dir` 无关；第二个实例的 webview 起不来（带调试端口时卡在 `setup-ready` 之前、CDP 无目标）。所以冒烟前必须先关掉用户自己的实例——**并且只能用 `taskkill /PID <pid>`，绝不能用 `taskkill /IM lappp.exe`**，后者会把用户的实例一起杀掉。
+13. **事件 API 只能从 `common/transport` 进**：直接 `import ... from '@tauri-apps/api/event'` 在桌面能跑、在 Web 端静默失效（事件永远不来）。历史上有两处（`StatusBarFieldsDialog.vue`、`composables/useLibraryChangeRefresh.ts`）踩过；`tests/transport.test.mjs` 已加守卫「除传输缝外任何文件不得 import 该模块」（`import type` 白名单放行）。同理，Web 专属的令牌、SSE 重放、会话失效跳转都要在**两端**成立：浏览器令牌只走 HttpOnly Cookie（服务端按 `Sec-Fetch-*`/`Origin` 识别），SSE 帧要写协议层 `id:`（否则浏览器不产生 `Last-Event-ID`、重连重放整段缓冲），`markExpired` 之后要有订阅者把 Web 路由回 `/login`。
 
 ---
 
