@@ -1,8 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { navigatorLayout, navigatorBox, navigatorPoint, type NavigatorViewport } from '../src/common/imageNavigator.ts';
-const near = (actual: number, expected: number) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
-const viewport: NavigatorViewport = { scale: 2, normX: 0.3, normY: 0.7,
+import { loadTsModule } from './helpers/ts-module.mjs';
+
+const { navigatorLayout, navigatorBox, navigatorPoint } = loadTsModule(
+  new URL('../src/common/imageNavigator.ts', import.meta.url),
+);
+const near = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-8, `${actual} != ${expected}`);
+const viewport = { scale: 2, normX: 0.3, normY: 0.7,
   sourceWidth: 4000, sourceHeight: 2000, viewportWidth: 1000, viewportHeight: 800, rotate: 0, pannable: true };
 for (const rotate of [0, 90, 180, 270, -90]) {
   test(`rotation ${rotate}: viewport center maps back to the same image content`, () => {
@@ -28,5 +32,5 @@ test('thumbnail and original resolutions describe the same viewport', () => {
   const size = { width: 320, height: 240 };
   const originalBox = navigatorBox(viewport, navigatorLayout(viewport, size));
   const thumbnailBox = navigatorBox(thumbnail, navigatorLayout(thumbnail, size));
-  for (const key of ['left', 'top', 'width', 'height'] as const) near(originalBox[key], thumbnailBox[key]);
+  for (const key of ['left', 'top', 'width', 'height']) near(originalBox[key], thumbnailBox[key]);
 });

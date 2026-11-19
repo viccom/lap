@@ -1,19 +1,24 @@
-// Run with: node --test tests/montageLayout.test.ts
+// Layout of the montage (拼贴) page: every photo placed once, inside the
+// page, without overlap.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeMontageLayout, shuffled, type MontageMode, type MontageItem } from '../src/common/montageLayout.ts';
+import { loadTsModule } from './helpers/ts-module.mjs';
+
+const { computeMontageLayout, shuffled } = loadTsModule(
+  new URL('../src/common/montageLayout.ts', import.meta.url),
+);
 
 const EPS = 1e-6;
 const ratios = [1.5, 0.67, 1, 1.78, 0.75, 1.33, 0.56];
-const photosOf = (n: number) => Array.from({ length: n }, (_, i) => ({ fileId: i + 1, ratio: ratios[i % ratios.length] }));
+const photosOf = (n) => Array.from({ length: n }, (_, i) => ({ fileId: i + 1, ratio: ratios[i % ratios.length] }));
 const style = { spacing: 0.01, border: 0.008, rotation: 15 };
 const pageRatios = [297 / 210, 210 / 297, 16 / 9, 1];
 
-function overlaps(a: MontageItem, b: MontageItem) {
+function overlaps(a, b) {
   return a.x + a.w > b.x + EPS && b.x + b.w > a.x + EPS && a.y + a.h > b.y + EPS && b.y + b.h > a.y + EPS;
 }
 
-for (const mode of ['card', 'grid', 'mosaic', 'masonry', 'pile'] as MontageMode[]) {
+for (const mode of ['card', 'grid', 'mosaic', 'masonry', 'pile']) {
   test(`${mode}: every photo is placed once, inside the page`, () => {
     for (const n of [2, 3, 7, 50]) {
       for (const pageRatio of pageRatios) {
@@ -47,7 +52,7 @@ test('shuffled keeps every item', () => {
   assert.deepEqual(shuffled(items).sort((a, b) => a - b), items);
 });
 
-for (const mode of ['card', 'grid', 'mosaic', 'masonry'] as MontageMode[]) {
+for (const mode of ['card', 'grid', 'mosaic', 'masonry']) {
   test(`${mode}: photos never overlap and are not rotated`, () => {
     for (const n of [2, 3, 7, 50]) {
       for (const pageRatio of pageRatios) {
