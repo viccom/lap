@@ -89,6 +89,8 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
    - [ ] 向下、向上各滚动一次后数量仍 > 0（本次事故的坏格特征：cell 内只有 `<!---->`）；
    - [ ] 真实双击（`Input.dispatchMouseEvent` clickCount=2）后 viewer 出现且存在
          `img.naturalWidth > 1500` 的原图；
+   - [ ] 侧栏「主题」计数 = 该主题自身的命中数（≠ 库总数），且与宫格总数一致
+         （计数必须取自主题自己的 CLIP 查询，见 §6 的 2026-11-19 事故）；
    - [ ] 截图存档到 `docs/dev/` 或任务记录。
 3. **console 错误全量归类**：`Runtime.consoleAPICalled(error)` + `exceptionThrown`
    逐条给结论（已知无害要给出依据），不许按关键词丢弃。
@@ -127,6 +129,7 @@ grep -rn "file.moveToFolder" --include="*.ts" --include="*.vue" src-vite/src
 | SW 毒化（9b48f8e7） | §3.2 真机冒烟的由来：构建≠能跑 |
 | 改名残留（Lap→lappp：脚本/文档/关于页/updater） | §3.1 最后一行：改名类同步全仓 grep |
 | 排查期反复重启二进制无效 | 前端问题先解剖 vnode/组件树（读 `subTree`、包 `setup` 捕 render 异常），探针只读不改语义 |
+| 2026-11-19 主题（subject）计数全等于库总数（2,773） | **计数必须取自被计对象自己的查询**：主题是 CLIP 查询，计数走 `getSubjectCountAndSum(smartId)`（自带 prompt+threshold），不得复用「当前环境查询」——侧栏计数那条路径会把「无约束的库查询」当成文本腿并集，于是每个主题都等于库总数。配套：聚合量是运行时量（`toPersistedLibraryState` / `toRuntimeLibraryState`），不落盘、加载即清，否则错值会跨会话存活 |
 
 ## 7. 待建资产清单（按优先级）
 

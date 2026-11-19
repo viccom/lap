@@ -7083,11 +7083,9 @@ watch(
 
     const requestId = ++sidebarCountRequestId;
     try {
-      // The AI search entry has its own count legs; every other panel goes
-      // through the shared sidebar total.
-      const result = request.source === 'ai-search'
-        ? await getAiSearchSidebarCountAndSum(String(request.text ?? ''))
-        : await getSidebarQueryCountAndSum();
+      // A subject counts its own query, the AI search entry has its own count
+      // legs; every other panel goes through the shared sidebar total.
+      const result = await getRequestedSidebarCountAndSum(request);
       if (requestId !== sidebarCountRequestId || uiStore.countUpdateRequest !== request) return;
       if (result) {
         commitRequestedSidebarCount(Number(result[0] || 0), request);
@@ -7318,6 +7316,40 @@ async function getSearchSidebarCountAndSum() {
   return [files.size, [...files.values()].reduce((sum, file) => sum + getMediaItemSize(file), 0)];
 }
 
+/// The sidebar count of a subject (smart tag).
+///
+/// A subject is a CLIP query over the whole library, so its count has to come
+/// from that query. The ambient query of a subject view carries the
+/// unconstrained library parameters — counting it reports the whole library,
+/// i.e. every file looks like it belongs to every subject.
+async function getSubjectCountAndSum(smartId: string) {
+  const smartTag = getSmartTagById(smartId);
+  if (!smartTag) return null;
+  const result = await searchSimilarImages({
+    searchText: smartTag.prompt,
+    fileId: 0,
+    threshold: smartTag.threshold ?? config.smartTagSearchThreshold,
+    fileType: 0,
+  });
+  if (!Array.isArray(result)) return null;
+  const files = result.filter((file: any) => passesAlbumFilters(file));
+  return [files.length, files.reduce((sum: number, file: any) => sum + getMediaItemSize(file), 0)];
+}
+
+/// The count of the activated sidebar item.
+///
+/// A subject counts its own CLIP query, an AI search counts its own query —
+/// every other item counts the ambient sidebar query.
+async function getRequestedSidebarCountAndSum(request: NonNullable<typeof uiStore.countUpdateRequest>) {
+  if (request.source === 'ai-search') {
+    return getAiSearchSidebarCountAndSum(String(request.text ?? ''));
+  }
+  if (request.source === 'library' && request.item === LIB_ITEM.SUBJECTS && request.smartId) {
+    return getSubjectCountAndSum(String(request.smartId));
+  }
+  return getSidebarQueryCountAndSum();
+}
+
 /// The sidebar count of an AI search query: both legs, filtered and
 /// de-duplicated by file id. A failed leg is treated as empty so the
 /// history count never blocks on a broken embedding model.
@@ -7347,9 +7379,7 @@ async function refreshRequestedSidebarCount() {
   const requestId = ++sidebarCountRequestId;
   const contentRequestId = currentContentRequestId;
   try {
-    const result = request.source === 'ai-search'
-      ? await getAiSearchSidebarCountAndSum(String(request.text ?? ''))
-      : await getSidebarQueryCountAndSum();
+    const result = await getRequestedSidebarCountAndSum(request);
     if (requestId !== sidebarCountRequestId || contentRequestId !== currentContentRequestId) return;
     if (result) commitRequestedSidebarCount(Number(result[0] || 0), request);
   } catch (error) {

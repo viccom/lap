@@ -6,6 +6,7 @@ import { getCurrentLibraryState, saveLibraryState, getAppConfig } from '@/common
 import { CULLING, LIB_ITEM } from '@/common/constants';
 import { setThumbLibraryId } from '@/common/utils';
 import { resetLibraryAccessibility } from '@/common/availability';
+import { toPersistedLibraryState, toRuntimeLibraryState } from '@/common/libraryState';
 
 // The app-level deep watcher calls save() for every store mutation. Keep the
 // last actual payload per library so runtime-only count refreshes do not turn
@@ -177,6 +178,9 @@ export const useLibraryStore = defineStore('libraryStore', {
         }
         this.index.status = Number(this.index.status || 0);
         this.index.phase = this.index.phase || 'discovering';
+        // The aggregate counts are runtime-only: a persisted number must never
+        // reach the sidebar, it is recomputed when its panel is opened.
+        this.library = toRuntimeLibraryState(this.library);
         this.index.pausedAlbumIds = Array.isArray(this.index.pausedAlbumIds)
           ? Array.from(new Set(this.index.pausedAlbumIds.map(id => Number(id)).filter(id => id > 0)))
           : [];
@@ -245,11 +249,7 @@ export const useLibraryStore = defineStore('libraryStore', {
         try {
           // These panels now obtain their counts from live grouped aggregates.
           // Keep the values in memory for rendering, but never persist them.
-          const {
-            counts: _libraryCounts,
-            activateTick: _libraryActivateTick,
-            ...libraryState
-          } = this.library;
+          const libraryState = toPersistedLibraryState(this.library);
           const {
             counts: _albumCounts,
             activateTick: _albumActivateTick,
